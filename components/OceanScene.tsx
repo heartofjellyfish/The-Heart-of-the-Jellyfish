@@ -23,22 +23,31 @@ function pickDepthColor(d: number, out: THREE.Color) {
   return out;
 }
 
-function DepthEnvironment({ depthRef }: { depthRef: MutableRefObject<number> }) {
+function DepthEnvironment({
+  depthRef, surfaceFogColor,
+}: {
+  depthRef: MutableRefObject<number>;
+  surfaceFogColor: string;
+}) {
   const { scene } = useThree();
-  const tmp = useMemo(() => new THREE.Color(), []);
+  const underwaterCol = useMemo(() => new THREE.Color(), []);
+  const surfaceCol = useMemo(() => new THREE.Color(surfaceFogColor), []);
+  const finalCol = useMemo(() => new THREE.Color(), []);
+
+  useEffect(() => { surfaceCol.set(surfaceFogColor); }, [surfaceCol, surfaceFogColor]);
 
   useFrame(() => {
     const d = depthRef.current;
-    pickDepthColor(d, tmp);
-    if (!scene.fog) scene.fog = new THREE.FogExp2(tmp.getHex(), 0.02);
-    (scene.fog as THREE.FogExp2).color.copy(tmp);
-    // very thin fog above water, thickens fast once submerged
-    const underwater = THREE.MathUtils.smoothstep(d, 0.05, 0.15);
-    (scene.fog as THREE.FogExp2).density = THREE.MathUtils.lerp(0.0015, 0.018 + d * 0.045, underwater);
-    // background: sky handles it above water; switch to water color underwater
-    if (!(scene.background instanceof THREE.Color)) scene.background = tmp.clone();
-    if (underwater > 0.01) (scene.background as THREE.Color).copy(tmp);
-    else (scene.background as THREE.Color).set('#9fc8db'); // sky-tinted (sky dome will overlay)
+    pickDepthColor(d, underwaterCol);                          // cool-water palette
+    const underwater = THREE.MathUtils.smoothstep(d, 0.05, 0.18);
+    finalCol.copy(surfaceCol).lerp(underwaterCol, underwater); // warm at surface → cool at depth
+
+    if (!scene.fog) scene.fog = new THREE.FogExp2(finalCol.getHex(), 0.02);
+    (scene.fog as THREE.FogExp2).color.copy(finalCol);
+    (scene.fog as THREE.FogExp2).density = THREE.MathUtils.lerp(0.0028, 0.018 + d * 0.045, underwater);
+
+    if (!(scene.background instanceof THREE.Color)) scene.background = new THREE.Color();
+    (scene.background as THREE.Color).copy(finalCol);
   });
   return null;
 }
@@ -711,7 +720,7 @@ function SunsetScene({ depthRef }: { depthRef: MutableRefObject<number> }) {
     <>
       <color attach="background" args={['#bcd9e6']} />
       <fogExp2 attach="fog" args={['#0c3a55', 0.002]} />
-      <DepthEnvironment depthRef={depthRef} />
+      <DepthEnvironment depthRef={depthRef} surfaceFogColor={params.hazeColor} />
       <CameraRig depthRef={depthRef} />
 
       <SkyDome
