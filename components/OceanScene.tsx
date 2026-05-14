@@ -4,12 +4,15 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Sky, useGLTF, useAnimations } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { useControls, folder } from 'leva';
-import { Suspense, useEffect, useMemo, useRef, type MutableRefObject } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import * as THREE from 'three';
 import { Water } from 'three/examples/jsm/objects/Water.js';
 
 const CHRYSAORA_URL = '/models/chrysaora/model.glb';
+const WRECK_URL = '/models/wreck/model.glb';
 useGLTF.preload(CHRYSAORA_URL);
+// wreck (37MB) is intentionally NOT preloaded — it loads when the user
+// scrolls toward the abyss, keeping first paint light.
 
 // ---------- depth-aware fog + background ----------
 
@@ -653,12 +656,13 @@ function ChrysaoraHero() {
           phys.attenuationDistance = 0.8;
           phys.clearcoat = 1.0;
           phys.clearcoatRoughness = 0.1;
-          // self-emitted blood red so the bell survives heavy fog + low exposure
-          phys.emissive.set('#9a1a14');
-          phys.emissiveIntensity = 1.6;
-          phys.transparent = true;
-          phys.side = THREE.DoubleSide;
-          phys.fog = false;  // opt the hero out of scene fog so red doesn't get blue-shifted
+          // strong self-emitted blood red so the bell stays vivid through depth fog + low exposure
+          phys.emissive.set('#b21810');
+          phys.emissiveIntensity = 2.2;
+          // transmission handles its own alpha — keep `transparent: false` to avoid
+          // the depth-sort flicker that produces black squares on the animated bell
+          phys.transparent = false;
+          phys.side = THREE.FrontSide;
           mesh.material = phys;
         }
       });
@@ -694,20 +698,128 @@ function ChrysaoraHero() {
   });
 
   return (
-    <group ref={group} position={[0, JELLY_Y - 1.5, 0]} scale={0.025}>
+    <group ref={group} position={[0, JELLY_Y - 0.6, 0]} scale={0.06}>
       <group ref={innerRef}>
         <primitive object={scene} />
       </group>
       {/* "the heart" — warm pulse inside the bell */}
       <pointLight
         ref={coreLight}
-        position={[0, 0.6, 0]}
+        position={[0, 0.4, 0]}
         color="#ffd07a"
-        intensity={6}
-        distance={4}
+        intensity={5}
+        distance={3}
         decay={1.4}
       />
     </group>
+  );
+}
+
+// ---------- shipwreck (Endurance, GLTF) ----------
+//
+// Resting on the abyss floor far below the jellyfish. Only mounted once the
+// scroll passes ~0.78 so the 37MB GLB never blocks first paint. Geometry sits
+// well behind the camera's deepest position so the camera approaches it as a
+// silhouette emerging from fog.
+
+const WRECK_REVEAL_DEPTH = 0.78;
+// Camera in the abyss sits around y=-49..-55 and z≈8.5 looking ~6 units below itself.
+// At d=1 fog density ≈ 0.06, so anything beyond ~15 units fades to black.
+// Place the wreck just below the camera's deep path, slightly in front (-z), so the
+// camera looks down and forward at it as a half-emergent silhouette in fog.
+const WRECK_Y = -60;
+const WRECK_Z = -4;
+
+// Mounts <Wreck> only after the scroll crosses the reveal threshold so the
+// 37MB GLB never fetches on first paint.
+function WreckGate({ depthRef }: { depthRef: MutableRefObject<number> }) {
+  const [mounted, setMounted] = useState(false);
+  useFrame(() => {
+    if (!mounted && depthRef.current > WRECK_REVEAL_DEPTH - 0.05) setMounted(true);
+  });
+  if (!mounted) return null;
+  return (
+    <Suspense fallback={null}>
+      <Wreck depthRef={depthRef} />
+    </Suspense>
+  );
+}
+
+function Wreck({ depthRef }: { depthRef: MutableRefObject<number> }) {
+  const group = useRef<THREE.Group>(null!);
+  const { scene } = useGLTF(WRECK_URL);
+
+  // The Endurance GLB has native size ~[2.4, 1.4, 1.7] (small units) with its
+  // origin offset far from (0,0,0): bbox center ≈ (-0.18, -58, +41.6). We need
+  // to (a) recenter via an inner group, and (b) scale up enough to read as a
+  // multi-meter object next to the camera at depth.
+  const modelCenter = useMemo(() => {
+    if (!scene) return new THREE.Vector3();
+    return new THREE.Box3().setFromObject(scene).getCenter(new THREE.Vector3());
+  }, [scene]);
+
+  // make every material respect scene fog so the wreck dissolves into the abyss
+  useEffect(() => {
+    if (!scene) return;
+    scene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      mats.forEach((m) => {
+        const mat = m as THREE.MeshStandardMaterial;
+        if (mat) {
+          mat.fog = true;
+          mat.roughness = Math.max(mat.roughness ?? 0.9, 0.85);
+          // Underwater + near-black background + ACES exposure 0.38 crushes
+          // the photogrammetry albedo. Push the emissive hard so the wreck
+          // reads as a self-lit silhouette in the abyss, regardless of how
+          // close the point lights happen to be.
+          if (mat.emissive) {
+            mat.emissive.setHex(0x2a4258);
+            mat.emissiveIntensity = 2.2;
+          }
+        }
+      });
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+    });
+  }, [scene]);
+
+  useFrame(({ clock }) => {
+    if (!group.current) return;
+    const d = depthRef.current;
+    const visible = d > WRECK_REVEAL_DEPTH - 0.02;
+    group.current.visible = visible;
+    if (!visible) return;
+    // very slow drift so it doesn't feel like a static prop
+    const t = clock.getElapsedTime();
+    group.current.rotation.y = Math.sin(t * 0.04) * 0.03;
+    group.current.position.y = WRECK_Y + Math.sin(t * 0.08) * 0.15;
+  });
+
+  return (
+    <>
+      <group ref={group} position={[0, WRECK_Y, WRECK_Z]} scale={3.5}>
+        {/* inner group recenters the model so its bbox center sits at our group origin */}
+        <primitive object={scene} position={[-modelCenter.x, -modelCenter.y, -modelCenter.z]} />
+      </group>
+      {/* Lights live in world space — NOT inside the scaled group, otherwise
+          their positions and `distance` falloff get multiplied by scale=3.5. */}
+      <pointLight
+        position={[3, WRECK_Y + 4, WRECK_Z + 3]}
+        color="#9ec7e0"
+        intensity={80}
+        distance={18}
+        decay={1.4}
+      />
+      <pointLight
+        position={[-3, WRECK_Y - 2, WRECK_Z + 4]}
+        color="#3a6a90"
+        intensity={45}
+        distance={14}
+        decay={1.6}
+      />
+    </>
   );
 }
 
@@ -912,16 +1024,15 @@ function SunsetScene({ depthRef }: { depthRef: MutableRefObject<number> }) {
       <Suspense fallback={null}>
         <ChrysaoraHero />
       </Suspense>
+      <WreckGate depthRef={depthRef} />
 
-      <EffectComposer multisampling={0} enableNormalPass={false}>
-        <Bloom
-          mipmapBlur
-          intensity={0.9}
-          luminanceThreshold={0.45}
-          luminanceSmoothing={0.35}
-          radius={0.85}
-        />
-      </EffectComposer>
+      {/* Bloom removed: it composites after the MeshPhysicalMaterial transmission
+          pass, and the transmission backdrop can contain NaN/Inf at animated bell
+          edges. Those values bypass any luminanceThreshold (NaN comparisons fail)
+          and produce flashing black squares over the hero. The bell's emissive
+          (#b21810 @ 2.2) is already vivid enough without bloom. If glow is wanted
+          later, use selective bloom (Selection wrapper around specific meshes) so
+          the transmission backdrop is excluded from the bloom input. */}
     </>
   );
 }
