@@ -48,7 +48,8 @@ const SURFACE_Y = 14;          // camera position above water at scroll 0
 const WATER_LEVEL = 0;
 const ABYSS_Y = -55;
 const JELLY_Y = -22;
-const SUN_DIRECTION = new THREE.Vector3(0.42, 0.32, 0.18).normalize();
+// sun low on the horizon, slightly off-axis — the classic golden hour
+const SUN_DIRECTION = new THREE.Vector3(0.35, 0.06, -0.93).normalize();
 
 function CameraRig({ depthRef }: { depthRef: MutableRefObject<number> }) {
   const target = useRef(new THREE.Vector3(0, JELLY_Y, 0));
@@ -575,9 +576,9 @@ function WaterSurface({ depthRef }: { depthRef: MutableRefObject<number> }) {
       textureHeight: 512,
       waterNormals: normals,
       sunDirection: SUN_DIRECTION.clone(),
-      sunColor: 0xffffff,
-      waterColor: 0x0d4870,
-      distortionScale: 3.2,
+      sunColor: 0xffc98c,           // warm golden sun
+      waterColor: 0x1a2f4a,         // cool deep blue base — picks up warm reflection
+      distortionScale: 3.6,
       fog: true,
     });
     w.rotation.x = -Math.PI / 2;
@@ -610,10 +611,10 @@ function SkyDome({ depthRef }: { depthRef: MutableRefObject<number> }) {
     <group ref={ref}>
       <Sky
         sunPosition={[SUN_DIRECTION.x, SUN_DIRECTION.y, SUN_DIRECTION.z]}
-        turbidity={6}
-        rayleigh={2.2}
-        mieCoefficient={0.005}
-        mieDirectionalG={0.85}
+        turbidity={10}
+        rayleigh={2.8}
+        mieCoefficient={0.0055}
+        mieDirectionalG={0.92}
         distance={4500}
       />
     </group>
@@ -631,7 +632,7 @@ export function OceanScene({ depthRef }: { depthRef: MutableRefObject<number> })
         alpha: false,
         powerPreference: 'high-performance',
         toneMapping: THREE.ACESFilmicToneMapping,
-        toneMappingExposure: 0.85,
+        toneMappingExposure: 0.72,
       }}
       camera={{ position: [0, SURFACE_Y, 9], fov: 55, near: 0.1, far: 5000 }}
     >
@@ -642,11 +643,11 @@ export function OceanScene({ depthRef }: { depthRef: MutableRefObject<number> })
 
       <SkyDome depthRef={depthRef} />
 
-      <ambientLight intensity={0.45} color="#a8e0f2" />
+      <ambientLight intensity={0.32} color="#c08a6e" />
       <directionalLight
-        position={[SUN_DIRECTION.x * 50, SUN_DIRECTION.y * 50, SUN_DIRECTION.z * 50]}
-        intensity={1.2}
-        color="#fff4dc"
+        position={[SUN_DIRECTION.x * 50, SUN_DIRECTION.y * 50 + 6, SUN_DIRECTION.z * 50]}
+        intensity={1.7}
+        color="#ffb877"
       />
       <pointLight position={[0, JELLY_Y + 0.2, 0]} intensity={14} color="#9aeaff" distance={20} decay={1.6} />
 
