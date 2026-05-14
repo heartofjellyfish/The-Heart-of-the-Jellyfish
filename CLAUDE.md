@@ -38,7 +38,17 @@ Constants live at the top of OceanScene: `SURFACE_Y`, `JELLY_Y`, `ABYSS_Y`, `WRE
 
 This is the path the user will repeatedly walk. **Follow it.**
 
-1. **Place the GLB.** Put assets at `public/models/<name>/model.glb`. Existing examples: `chrysaora/`, `wreck/`. Photogrammetry models (like the wreck) often bake bright lighting into the albedo — expect to multiply `mat.color` by 0.4–0.6 and bump `mat.roughness` in a `scene.traverse` after `useGLTF`.
+1. **Place the GLB — and compress it first.** Put assets at `public/models/<name>/model.glb`. Existing examples: `chrysaora/` (5MB, external JPG textures), `wreck/` (2MB, Draco + WebP). Photogrammetry models (like the wreck) often bake bright lighting into the albedo — expect to multiply `mat.color` by 0.4–0.6 and bump `mat.roughness` in a `scene.traverse` after `useGLTF`.
+
+   **Always compress Sketchfab-style GLBs before committing.** Raw downloads bundle PNG textures at 4k/8k inside the GLB (the wreck was 37MB raw → 2MB compressed, 18× reduction). Pipeline:
+   ```sh
+   npx --yes @gltf-transform/cli@latest dedup in.glb out.glb && \
+   npx --yes @gltf-transform/cli@latest weld out.glb out.glb && \
+   npx --yes @gltf-transform/cli@latest webp out.glb out.glb --slots baseColor && \
+   npx --yes @gltf-transform/cli@latest resize out.glb out.glb --width 2048 --height 2048 && \
+   npx --yes @gltf-transform/cli@latest draco out.glb out.glb
+   ```
+   Don't use `gltf-transform optimize` — its default `simplify`/`prune` strips NORMAL attributes, producing flat-shaded geometry. drei's `useGLTF` auto-fetches the Draco decoder from a CDN at first use (no code change needed).
 
 2. **Decide the depth window.** Each prop has a reveal range on `depthRef`. Pick where it should appear in the descent (use the table above). Pass `depthRef` into the component and read it in `useFrame`.
 
