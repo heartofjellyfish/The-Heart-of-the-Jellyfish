@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# Production
+build/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env
+.env
+.env.local
+.env.development.local
+.env.production.local
+.env.test.local
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Claude Code local config (machine-specific dev server launch)
+.claude/
+
+# TypeScript
+*.tsbuildinfo
+
+# Vercel
+.vercel
