@@ -688,6 +688,11 @@ function SunsetScene({ depthRef }: { depthRef: MutableRefObject<number> }) {
       dirColor:         { value: '#ff7a45' },
       dirIntensity:     { value: 1.8, min: 0, max: 4, step: 0.05 },
     }),
+    'Horizon haze': folder({
+      hazeColor:    { value: '#3a1a10' },
+      hazeStrength: { value: 0.55, min: 0, max: 1, step: 0.01 },
+      hazeHeight:   { value: 1.4, min: 0, max: 6, step: 0.05 },
+    }),
     'Tone': folder({
       exposure: { value: 0.62, min: 0.1, max: 1.5, step: 0.02 },
     }),
@@ -733,11 +738,99 @@ function SunsetScene({ depthRef }: { depthRef: MutableRefObject<number> }) {
         waterColor={params.waterColor}
         distortionScale={params.distortionScale}
       />
+      <HorizonHaze
+        depthRef={depthRef}
+        hazeColor={params.hazeColor}
+        hazeStrength={params.hazeStrength}
+        hazeHeight={params.hazeHeight}
+      />
       <GodRays depthRef={depthRef} />
       <MarineSnow depthRef={depthRef} />
       <Bioluminescence depthRef={depthRef} />
       <Jellyfish />
     </>
+  );
+}
+
+// ---------- horizon haze (smooths the sky/water seam) ----------
+
+const hazeVS = /* glsl */`
+  precision mediump float;
+  varying float vYNorm;  // 0 at bottom of band, 1 at top
+  uniform float uHeight;
+  void main() {
+    // unit cylinder has y in [-0.5, 0.5]; map to a band [0, uHeight] sitting on the water
+    vec3 p = position;
+    float yBand = (p.y + 0.5) * uHeight;
+    p.y = yBand;
+    vYNorm = clamp(yBand / max(uHeight, 0.0001), 0.0, 1.0);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+  }
+`;
+const hazeFS = /* glsl */`
+  precision mediump float;
+  varying float vYNorm;
+  uniform vec3  uColor;
+  uniform float uStrength;
+  void main() {
+    // solid at bottom, fade to transparent at top — quadratic ease
+    float a = 1.0 - smoothstep(0.0, 1.0, vYNorm);
+    a = pow(a, 1.6) * uStrength;
+    gl_FragColor = vec4(uColor, a);
+  }
+`;
+
+function HorizonHaze({
+  depthRef, hazeColor, hazeStrength, hazeHeight,
+}: {
+  depthRef: MutableRefObject<number>;
+  hazeColor: string;
+  hazeStrength: number;
+  hazeHeight: number;
+}) {
+  const meshRef = useRef<THREE.Mesh>(null!);
+  const matRef = useRef<THREE.ShaderMaterial>(null!);
+
+  const uniforms = useMemo(
+    () => ({
+      uColor:    { value: new THREE.Color(hazeColor) },
+      uStrength: { value: hazeStrength },
+      uHeight:   { value: hazeHeight },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  useEffect(() => {
+    if (!matRef.current) return;
+    matRef.current.uniforms.uColor.value.set(hazeColor);
+    matRef.current.uniforms.uStrength.value = hazeStrength;
+    matRef.current.uniforms.uHeight.value = hazeHeight;
+  }, [hazeColor, hazeStrength, hazeHeight]);
+
+  useFrame(() => {
+    if (!meshRef.current) return;
+    // hide once we are submerged
+    meshRef.current.visible = depthRef.current < 0.18;
+  });
+
+  // open cylinder: radius matches scene horizon distance; tall enough to read above water
+  const radius = 900;
+  const segments = 64;
+
+  return (
+    <mesh ref={meshRef} position={[0, WATER_LEVEL + 0.05, 0]} renderOrder={2}>
+      <cylinderGeometry args={[radius, radius, 1, segments, 1, true]} />
+      <shaderMaterial
+        ref={matRef}
+        uniforms={uniforms}
+        vertexShader={hazeVS}
+        fragmentShader={hazeFS}
+        transparent
+        depthWrite={false}
+        side={THREE.BackSide}
+      />
+    </mesh>
   );
 }
 
