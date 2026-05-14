@@ -260,57 +260,124 @@ function LightShafts({
   );
 }
 
-// ---------- marine snow / plankton particles ----------
+// ---------- marine snow (soft sprite points, GPU-driven drift) ----------
 
-function MarineSnow({ count = 1800, depthRef }: { count?: number; depthRef?: MutableRefObject<number> }) {
+const snowVS = /* glsl */`
+  precision mediump float;
+  uniform float uTime;
+  uniform float uPixelRatio;
+  attribute float aSize;
+  attribute float aSeed;
+  attribute float aPhase;
+  varying float vSeed;
+  varying float vAlpha;
+  void main() {
+    vec3 p = position;
+    // GPU drift: each particle falls slowly and wraps every 100 units
+    float driftSpeed = 0.12 + aSeed * 0.10;
+    p.y = mod(position.y - uTime * driftSpeed + aSeed * 100.0, 100.0) - 50.0;
+    // tiny lateral sway (different per particle)
+    p.x += sin(uTime * 0.5 + aPhase) * 0.08;
+    p.z += cos(uTime * 0.4 + aPhase * 1.7) * 0.06;
+
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    // size attenuates with distance + per-particle variation
+    float dist = -mv.z;
+    gl_PointSize = aSize * uPixelRatio * (40.0 / max(dist, 1.0));
+    gl_Position = projectionMatrix * mv;
+
+    vSeed = aSeed;
+    // far particles fade; very near particles also fade (out-of-focus edge)
+    vAlpha = smoothstep(2.0, 6.0, dist) * (1.0 - smoothstep(35.0, 55.0, dist));
+  }
+`;
+const snowFS = /* glsl */`
+  precision mediump float;
+  uniform float uOpacity;
+  uniform vec3  uColor;
+  varying float vSeed;
+  varying float vAlpha;
+  void main() {
+    // gl_PointCoord is 0..1 across the sprite; centre at 0.5
+    vec2 c = gl_PointCoord - 0.5;
+    float r = dot(c, c) * 4.0;             // squared radius in 0..1 units
+    if (r > 1.0) discard;
+    // soft gaussian-ish core + outer halo
+    float core = exp(-r * 4.5);
+    float halo = exp(-r * 1.2) * 0.35;
+    float a = (core + halo);
+    // slight per-particle color shift: warm vs cool
+    vec3 tint = mix(uColor, uColor * vec3(1.15, 1.02, 0.92), vSeed);
+    // per-particle base brightness varies so the swarm isn't uniform
+    float bright = 0.35 + 0.65 * fract(vSeed * 11.0);
+    gl_FragColor = vec4(tint, a * uOpacity * vAlpha * bright);
+  }
+`;
+
+function MarineSnow({
+  count = 1500,
+  depthRef,
+}: {
+  count?: number;
+  depthRef?: MutableRefObject<number>;
+}) {
   const pointsRef = useRef<THREE.Points>(null!);
-  const matRef = useRef<THREE.PointsMaterial>(null!);
+  const matRef = useRef<THREE.ShaderMaterial>(null!);
+  const { gl } = useThree();
 
-  const { positions, baseY } = useMemo(() => {
+  const { positions, sizes, seeds, phases } = useMemo(() => {
     const positions = new Float32Array(count * 3);
-    const baseY = new Float32Array(count);
-    const halfRangeY = 50;
+    const sizes = new Float32Array(count);
+    const seeds = new Float32Array(count);
+    const phases = new Float32Array(count);
     for (let i = 0; i < count; i++) {
-      positions[i * 3]     = (Math.random() - 0.5) * 40;
-      positions[i * 3 + 1] = (Math.random() - 0.5) * halfRangeY * 2;
-      positions[i * 3 + 2] = (Math.random() - 0.5) * 20 - 2;
-      baseY[i] = positions[i * 3 + 1];
+      positions[i * 3]     = (Math.random() - 0.5) * 44;
+      positions[i * 3 + 1] = (Math.random() - 0.5) * 100;
+      positions[i * 3 + 2] = (Math.random() - 0.5) * 24 - 2;
+      // size: most are tiny, a few are larger (power-law-ish)
+      const r = Math.random();
+      sizes[i] = 0.6 + Math.pow(r, 3.0) * 6.5;   // 0.6..7.1 pixels-ish
+      seeds[i] = Math.random();
+      phases[i] = Math.random() * Math.PI * 2;
     }
-    return { positions, baseY };
+    return { positions, sizes, seeds, phases };
   }, [count]);
 
+  const uniforms = useMemo(
+    () => ({
+      uTime:       { value: 0 },
+      uOpacity:    { value: 0 },
+      uColor:      { value: new THREE.Color('#dfe8f2') },
+      uPixelRatio: { value: Math.min(gl.getPixelRatio?.() ?? 1, 2) },
+    }),
+    [gl]
+  );
+
   useFrame(({ clock }) => {
-    if (!pointsRef.current) return;
-    // hide while above water
+    if (!matRef.current) return;
     const d = depthRef?.current ?? 1;
-    const visible = d > 0.05;
-    if (matRef.current) matRef.current.opacity = visible ? 0.6 * THREE.MathUtils.smoothstep(d, 0.05, 0.18) : 0;
-    if (!visible) return;
-    const arr = pointsRef.current.geometry.attributes.position.array as Float32Array;
-    const t = clock.getElapsedTime();
-    const drift = (t * 0.18) % 100;
-    for (let i = 0; i < count; i++) {
-      const yIdx = i * 3 + 1;
-      let y = baseY[i] - drift;
-      y = ((y + 50) % 100) - 50;
-      arr[yIdx] = y;
-      arr[i * 3] += Math.sin(t * 0.4 + i) * 0.0008;
-    }
-    pointsRef.current.geometry.attributes.position.needsUpdate = true;
+    // fade in as we cross the surface, peak by mid-depth, ease out a touch in the abyss
+    const visible =
+      THREE.MathUtils.smoothstep(d, 0.05, 0.20) *
+      (0.85 + 0.15 * (1.0 - THREE.MathUtils.smoothstep(d, 0.75, 1.0)));
+    uniforms.uTime.value = clock.getElapsedTime();
+    uniforms.uOpacity.value = 0.85 * visible;
   });
 
   return (
-    <points ref={pointsRef}>
+    <points ref={pointsRef} frustumCulled={false}>
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        <bufferAttribute attach="attributes-aSize"    args={[sizes, 1]} />
+        <bufferAttribute attach="attributes-aSeed"    args={[seeds, 1]} />
+        <bufferAttribute attach="attributes-aPhase"   args={[phases, 1]} />
       </bufferGeometry>
-      <pointsMaterial
+      <shaderMaterial
         ref={matRef}
-        size={0.055}
-        color="#dff1f9"
+        uniforms={uniforms}
+        vertexShader={snowVS}
+        fragmentShader={snowFS}
         transparent
-        opacity={0.6}
-        sizeAttenuation
         depthWrite={false}
         blending={THREE.AdditiveBlending}
       />
@@ -775,8 +842,8 @@ function Wreck({ depthRef }: { depthRef: MutableRefObject<number> }) {
           // reads as a self-lit silhouette in the abyss, regardless of how
           // close the point lights happen to be.
           if (mat.emissive) {
-            mat.emissive.setHex(0x2a4258);
-            mat.emissiveIntensity = 2.2;
+            mat.emissive.setHex(0x3a5878);
+            mat.emissiveIntensity = 3.2;
           }
         }
       });
