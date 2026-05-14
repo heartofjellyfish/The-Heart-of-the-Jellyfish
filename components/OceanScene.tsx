@@ -2,7 +2,7 @@
 
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
-import { Leva, useControls, folder } from 'leva';
+import { useControls, folder } from 'leva';
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react';
 import * as THREE from 'three';
 import { Water } from 'three/examples/jsm/objects/Water.js';
@@ -745,14 +745,11 @@ function SunsetScene({ depthRef }: { depthRef: MutableRefObject<number> }) {
 
 export function OceanScene({
   depthRef,
-  tweakMode = false,
 }: {
   depthRef: MutableRefObject<number>;
-  tweakMode?: boolean;
 }) {
   return (
     <>
-      {tweakMode && <Leva collapsed={false} oneLineLabels titleBar={{ title: 'Sunset Tweak' }} />}
       <Canvas
         dpr={[1, 2]}
         gl={{

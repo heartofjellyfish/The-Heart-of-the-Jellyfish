@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { Leva } from 'leva';
 import { OceanScene } from './OceanScene';
 import { Poem } from './Poem';
 
@@ -61,8 +62,9 @@ export function Descent() {
 
   return (
     <>
+      {tweakMode && <Leva collapsed={false} oneLineLabels titleBar={{ title: 'Sunset Tweak' }} />}
       <div className="fixed inset-0 z-0 pointer-events-none">
-        <OceanScene depthRef={depthRef} tweakMode={tweakMode} />
+        <OceanScene depthRef={depthRef} />
       </div>
       {focus ? (
         <FocusOverlay focus={focus} />
