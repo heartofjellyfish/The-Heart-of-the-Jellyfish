@@ -1,11 +1,15 @@
 'use client';
 
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Sky } from '@react-three/drei';
+import { Sky, useGLTF, useAnimations } from '@react-three/drei';
+import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { useControls, folder } from 'leva';
-import { useEffect, useMemo, useRef, type MutableRefObject } from 'react';
+import { Suspense, useEffect, useMemo, useRef, type MutableRefObject } from 'react';
 import * as THREE from 'three';
 import { Water } from 'three/examples/jsm/objects/Water.js';
+
+const CHRYSAORA_URL = '/models/chrysaora/model.glb';
+useGLTF.preload(CHRYSAORA_URL);
 
 // ---------- depth-aware fog + background ----------
 
@@ -96,78 +100,151 @@ function CameraRig({ depthRef }: { depthRef: MutableRefObject<number> }) {
   return null;
 }
 
-// ---------- god rays (cone meshes, additive) ----------
+// ---------- Tyndall light shafts (volumetric scatter through water) ----------
+//
+// Billboarded vertical planes with a soft gaussian core, 3D-noise volumetric
+// modulation, and additive blending. Each shaft yaws to face the camera every
+// frame so its silhouette never reads as a flat rectangle from the side.
+// Visible only between roughly 1 m and 8 m below the surface — past that the
+// real-world equivalent is gone too.
 
-// God rays — custom shader on cone that fades at edges and along length
-const godRayVS = /* glsl */`
+const shaftVS = /* glsl */`
   precision mediump float;
-  varying vec3 vPos;
   varying vec2 vUv;
   void main() {
-    vPos = position;
     vUv = uv;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
-const godRayFS = /* glsl */`
+const shaftFS = /* glsl */`
   precision mediump float;
-  uniform float uOpacity;
+  varying vec2 vUv;
   uniform float uTime;
   uniform float uSeed;
-  varying vec3 vPos;
-  varying vec2 vUv;
-  void main() {
-    // vUv.x runs around the cone, vUv.y runs along its length (0 top, 1 bottom)
-    float along = 1.0 - vUv.y;        // 1 at top, 0 at bottom
-    float across = abs(vUv.x - 0.5) * 2.0; // 0 center, 1 edge
-    float radial = pow(1.0 - across, 2.8);
-    float lengthwise = smoothstep(0.0, 0.25, along) * smoothstep(0.0, 1.0, 1.0 - along * 0.7);
-    float flicker = 0.78 + 0.22 * sin(uTime * 0.7 + uSeed * 6.28);
-    float a = radial * lengthwise * uOpacity * flicker;
-    gl_FragColor = vec4(0.92, 0.97, 1.0, a);
+  uniform float uOpacity;
+  uniform vec3  uColor;
+
+  float hash3(vec3 p){
+    return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
+  }
+  float noise3(vec3 p){
+    vec3 i = floor(p), f = fract(p);
+    vec3 u = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(mix(hash3(i),                 hash3(i + vec3(1.0,0.0,0.0)), u.x),
+          mix(hash3(i + vec3(0.0,1.0,0.0)), hash3(i + vec3(1.0,1.0,0.0)), u.x), u.y),
+      mix(mix(hash3(i + vec3(0.0,0.0,1.0)), hash3(i + vec3(1.0,0.0,1.0)), u.x),
+          mix(hash3(i + vec3(0.0,1.0,1.0)), hash3(i + vec3(1.0,1.0,1.0)), u.x), u.y),
+      u.z
+    );
+  }
+  float fbm(vec3 p){
+    float v = 0.0, a = 0.5;
+    for (int i = 0; i < 4; i++) { v += a * noise3(p); p *= 2.07; a *= 0.5; }
+    return v;
+  }
+
+  void main(){
+    // vUv.x: 0 (left) → 1 (right);  vUv.y: 0 (bottom of plane) → 1 (top, where light enters)
+    float x = vUv.x * 2.0 - 1.0;
+    float y = vUv.y;
+
+    // soft gaussian along the shaft cross-section — no hard edges
+    float core = exp(-x * x * 3.8);
+
+    // bright at top, fade exponentially down (Beer-Lambert-ish)
+    float vert = pow(y, 1.4) * (1.0 - smoothstep(0.94, 1.0, y));
+
+    // volumetric noise: streams that drift down with time, broken across width
+    vec3 np = vec3(x * 0.55 + uSeed * 7.13, y * 3.2 - uTime * 0.13, uSeed * 31.0);
+    float n = fbm(np);
+    // squash to make sharper "filaments"
+    n = pow(n, 1.6);
+
+    float a = core * vert * (0.35 + 0.65 * n) * uOpacity;
+    // premultiplied additive — output color must be color * alpha
+    gl_FragColor = vec4(uColor * a, a);
   }
 `;
 
-function GodRays({ depthRef }: { depthRef: MutableRefObject<number> }) {
+function LightShafts({
+  depthRef,
+  sunDir,
+}: {
+  depthRef: MutableRefObject<number>;
+  sunDir: THREE.Vector3;
+}) {
   const groupRef = useRef<THREE.Group>(null!);
+  const colorRef = useRef(new THREE.Color('#ffd09a'));
 
-  const rays = useMemo(() => {
-    return new Array(9).fill(0).map((_, i) => ({
-      x: (i - 4) * 1.8 + (Math.random() - 0.5) * 1.2,
-      z: (Math.random() - 0.5) * 3 - 1.5,
-      radius: 0.28 + Math.random() * 0.25,
-      height: 16 + Math.random() * 6,
-      tilt: (Math.random() - 0.5) * 0.08,
-      seed: Math.random(),
-    }));
-  }, []);
+  // sun direction tells us roughly where light hits the surface; bias shafts toward it
+  const shafts = useMemo(() => {
+    return new Array(7).fill(0).map((_, i) => {
+      const r = 5 + Math.random() * 3.5;
+      const angle = ((i - 3) / 7) * 0.9 + (Math.random() - 0.5) * 0.2; // -0.45..0.45 rad
+      // place shafts along an arc in the direction of the sun, with some scatter
+      const sunFlatLen = Math.hypot(sunDir.x, sunDir.z) || 1;
+      const sx = sunDir.x / sunFlatLen;
+      const sz = sunDir.z / sunFlatLen;
+      // perpendicular for spread
+      const px = -sz;
+      const pz = sx;
+      const spread = (i - 3) * 1.6 + (Math.random() - 0.5) * 1.4;
+      return {
+        x: sx * r + px * spread,
+        z: sz * r + pz * spread,
+        width: 3.4 + Math.random() * 1.4,
+        height: 18,
+        seed: Math.random(),
+        jitter: Math.random() * 6.28,
+      };
+    });
+  }, [sunDir.x, sunDir.z]);
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock, camera }) => {
     if (!groupRef.current) return;
     const d = depthRef.current;
-    // only visible once we are submerged
-    const mask = THREE.MathUtils.smoothstep(d, 0.06, 0.18) * (1 - THREE.MathUtils.smoothstep(d, 0.35, 0.55));
+    // smooth ramp up just after we cross the surface, fade out well before the deep
+    const mask =
+      THREE.MathUtils.smoothstep(d, 0.06, 0.16) *
+      (1 - THREE.MathUtils.smoothstep(d, 0.28, 0.45));
     groupRef.current.visible = mask > 0.001;
+    if (mask <= 0.001) return;
+
     const t = clock.getElapsedTime();
-    groupRef.current.children.forEach((m) => {
-      const mat = (m as THREE.Mesh).material as THREE.ShaderMaterial;
-      mat.uniforms.uTime.value = t;
-      mat.uniforms.uOpacity.value = 0.32 * mask;
+    groupRef.current.children.forEach((m, i) => {
+      const sh = shafts[i];
+      const mesh = m as THREE.Mesh;
+      // billboard around world-Y so the plane always faces the camera
+      const dx = camera.position.x - mesh.position.x;
+      const dz = camera.position.z - mesh.position.z;
+      mesh.rotation.y = Math.atan2(dx, dz);
+      // update shader
+      const mat = mesh.material as THREE.ShaderMaterial;
+      mat.uniforms.uTime.value = t + sh.jitter;
+      mat.uniforms.uOpacity.value = 0.55 * mask;
+      mat.uniforms.uColor.value.copy(colorRef.current);
     });
   });
 
   return (
-    <group ref={groupRef} position={[0, -1, 0]}>
-      {rays.map((r, i) => (
-        <mesh key={i} position={[r.x, 0, r.z]} rotation={[0, 0, r.tilt]}>
-          <coneGeometry args={[r.radius, r.height, 18, 1, true]} />
+    <group ref={groupRef}>
+      {shafts.map((sh, i) => (
+        <mesh
+          key={i}
+          // plane vertex y is [-h/2, h/2]; we want the top at water (y=0) and
+          // the bottom at y = -h, so place mesh at y = -h/2 inside a y=0 group
+          position={[sh.x, -sh.height / 2, sh.z]}
+        >
+          <planeGeometry args={[sh.width, sh.height, 1, 1]} />
           <shaderMaterial
-            vertexShader={godRayVS}
-            fragmentShader={godRayFS}
+            vertexShader={shaftVS}
+            fragmentShader={shaftFS}
             uniforms={{
-              uOpacity: { value: 0.28 },
-              uTime: { value: 0 },
-              uSeed: { value: r.seed },
+              uTime:    { value: 0 },
+              uSeed:    { value: sh.seed },
+              uOpacity: { value: 0 },
+              uColor:   { value: new THREE.Color('#ffd09a') },
             }}
             transparent
             depthWrite={false}
@@ -540,6 +617,100 @@ function OralArm({ index, total }: { index: number; total: number }) {
   );
 }
 
+// ---------- chrysaora (GLTF hero model) ----------
+
+function ChrysaoraHero() {
+  const group = useRef<THREE.Group>(null!);
+  const innerRef = useRef<THREE.Group>(null!);
+  const coreLight = useRef<THREE.PointLight>(null!);
+  const { scene, animations } = useGLTF(CHRYSAORA_URL);
+  const { actions, names, mixer } = useAnimations(animations, group);
+
+  // Upgrade bell material to MeshPhysicalMaterial (glossy blood-red look)
+  useEffect(() => {
+    if (!scene) return;
+    scene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const mat = mesh.material as THREE.Material | THREE.Material[];
+      const mats = Array.isArray(mat) ? mat : [mat];
+      mats.forEach((m) => {
+        const name = (m?.name || '').toLowerCase();
+        if (name.includes('outside') && !(m instanceof THREE.MeshPhysicalMaterial)) {
+          const old = m as THREE.MeshStandardMaterial;
+          const phys = new THREE.MeshPhysicalMaterial({
+            map: old.map ?? null,
+            normalMap: old.normalMap ?? null,
+            roughnessMap: old.roughnessMap ?? null,
+          });
+          phys.name = old.name;
+          phys.color.set('#ffaf6b');
+          phys.transmission = 0.85;
+          phys.thickness = 0.6;
+          phys.roughness = 0.12;
+          phys.ior = 1.33;
+          phys.attenuationColor.set('#ff5848');
+          phys.attenuationDistance = 0.8;
+          phys.clearcoat = 1.0;
+          phys.clearcoatRoughness = 0.1;
+          // self-emitted blood red so the bell survives heavy fog + low exposure
+          phys.emissive.set('#9a1a14');
+          phys.emissiveIntensity = 1.6;
+          phys.transparent = true;
+          phys.side = THREE.DoubleSide;
+          phys.fog = false;  // opt the hero out of scene fog so red doesn't get blue-shifted
+          mesh.material = phys;
+        }
+      });
+    });
+  }, [scene]);
+
+  // Auto-play the single baked animation, slowed for dreamy pacing
+  useEffect(() => {
+    if (!actions || names.length === 0) return;
+    const a = actions[names[0]];
+    if (a) {
+      a.reset();
+      a.setEffectiveTimeScale(0.5);
+      a.setEffectiveWeight(1.0);
+      a.play();
+    }
+  }, [actions, names]);
+
+  useFrame((_, dt) => {
+    mixer?.update(dt);
+  });
+
+  // Ambient float + slow yaw, plus pulsing inner light synced to bell beat
+  useFrame(({ clock }) => {
+    if (!group.current) return;
+    const t = clock.getElapsedTime();
+    group.current.position.y = JELLY_Y + Math.sin(t * 0.32) * 0.35;
+    group.current.rotation.y = Math.sin(t * 0.18) * 0.15;
+    if (coreLight.current) {
+      const beat = 0.5 + 0.5 * Math.sin(t * 0.85);
+      coreLight.current.intensity = 6 + 8 * Math.pow(beat, 2);
+    }
+  });
+
+  return (
+    <group ref={group} position={[0, JELLY_Y - 1.5, 0]} scale={0.025}>
+      <group ref={innerRef}>
+        <primitive object={scene} />
+      </group>
+      {/* "the heart" — warm pulse inside the bell */}
+      <pointLight
+        ref={coreLight}
+        position={[0, 0.6, 0]}
+        color="#ffd07a"
+        intensity={6}
+        distance={4}
+        decay={1.4}
+      />
+    </group>
+  );
+}
+
 // ---------- caustic-tinted top light disk (sun) ----------
 
 function SunDisk({ depthRef }: { depthRef: MutableRefObject<number> }) {
@@ -735,10 +906,22 @@ function SunsetScene({ depthRef }: { depthRef: MutableRefObject<number> }) {
         waterColor={params.waterColor}
         distortionScale={params.distortionScale}
       />
-      <GodRays depthRef={depthRef} />
+      <LightShafts depthRef={depthRef} sunDir={sunDir} />
       <MarineSnow depthRef={depthRef} />
       <Bioluminescence depthRef={depthRef} />
-      <Jellyfish />
+      <Suspense fallback={null}>
+        <ChrysaoraHero />
+      </Suspense>
+
+      <EffectComposer multisampling={0} enableNormalPass={false}>
+        <Bloom
+          mipmapBlur
+          intensity={0.9}
+          luminanceThreshold={0.45}
+          luminanceSmoothing={0.35}
+          radius={0.85}
+        />
+      </EffectComposer>
     </>
   );
 }
