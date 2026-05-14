@@ -752,7 +752,7 @@ export function OceanScene({
 }) {
   return (
     <>
-      <Leva hidden={!tweakMode} collapsed={false} oneLineLabels />
+      {tweakMode && <Leva collapsed={false} oneLineLabels titleBar={{ title: 'Sunset Tweak' }} />}
       <Canvas
         dpr={[1, 2]}
         gl={{
