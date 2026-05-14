@@ -1,39 +1,60 @@
 # The Heart of the Jellyfish
 
-Site for the debut album by **Qi · 琦** — *The Heart of the Jellyfish* (releasing **2026.12.20**). Ten songs that, read in order, form a poem.
+Site for the debut album by **Qi · 琦** — *The Heart of the Jellyfish* (releasing **2026.12.20**).
 
-The site is a single scroll-driven 3D descent: you start above the sea, fall through the surface, drift down past the jellyfish at the center, and sink into the abyss.
+A single scroll-driven 3D descent: from a sunset above the sea, through the water surface, past the jellyfish at the center, into the abyss.
+
+→ Live: [the-heart-of-the-jellyfish.vercel.app](https://the-heart-of-the-jellyfish.vercel.app)
 
 ## Stack
 
-- **Next.js 15** (App Router) + TypeScript
+- **Next.js 15** App Router + TypeScript + Tailwind
 - **React Three Fiber** + **drei** + **three.js**
-  - `three/examples/jsm/objects/Water.js` for the real-time water surface (waves + reflection + sun specular)
-  - `<Sky>` from drei for the atmospheric scattering sky
-  - Custom GLSL for god rays, marine snow, jellyfish tentacles
-- **Tailwind CSS** for the typographic overlay
-- Deployed on **Vercel**
+  - `three/examples/jsm/objects/Water.js` — real-time water (waves + reflection + sun specular)
+  - drei `<Sky>` — Preetham atmospheric scattering for the sunset
+  - Real GLB models (currently: Chrysaora jellyfish at frame VI)
+  - Volumetric Tyndall light shafts (custom GLSL on billboarded planes)
+- **`@react-three/postprocessing`** — bloom on the jellyfish heart-pulse and sun specular
+- **leva** — in-browser tweak panel, gated by `?tweak=1`
+- Deployed on **Vercel** (auto-deploys from `main`)
 
 ## Local dev
 
 ```bash
 npm install
-npm run dev
+npm run dev          # http://localhost:3000
 ```
 
-Opens at http://localhost:3000.
+## Routes
 
-Useful URLs:
-- `/` — full scroll-driven descent
-- `/?focus=heart` — locks depth at frame VI (the heart of the jellyfish)
-- `/?focus=abyss` — locks depth at frame X (the abyss)
+| URL | What it shows |
+|---|---|
+| `/` | Full scroll-driven descent + Poem typography overlay |
+| `/?tweak=1` | Same, with Leva sliders top-right for live sunset / sky / water / lights tuning |
+| `/?focus=heart` | Locks depth at frame VI (the jellyfish heart). No poem overlay |
+| `/?focus=abyss` | Locks depth at frame X (the deep). No poem overlay |
+| `/preview-jelly` | Standalone GLB inspector for the Chrysaora — animations, material override, lighting test |
 
-## Status
+## Where this repo sits
 
-Early prototype. The jellyfish is currently procedural and will be swapped for a real GLB model. The poem layout, water surface, sky, and scroll-driven camera descent are wired up.
+This is one project inside the **Qi Land workspace** at `/Users/qliu/Qi Land/`. The workspace contains other things (DNS notes, future recording sessions, lyrics docs) that are intentionally **NOT** in this repo. See `/Users/qliu/Qi Land/CLAUDE.md` for workspace-level context. See `CLAUDE.md` in this folder for in-repo Claude session context.
+
+## Deploy
+
+```
+git push origin main → GitHub heartofjellyfish/The-Heart-of-the-Jellyfish → Vercel auto-build → live
+```
+
+Default branch is `main`. No PR workflow — push directly.
+
+## Adding 3D assets
+
+Drop the GLB at `public/models/<name>/model.glb`. For anything > 5 MB, gate loading on the depth ref so first paint stays fast — see `WreckGate` pattern in `components/OceanScene.tsx`. Add the credit line to `CREDITS.md` if the source requires it.
 
 ## Credits
 
-- Music, lyrics, art direction: Qi · 琦
-- Three.js Water shader: Jérôme Etienne / three.js examples
-- Sky atmospheric scattering: based on Preetham model via drei
+- Music, lyrics, art direction — **Qi · 琦**
+- Three.js Water shader — three.js examples (MIT)
+- Sky atmospheric scattering — Preetham model via drei
+- Chrysaora jellyfish model — Pacific Sea Nettle by NestaEric on Sketchfab
+- Other asset credits in [CREDITS.md](CREDITS.md)
