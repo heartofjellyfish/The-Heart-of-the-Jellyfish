@@ -4,7 +4,6 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
 import { useMemo, useRef, type MutableRefObject } from 'react';
 import * as THREE from 'three';
-// @ts-expect-error — three examples ship without types
 import { Water } from 'three/examples/jsm/objects/Water.js';
 
 // ---------- depth-aware fog + background ----------
