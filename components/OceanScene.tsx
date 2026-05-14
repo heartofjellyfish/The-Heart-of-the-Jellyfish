@@ -23,31 +23,25 @@ function pickDepthColor(d: number, out: THREE.Color) {
   return out;
 }
 
-function DepthEnvironment({
-  depthRef, surfaceFogColor,
-}: {
-  depthRef: MutableRefObject<number>;
-  surfaceFogColor: string;
-}) {
+function DepthEnvironment({ depthRef }: { depthRef: MutableRefObject<number> }) {
   const { scene } = useThree();
   const underwaterCol = useMemo(() => new THREE.Color(), []);
-  const surfaceCol = useMemo(() => new THREE.Color(surfaceFogColor), []);
-  const finalCol = useMemo(() => new THREE.Color(), []);
-
-  useEffect(() => { surfaceCol.set(surfaceFogColor); }, [surfaceCol, surfaceFogColor]);
 
   useFrame(() => {
     const d = depthRef.current;
-    pickDepthColor(d, underwaterCol);                          // cool-water palette
+    pickDepthColor(d, underwaterCol);                          // cool depth palette
     const underwater = THREE.MathUtils.smoothstep(d, 0.05, 0.18);
-    finalCol.copy(surfaceCol).lerp(underwaterCol, underwater); // warm at surface → cool at depth
 
-    if (!scene.fog) scene.fog = new THREE.FogExp2(finalCol.getHex(), 0.02);
-    (scene.fog as THREE.FogExp2).color.copy(finalCol);
-    (scene.fog as THREE.FogExp2).density = THREE.MathUtils.lerp(0.0028, 0.018 + d * 0.045, underwater);
+    if (!scene.fog) scene.fog = new THREE.FogExp2(0x000000, 0);
+    const fog = scene.fog as THREE.FogExp2;
+    fog.color.copy(underwaterCol);
+    // density: 0 above water (so water reflects sky cleanly, no horizon band),
+    //          ramps up once we cross the surface
+    fog.density = underwater * (0.018 + d * 0.045);
 
     if (!(scene.background instanceof THREE.Color)) scene.background = new THREE.Color();
-    (scene.background as THREE.Color).copy(finalCol);
+    // background only matters underwater; above water the Sky dome covers everything
+    (scene.background as THREE.Color).copy(underwaterCol);
   });
   return null;
 }
@@ -681,29 +675,24 @@ function SunsetScene({ depthRef }: { depthRef: MutableRefObject<number> }) {
       sunElevation: { value: 2.5, min: -2, max: 30, step: 0.1 },
     }),
     'Sky atmosphere': folder({
-      turbidity:      { value: 13,    min: 0,   max: 20,    step: 0.1 },
-      rayleigh:       { value: 3.4,   min: 0,   max: 6,     step: 0.05 },
-      mieG:           { value: 0.95,  min: 0.5, max: 0.999, step: 0.001 },
-      mieCoefficient: { value: 0.008, min: 0,   max: 0.02,  step: 0.0005 },
+      turbidity:      { value: 10,    min: 0,   max: 20,    step: 0.1 },
+      rayleigh:       { value: 2.0,   min: 0,   max: 6,     step: 0.05 },
+      mieG:           { value: 0.8,   min: 0.5, max: 0.999, step: 0.001 },
+      mieCoefficient: { value: 0.005, min: 0,   max: 0.02,  step: 0.0005 },
     }),
     'Water': folder({
-      sunColor:        { value: '#ff8a45' },
-      waterColor:      { value: '#0c1a2e' },
-      distortionScale: { value: 3.8, min: 0, max: 8, step: 0.1 },
+      sunColor:        { value: '#ffffff' },     // original keeps this white; sky paints the warmth
+      waterColor:      { value: '#001e0f' },     // near-black teal — lets the sky reflection rule
+      distortionScale: { value: 3.7, min: 0, max: 8, step: 0.1 },
     }),
     'Lights': folder({
-      ambientColor:     { value: '#9a4a30' },
-      ambientIntensity: { value: 0.32, min: 0, max: 1, step: 0.01 },
-      dirColor:         { value: '#ff7a45' },
-      dirIntensity:     { value: 1.8, min: 0, max: 4, step: 0.05 },
-    }),
-    'Horizon haze': folder({
-      hazeColor:    { value: '#3a1a10' },
-      hazeStrength: { value: 0.55, min: 0, max: 1, step: 0.01 },
-      hazeHeight:   { value: 1.4, min: 0, max: 6, step: 0.05 },
+      ambientColor:     { value: '#6a7a90' },
+      ambientIntensity: { value: 0.25, min: 0, max: 1, step: 0.01 },
+      dirColor:         { value: '#ffe4c0' },
+      dirIntensity:     { value: 1.1, min: 0, max: 4, step: 0.05 },
     }),
     'Tone': folder({
-      exposure: { value: 0.62, min: 0.1, max: 1.5, step: 0.02 },
+      exposure: { value: 0.38, min: 0.05, max: 1.2, step: 0.01 },
     }),
   });
 
@@ -719,8 +708,7 @@ function SunsetScene({ depthRef }: { depthRef: MutableRefObject<number> }) {
   return (
     <>
       <color attach="background" args={['#bcd9e6']} />
-      <fogExp2 attach="fog" args={['#0c3a55', 0.002]} />
-      <DepthEnvironment depthRef={depthRef} surfaceFogColor={params.hazeColor} />
+      <DepthEnvironment depthRef={depthRef} />
       <CameraRig depthRef={depthRef} />
 
       <SkyDome
@@ -747,99 +735,11 @@ function SunsetScene({ depthRef }: { depthRef: MutableRefObject<number> }) {
         waterColor={params.waterColor}
         distortionScale={params.distortionScale}
       />
-      <HorizonHaze
-        depthRef={depthRef}
-        hazeColor={params.hazeColor}
-        hazeStrength={params.hazeStrength}
-        hazeHeight={params.hazeHeight}
-      />
       <GodRays depthRef={depthRef} />
       <MarineSnow depthRef={depthRef} />
       <Bioluminescence depthRef={depthRef} />
       <Jellyfish />
     </>
-  );
-}
-
-// ---------- horizon haze (smooths the sky/water seam) ----------
-
-const hazeVS = /* glsl */`
-  precision mediump float;
-  varying float vYNorm;  // 0 at bottom of band, 1 at top
-  uniform float uHeight;
-  void main() {
-    // unit cylinder has y in [-0.5, 0.5]; map to a band [0, uHeight] sitting on the water
-    vec3 p = position;
-    float yBand = (p.y + 0.5) * uHeight;
-    p.y = yBand;
-    vYNorm = clamp(yBand / max(uHeight, 0.0001), 0.0, 1.0);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
-  }
-`;
-const hazeFS = /* glsl */`
-  precision mediump float;
-  varying float vYNorm;
-  uniform vec3  uColor;
-  uniform float uStrength;
-  void main() {
-    // solid at bottom, fade to transparent at top — quadratic ease
-    float a = 1.0 - smoothstep(0.0, 1.0, vYNorm);
-    a = pow(a, 1.6) * uStrength;
-    gl_FragColor = vec4(uColor, a);
-  }
-`;
-
-function HorizonHaze({
-  depthRef, hazeColor, hazeStrength, hazeHeight,
-}: {
-  depthRef: MutableRefObject<number>;
-  hazeColor: string;
-  hazeStrength: number;
-  hazeHeight: number;
-}) {
-  const meshRef = useRef<THREE.Mesh>(null!);
-  const matRef = useRef<THREE.ShaderMaterial>(null!);
-
-  const uniforms = useMemo(
-    () => ({
-      uColor:    { value: new THREE.Color(hazeColor) },
-      uStrength: { value: hazeStrength },
-      uHeight:   { value: hazeHeight },
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  );
-
-  useEffect(() => {
-    if (!matRef.current) return;
-    matRef.current.uniforms.uColor.value.set(hazeColor);
-    matRef.current.uniforms.uStrength.value = hazeStrength;
-    matRef.current.uniforms.uHeight.value = hazeHeight;
-  }, [hazeColor, hazeStrength, hazeHeight]);
-
-  useFrame(() => {
-    if (!meshRef.current) return;
-    // hide once we are submerged
-    meshRef.current.visible = depthRef.current < 0.18;
-  });
-
-  // open cylinder: radius matches scene horizon distance; tall enough to read above water
-  const radius = 900;
-  const segments = 64;
-
-  return (
-    <mesh ref={meshRef} position={[0, WATER_LEVEL + 0.05, 0]} renderOrder={2}>
-      <cylinderGeometry args={[radius, radius, 1, segments, 1, true]} />
-      <shaderMaterial
-        ref={matRef}
-        uniforms={uniforms}
-        vertexShader={hazeVS}
-        fragmentShader={hazeFS}
-        transparent
-        depthWrite={false}
-        side={THREE.BackSide}
-      />
-    </mesh>
   );
 }
 
@@ -859,7 +759,7 @@ export function OceanScene({
           alpha: false,
           powerPreference: 'high-performance',
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 0.62,
+          toneMappingExposure: 0.38,
         }}
         camera={{ position: [0, SURFACE_Y, 9], fov: 55, near: 0.1, far: 5000 }}
       >
