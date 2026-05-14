@@ -2,7 +2,8 @@
 
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
-import { useMemo, useRef, type MutableRefObject } from 'react';
+import { Leva, useControls, folder } from 'leva';
+import { useEffect, useMemo, useRef, type MutableRefObject } from 'react';
 import * as THREE from 'three';
 import { Water } from 'three/examples/jsm/objects/Water.js';
 
@@ -48,8 +49,17 @@ const SURFACE_Y = 14;          // camera position above water at scroll 0
 const WATER_LEVEL = 0;
 const ABYSS_Y = -55;
 const JELLY_Y = -22;
-// sun low on the horizon, slightly off-axis — the classic golden hour
-const SUN_DIRECTION = new THREE.Vector3(0.35, 0.06, -0.93).normalize();
+
+// derive a sun direction (azimuth+elevation in degrees) into a normalized vector
+function sunDirFrom(azimuthDeg: number, elevationDeg: number): THREE.Vector3 {
+  const az = (azimuthDeg * Math.PI) / 180;
+  const el = (elevationDeg * Math.PI) / 180;
+  return new THREE.Vector3(
+    Math.cos(el) * Math.sin(az),
+    Math.sin(el),
+    -Math.cos(el) * Math.cos(az)   // -z so the sun is in front of the default camera
+  ).normalize();
+}
 
 function CameraRig({ depthRef }: { depthRef: MutableRefObject<number> }) {
   const target = useRef(new THREE.Vector3(0, JELLY_Y, 0));
@@ -87,6 +97,7 @@ function CameraRig({ depthRef }: { depthRef: MutableRefObject<number> }) {
 
 // God rays — custom shader on cone that fades at edges and along length
 const godRayVS = /* glsl */`
+  precision mediump float;
   varying vec3 vPos;
   varying vec2 vUv;
   void main() {
@@ -271,6 +282,7 @@ function Bioluminescence({ depthRef, count = 220 }: { depthRef: MutableRefObject
 // ---------- jellyfish ----------
 
 const tentacleVS = /* glsl */`
+  precision mediump float;
   uniform float uTime;
   uniform float uSeed;
   varying float vAlong;
@@ -559,9 +571,19 @@ function SunDisk({ depthRef }: { depthRef: MutableRefObject<number> }) {
 
 // ---------- real water surface (three.js Water shader) ----------
 
-function WaterSurface({ depthRef }: { depthRef: MutableRefObject<number> }) {
-  const waterRef = useRef<THREE.Mesh | null>(null);
-
+function WaterSurface({
+  depthRef,
+  sunDir,
+  sunColor,
+  waterColor,
+  distortionScale,
+}: {
+  depthRef: MutableRefObject<number>;
+  sunDir: THREE.Vector3;
+  sunColor: string;
+  waterColor: string;
+  distortionScale: number;
+}) {
   const water = useMemo(() => {
     const geom = new THREE.PlaneGeometry(10000, 10000);
     const loader = new THREE.TextureLoader();
@@ -575,34 +597,52 @@ function WaterSurface({ depthRef }: { depthRef: MutableRefObject<number> }) {
       textureWidth: 512,
       textureHeight: 512,
       waterNormals: normals,
-      sunDirection: SUN_DIRECTION.clone(),
-      sunColor: 0xffc98c,           // warm golden sun
-      waterColor: 0x1a2f4a,         // cool deep blue base — picks up warm reflection
-      distortionScale: 3.6,
+      sunDirection: sunDir.clone(),
+      sunColor: new THREE.Color(sunColor).getHex(),
+      waterColor: new THREE.Color(waterColor).getHex(),
+      distortionScale,
       fog: true,
     });
     w.rotation.x = -Math.PI / 2;
     w.position.y = WATER_LEVEL;
-    // make it visible from underneath too
     (w.material as THREE.ShaderMaterial).side = THREE.DoubleSide;
     return w;
+    // intentionally only create once; live updates handled via useEffect below
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // live-update water uniforms when controls change
+  useEffect(() => {
+    const u = (water.material as THREE.ShaderMaterial).uniforms;
+    u.sunDirection.value.copy(sunDir);
+    u.sunColor.value.set(sunColor);
+    u.waterColor.value.set(waterColor);
+    u.distortionScale.value = distortionScale;
+  }, [water, sunDir, sunColor, waterColor, distortionScale]);
 
   useFrame((_, dt) => {
     const mat = water.material as THREE.ShaderMaterial;
     if (mat?.uniforms?.time) mat.uniforms.time.value += dt * 0.6;
   });
 
-  return <primitive ref={waterRef} object={water} />;
+  return <primitive object={water} />;
 }
 
 // ---------- sky (drei) ----------
 
-function SkyDome({ depthRef }: { depthRef: MutableRefObject<number> }) {
+function SkyDome({
+  depthRef, sunDir, turbidity, rayleigh, mieCoefficient, mieG,
+}: {
+  depthRef: MutableRefObject<number>;
+  sunDir: THREE.Vector3;
+  turbidity: number;
+  rayleigh: number;
+  mieCoefficient: number;
+  mieG: number;
+}) {
   const ref = useRef<THREE.Group>(null!);
   useFrame(() => {
     if (ref.current) {
-      // hide sky once we are submerged enough — saves the abyss from a glowing horizon
       const d = depthRef.current;
       ref.current.visible = d < 0.18;
     }
@@ -610,52 +650,122 @@ function SkyDome({ depthRef }: { depthRef: MutableRefObject<number> }) {
   return (
     <group ref={ref}>
       <Sky
-        sunPosition={[SUN_DIRECTION.x, SUN_DIRECTION.y, SUN_DIRECTION.z]}
-        turbidity={10}
-        rayleigh={2.8}
-        mieCoefficient={0.0055}
-        mieDirectionalG={0.92}
+        sunPosition={[sunDir.x, sunDir.y, sunDir.z]}
+        turbidity={turbidity}
+        rayleigh={rayleigh}
+        mieCoefficient={mieCoefficient}
+        mieDirectionalG={mieG}
         distance={4500}
       />
     </group>
   );
 }
 
-// ---------- entry ----------
+// ---------- inner scene (consumes leva controls) ----------
 
-export function OceanScene({ depthRef }: { depthRef: MutableRefObject<number> }) {
+function SunsetScene({ depthRef }: { depthRef: MutableRefObject<number> }) {
+  const { gl } = useThree();
+
+  const params = useControls('Sunset', {
+    'Sun position': folder({
+      sunAzimuth:   { value: 195, min: 0, max: 360, step: 1 },
+      sunElevation: { value: 2.5, min: -2, max: 30, step: 0.1 },
+    }),
+    'Sky atmosphere': folder({
+      turbidity:      { value: 13,    min: 0,   max: 20,    step: 0.1 },
+      rayleigh:       { value: 3.4,   min: 0,   max: 6,     step: 0.05 },
+      mieG:           { value: 0.95,  min: 0.5, max: 0.999, step: 0.001 },
+      mieCoefficient: { value: 0.008, min: 0,   max: 0.02,  step: 0.0005 },
+    }),
+    'Water': folder({
+      sunColor:        { value: '#ff8a45' },
+      waterColor:      { value: '#0c1a2e' },
+      distortionScale: { value: 3.8, min: 0, max: 8, step: 0.1 },
+    }),
+    'Lights': folder({
+      ambientColor:     { value: '#9a4a30' },
+      ambientIntensity: { value: 0.32, min: 0, max: 1, step: 0.01 },
+      dirColor:         { value: '#ff7a45' },
+      dirIntensity:     { value: 1.8, min: 0, max: 4, step: 0.05 },
+    }),
+    'Tone': folder({
+      exposure: { value: 0.62, min: 0.1, max: 1.5, step: 0.02 },
+    }),
+  });
+
+  const sunDir = useMemo(
+    () => sunDirFrom(params.sunAzimuth, params.sunElevation),
+    [params.sunAzimuth, params.sunElevation]
+  );
+
+  useEffect(() => {
+    gl.toneMappingExposure = params.exposure;
+  }, [gl, params.exposure]);
+
   return (
-    <Canvas
-      dpr={[1, 2]}
-      gl={{
-        antialias: true,
-        alpha: false,
-        powerPreference: 'high-performance',
-        toneMapping: THREE.ACESFilmicToneMapping,
-        toneMappingExposure: 0.72,
-      }}
-      camera={{ position: [0, SURFACE_Y, 9], fov: 55, near: 0.1, far: 5000 }}
-    >
+    <>
       <color attach="background" args={['#bcd9e6']} />
       <fogExp2 attach="fog" args={['#0c3a55', 0.002]} />
       <DepthEnvironment depthRef={depthRef} />
       <CameraRig depthRef={depthRef} />
 
-      <SkyDome depthRef={depthRef} />
+      <SkyDome
+        depthRef={depthRef}
+        sunDir={sunDir}
+        turbidity={params.turbidity}
+        rayleigh={params.rayleigh}
+        mieCoefficient={params.mieCoefficient}
+        mieG={params.mieG}
+      />
 
-      <ambientLight intensity={0.32} color="#c08a6e" />
+      <ambientLight intensity={params.ambientIntensity} color={params.ambientColor} />
       <directionalLight
-        position={[SUN_DIRECTION.x * 50, SUN_DIRECTION.y * 50 + 6, SUN_DIRECTION.z * 50]}
-        intensity={1.7}
-        color="#ffb877"
+        position={[sunDir.x * 50, sunDir.y * 50 + 6, sunDir.z * 50]}
+        intensity={params.dirIntensity}
+        color={params.dirColor}
       />
       <pointLight position={[0, JELLY_Y + 0.2, 0]} intensity={14} color="#9aeaff" distance={20} decay={1.6} />
 
-      <WaterSurface depthRef={depthRef} />
+      <WaterSurface
+        depthRef={depthRef}
+        sunDir={sunDir}
+        sunColor={params.sunColor}
+        waterColor={params.waterColor}
+        distortionScale={params.distortionScale}
+      />
       <GodRays depthRef={depthRef} />
       <MarineSnow depthRef={depthRef} />
       <Bioluminescence depthRef={depthRef} />
       <Jellyfish />
-    </Canvas>
+    </>
+  );
+}
+
+// ---------- entry ----------
+
+export function OceanScene({
+  depthRef,
+  tweakMode = false,
+}: {
+  depthRef: MutableRefObject<number>;
+  tweakMode?: boolean;
+}) {
+  return (
+    <>
+      <Leva hidden={!tweakMode} collapsed={false} oneLineLabels />
+      <Canvas
+        dpr={[1, 2]}
+        gl={{
+          antialias: true,
+          alpha: false,
+          powerPreference: 'high-performance',
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 0.62,
+        }}
+        camera={{ position: [0, SURFACE_Y, 9], fov: 55, near: 0.1, far: 5000 }}
+      >
+        <SunsetScene depthRef={depthRef} />
+      </Canvas>
+    </>
   );
 }

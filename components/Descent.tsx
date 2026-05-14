@@ -31,11 +31,13 @@ function FocusOverlay({ focus }: { focus: string }) {
 export function Descent() {
   const depthRef = useRef(0);
   const [focus, setFocus] = useState<string | null>(null);
+  const [tweakMode, setTweakMode] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const f = params.get('focus');
     setFocus(f);
+    setTweakMode(params.get('tweak') === '1');
     if (f === 'heart') {
       depthRef.current = 0.55;
       return;
@@ -60,7 +62,7 @@ export function Descent() {
   return (
     <>
       <div className="fixed inset-0 z-0 pointer-events-none">
-        <OceanScene depthRef={depthRef} />
+        <OceanScene depthRef={depthRef} tweakMode={tweakMode} />
       </div>
       {focus ? (
         <FocusOverlay focus={focus} />
