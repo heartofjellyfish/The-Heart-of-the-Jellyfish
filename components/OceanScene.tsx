@@ -671,25 +671,25 @@ function SunsetScene({ depthRef }: { depthRef: MutableRefObject<number> }) {
 
   const params = useControls('Sunset', {
     'Sun position': folder({
-      sunAzimuth:   { value: 195, min: 0, max: 360, step: 1 },
-      sunElevation: { value: 2.5, min: -2, max: 30, step: 0.1 },
+      sunAzimuth:   { value: 21,  min: 0, max: 360, step: 1 },
+      sunElevation: { value: 1.1, min: -2, max: 30, step: 0.1 },
     }),
     'Sky atmosphere': folder({
-      turbidity:      { value: 10,    min: 0,   max: 20,    step: 0.1 },
-      rayleigh:       { value: 2.0,   min: 0,   max: 6,     step: 0.05 },
-      mieG:           { value: 0.8,   min: 0.5, max: 0.999, step: 0.001 },
-      mieCoefficient: { value: 0.005, min: 0,   max: 0.02,  step: 0.0005 },
+      turbidity:      { value: 20.0,  min: 0,   max: 20,    step: 0.1 },
+      rayleigh:       { value: 2.35,  min: 0,   max: 6,     step: 0.05 },
+      mieG:           { value: 0.84,  min: 0.5, max: 0.999, step: 0.001 },
+      mieCoefficient: { value: 0.0,   min: 0,   max: 0.02,  step: 0.0005 },
     }),
     'Water': folder({
-      sunColor:        { value: '#ffffff' },     // original keeps this white; sky paints the warmth
-      waterColor:      { value: '#001e0f' },     // near-black teal — lets the sky reflection rule
+      sunColor:        { value: '#ff6800' },
+      waterColor:      { value: '#001b52' },
       distortionScale: { value: 3.7, min: 0, max: 8, step: 0.1 },
     }),
     'Lights': folder({
       ambientColor:     { value: '#6a7a90' },
       ambientIntensity: { value: 0.25, min: 0, max: 1, step: 0.01 },
       dirColor:         { value: '#ffe4c0' },
-      dirIntensity:     { value: 1.1, min: 0, max: 4, step: 0.05 },
+      dirIntensity:     { value: 1.10, min: 0, max: 4, step: 0.05 },
     }),
     'Tone': folder({
       exposure: { value: 0.38, min: 0.05, max: 1.2, step: 0.01 },
