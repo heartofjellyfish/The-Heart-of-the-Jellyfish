@@ -33,6 +33,49 @@ Constants live at the top of OceanScene: `SURFACE_Y`, `JELLY_Y`, `ABYSS_Y`, `WRE
 - `/?focus=heart` — locks at d=0.55
 - `/?focus=abyss` — locks at d=0.92
 - `?tweak=1` — shows leva panel
+- `/medusa` — the shader-only alternate treatment (see below); shares no code with the above
+
+## The `/medusa` route — the shader-only alternate
+
+`/` and `/medusa` are two treatments of the same 11-frame arc, kept side by side so
+they can be compared before one wins. They share nothing but the storyboard.
+
+| | `/` (Descent) | `/medusa` |
+|---|---|---|
+| engine | R3F + three.js + real GLBs | one full-screen WebGL triangle, no three.js |
+| the jellyfish | Chrysaora model, lit and animated | drawn analytically in the fragment shader |
+| scroll input | `depthRef` (a ref, read in `useFrame`) | `uD` uniform, sampled each rAF from `scrollY` |
+| first load JS | ~425 kB | ~111 kB |
+
+Why it's built the way it is:
+
+- **Ported from a Claude Design file** (`Medusa.dc.html`, project `1d97dab2-…`). That design
+  is the source of truth for the look — if the palette or the jelly silhouette needs to
+  change, change it there too, or the two drift apart. The GLSL in
+  [components/medusaShader.ts](components/medusaShader.ts) is copied verbatim for that reason;
+  resist "tidying" it.
+- **Inline styles, not Tailwind.** The design is inline-styled and the port keeps that
+  1:1 so a diff against the design stays readable. The one exception is
+  [`MEDUSA_CSS`](components/Medusa.tsx) at the bottom of the component: anything with a
+  `:hover` state has to keep its resting value in a class, because inline styles outrank
+  stylesheet rules and the hover would never apply.
+- **The route owns its own fonts.** Medusa names families literally (`'Cormorant Garamond'`,
+  `'Jost'`); the root layout only exposes Cormorant through next/font's hashed
+  `--font-cormorant`, so [app/medusa/page.tsx](app/medusa/page.tsx) renders its own Google
+  Fonts `<link>`.
+- **`scroll-behavior: smooth`** is set on `<html>` by an effect and torn down on unmount —
+  it's needed for the poem's anchor links, but it must not leak onto `/`, whose descent
+  is scroll-driven.
+
+Two deliberate departures from the design file, both fixing runtime bugs in it:
+
+- Track 03's `rotate(-2deg)` survives the reveal. The design's reveal wrote
+  `transform: translateY(...)` straight onto the element and silently killed the tilt.
+- The `▷ DEMO` controls are real `<button>`s, so they're keyboard-reachable.
+
+**Not done yet:** `public/audio/NN-*.mp3` don't exist, so every demo click opens the player
+bar labelled `demo 待上传` — that's the intended placeholder, not a failure. The email
+signup is local-only (`setSent(true)`); it posts nowhere.
 
 ## Adding a 3D prop (recipe for new sessions)
 
