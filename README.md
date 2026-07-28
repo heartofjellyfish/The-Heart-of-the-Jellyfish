@@ -29,11 +29,23 @@ npm run dev          # http://localhost:3000
 
 | URL | What it shows |
 |---|---|
-| `/` | Full scroll-driven descent + Poem typography overlay |
-| `/?tweak=1` | Same, with Leva sliders top-right for live sunset / sky / water / lights tuning |
-| `/?focus=heart` | Locks depth at frame VI (the jellyfish heart). No poem overlay |
-| `/?focus=abyss` | Locks depth at frame X (the deep). No poem overlay |
+| `/` | **The public site.** Shader-driven descent + the ten-track poem + demo player. No three.js — see the Medusa section in `CLAUDE.md` |
+| `/descent` | The R3F 3D descent (real water, real GLB jellyfish, shipwreck). Was `/` until the 2026-07-27 launch |
+| `/descent?tweak=1` | Same, with Leva sliders top-right for live sunset / sky / water / lights tuning |
+| `/descent?focus=heart` | Locks depth at frame VI (the jellyfish heart). No poem overlay |
+| `/descent?focus=abyss` | Locks depth at frame X (the deep). No poem overlay |
 | `/preview-jelly` | Standalone GLB inspector for the Chrysaora — animations, material override, lighting test |
+
+`/` is deliberately the light one: 111 kB of JS against `/descent`'s 425 kB, and it needs no
+model downloads, so it holds up on a phone. The 3D work isn't abandoned — it just isn't the
+front door yet.
+
+### Demo audio
+
+`public/audio/NN-<slug>.mp3` — seven of the ten are up (02, 03, 05, 06, 07, 09, 10), rescued
+from the old Squarespace site before that plan lapsed. Tracks 01, 04 and 08 have no demo yet;
+clicking them opens the player bar labelled `demo 待上传`, which is the intended state, not a
+bug. Drop a correctly-named file in and it goes live with no code change.
 
 ## Where this repo sits
 

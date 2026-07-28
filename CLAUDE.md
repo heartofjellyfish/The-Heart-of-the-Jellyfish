@@ -1,7 +1,9 @@
 # qi.land web — context for Claude
 
 The site for Qi · 琦's debut album *The Heart of the Jellyfish* (release: 2026-12-20).
-A single scroll-driven 3D descent: above water → past the jellyfish → into the abyss.
+One arc, two renderings of it: `/` is a shader-only descent (what the public sees) and
+`/descent` is the R3F one with real water and real models. Both go above water → past the
+jellyfish → into the abyss.
 
 ## Stack
 
@@ -29,18 +31,20 @@ Constants live at the top of OceanScene: `SURFACE_Y`, `JELLY_Y`, `ABYSS_Y`, `WRE
 
 ### Focus shortcuts
 
-- `/` — full descent
-- `/?focus=heart` — locks at d=0.55
-- `/?focus=abyss` — locks at d=0.92
+- `/descent` — full 3D descent (this was `/` until 2026-07-27)
+- `/descent?focus=heart` — locks at d=0.55
+- `/descent?focus=abyss` — locks at d=0.92
 - `?tweak=1` — shows leva panel
-- `/medusa` — the shader-only alternate treatment (see below); shares no code with the above
+- `/` — the shader-only treatment, and what the public sees (see below); shares no code with the above
 
-## The `/medusa` route — the shader-only alternate
+## The front page (`/`) — the shader-only treatment
 
-`/` and `/medusa` are two treatments of the same 11-frame arc, kept side by side so
-they can be compared before one wins. They share nothing but the storyboard.
+`/` and `/descent` are two treatments of the same 11-frame arc. As of 2026-07-27 the
+shader one took the front door because it was the one that was finished end to end; the R3F
+descent moved to `/descent` and stays in the repo. They share nothing but the storyboard.
+`/medusa` 301s to `/`.
 
-| | `/` (Descent) | `/medusa` |
+| | `/descent` (R3F) | `/` (Medusa) |
 |---|---|---|
 | engine | R3F + three.js + real GLBs | one full-screen WebGL triangle, no three.js |
 | the jellyfish | Chrysaora model, lit and animated | drawn analytically in the fragment shader |
@@ -61,11 +65,10 @@ Why it's built the way it is:
   stylesheet rules and the hover would never apply.
 - **The route owns its own fonts.** Medusa names families literally (`'Cormorant Garamond'`,
   `'Jost'`); the root layout only exposes Cormorant through next/font's hashed
-  `--font-cormorant`, so [app/medusa/page.tsx](app/medusa/page.tsx) renders its own Google
-  Fonts `<link>`.
+  `--font-cormorant`, so [app/page.tsx](app/page.tsx) renders its own Google Fonts `<link>`.
 - **`scroll-behavior: smooth`** is set on `<html>` by an effect and torn down on unmount —
-  it's needed for the poem's anchor links, but it must not leak onto `/`, whose descent
-  is scroll-driven.
+  it's needed for the poem's anchor links, but it must not leak onto `/descent`, whose
+  camera is scroll-driven.
 
 Two deliberate departures from the design file, both fixing runtime bugs in it:
 
@@ -73,9 +76,18 @@ Two deliberate departures from the design file, both fixing runtime bugs in it:
   `transform: translateY(...)` straight onto the element and silently killed the tilt.
 - The `▷ DEMO` controls are real `<button>`s, so they're keyboard-reachable.
 
-**Not done yet:** `public/audio/NN-*.mp3` don't exist, so every demo click opens the player
-bar labelled `demo 待上传` — that's the intended placeholder, not a failure. The email
-signup is local-only (`setSent(true)`); it posts nowhere.
+**Demo audio:** seven of ten are in `public/audio/` (02, 03, 05, 06, 07, 09, 10), rescued off
+the Squarespace CDN on 2026-07-27 before that plan lapsed. 01, 04 and 08 are still absent and
+render as `demo 待上传` — intended placeholder, not a failure. Adding a correctly-named file
+is the whole deployment step.
+
+Three of those seven were matched to tracks by position rather than by filename — the
+Squarespace page listed titles in the body and URLs in a head JSON blob, and four filenames
+carried their own track numbers at exactly the predicted index, which fixed the ordering.
+The inferred three are 02 (`seagull bar with vocal`), 03 (`Afternoon Swim`) and 06
+(`OurOwnStar_Oct30`). If one sounds wrong, that's why.
+
+**Still not done:** the email signup is local-only (`setSent(true)`); it posts nowhere.
 
 ## Adding a 3D prop (recipe for new sessions)
 
@@ -103,7 +115,7 @@ This is the path the user will repeatedly walk. **Follow it.**
 
 6. **Credit the source.** If the asset has any attribution requirement, add a line to [CREDITS.md](CREDITS.md). Don't ship without it for CC-BY assets — it's legally required.
 
-7. **Verify in the browser, don't just claim it works.** A preview server typically runs during sessions. Use it. For something at depth d=X, navigate to `/?focus=heart` or scroll programmatically, screenshot, and confirm the prop actually renders (camera framing, fog, lighting all read right).
+7. **Verify in the browser, don't just claim it works.** A preview server typically runs during sessions. Use it. For something at depth d=X, navigate to `/descent?focus=heart` or scroll programmatically, screenshot, and confirm the prop actually renders (camera framing, fog, lighting all read right).
 
 ## Asset budget
 
