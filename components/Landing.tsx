@@ -303,16 +303,14 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           </>
         ) : (
           <>
-            <button type="button" className="l-strip-label" onClick={() => setPanel('poem')}>
-              TRACKLIST
-            </button>
             <div className="l-strip-items">
-              {POEM.slice(0, 4).map((line, i) => (
+              {POEM.map((line, i) => (
                 <button
                   key={i}
                   type="button"
                   className="l-strip-item"
                   onClick={() => playTrack(i + 1)}
+                  title={String(i + 1).padStart(2, '0') + ' — ' + TITLES[i]}
                 >
                   <span className="l-strip-num">{String(i + 1).padStart(2, '0')}</span>
                   <span className="l-strip-title">{line.replace('\n', ' ')}</span>
@@ -320,7 +318,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               ))}
             </div>
             <button type="button" className="l-strip-all" onClick={() => setPanel('poem')}>
-              ALL TEN
+              诗 · POEM
             </button>
           </>
         )}
@@ -449,18 +447,12 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   background:linear-gradient(180deg,rgba(24,74,112,.28),rgba(24,74,112,.05) 30%,transparent 55%)}
 
 /* Narrower than 13:10 a cover crop pushes either the jellyfish or the figure out
-   of frame, so show the painting whole and let the blur surround it, sitting on
-   top of the bar. The top edge meets the blur as a change in sharpness rather
-   than a colour seam, because the blur behind it is the same sky. */
+   of frame, so show the painting whole and let the blur surround it. The top edge
+   meets the blur as a change in sharpness rather than a colour seam, because the
+   blur behind it is the same sky. The bar is a scrim now, so the painting can run
+   under it to the bottom of the screen instead of stopping short. */
 @media (max-aspect-ratio: 13/10){
-  .l-bg{
-    object-fit:contain;object-position:center bottom;
-    /* Shrink the box so the contained painting lands on top of the bar instead
-       of behind it. It has to be an explicit height: on an absolutely positioned
-       replaced element, height:auto resolves from the intrinsic ratio and drops
-       the bottom offset entirely, which parks the image at the top of the frame. */
-    height:calc(100% - clamp(60px,8.6vh,84px));
-  }
+  .l-bg{object-fit:contain;object-position:center bottom}
 }
 
 /* ---- nav ---- */
@@ -500,35 +492,49 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   letter-spacing:.28em;opacity:.82;margin-top:clamp(18px,2.6vh,30px)}
 
 /* ---- the bar: tracklist, or the player ---- */
+/* A scrim, not a block. A solid bar cut ~70px off the bottom of the painting —
+   which on a 16:9 canvas is the sand and the near water. The gradient keeps the
+   type legible while the art runs all the way to the edge of the screen. */
 .l-bar{position:absolute;left:0;right:0;bottom:0;z-index:20;
-  height:clamp(60px,8.6vh,84px);display:flex;align-items:center;
-  gap:clamp(18px,2.6vw,44px);padding:0 clamp(24px,3vw,52px);
-  background:#f3efe7;color:#2c2a26;overflow-x:auto;scrollbar-width:none}
+  height:clamp(76px,11vh,104px);display:flex;align-items:center;
+  gap:clamp(12px,1.2vw,22px);padding:0 clamp(18px,1.8vw,32px);
+  background:linear-gradient(0deg,rgba(9,36,58,.86),rgba(9,36,58,.52) 62%,transparent);
+  color:#f2f6f8;overflow-x:auto;scrollbar-width:none;
+  text-shadow:0 1px 8px rgba(6,26,44,.55)}
 .l-bar::-webkit-scrollbar{display:none}
-.l-strip-label,.l-strip-all{font-family:'Jost',sans-serif;font-weight:400;font-size:11px;
-  letter-spacing:.34em;flex-shrink:0;background:none;border:none;padding:0;color:inherit;
-  cursor:pointer;opacity:1;transition:opacity .35s;white-space:nowrap}
-.l-strip-all{font-weight:300;opacity:.55}
-.l-strip-label:hover,.l-strip-all:hover{opacity:.7}
+.l-strip-all{font-family:'Jost',sans-serif;font-weight:300;font-size:10px;
+  letter-spacing:.3em;flex-shrink:0;background:none;border:none;padding:0;color:inherit;
+  cursor:pointer;opacity:.7;transition:opacity .35s;white-space:nowrap}
 .l-strip-all:hover{opacity:1}
+
+/* Ten lines of wildly different length. flex:0 1 auto sizes each to its own text
+   and shrinks them all proportionally when the row overflows, so "Wake up!" does
+   not hold the same 118px as "what belongs to the sea will always return to the
+   sea." — which is what flex:1 1 0 did, truncating the long ones to nothing.
+   min-width:0 is what permits the ellipsis at all. */
 .l-strip-items{flex:1;display:flex;align-items:baseline;justify-content:space-between;
-  gap:clamp(18px,2.6vw,44px);min-width:0}
-.l-strip-item{display:flex;align-items:baseline;gap:11px;min-width:0;
+  gap:clamp(7px,.7vw,18px);min-width:0}
+.l-strip-item{flex:0 1 auto;min-width:0;
+  display:flex;align-items:baseline;gap:6px;
   background:none;border:none;padding:0;color:inherit;cursor:pointer;
-  opacity:1;transition:opacity .35s}
-.l-strip-item:hover{opacity:.55}
-.l-strip-num{font-family:'Jost',sans-serif;font-weight:300;font-size:11px;
-  letter-spacing:.2em;color:#a29b90;flex-shrink:0}
-.l-strip-title{font-family:'Cormorant Garamond',serif;font-size:15px;
+  opacity:.92;transition:opacity .35s}
+.l-strip-item:hover{opacity:.6}
+.l-strip-num{font-family:'Jost',sans-serif;font-weight:300;font-size:9.5px;
+  letter-spacing:.12em;opacity:.6;flex-shrink:0}
+/* italic, so the bar reads in the poem's voice rather than as a file listing.
+   Size tracks the viewport: ten lines of verse only fit un-truncated if the type
+   gives way as the window narrows. */
+.l-strip-title{font-family:'Cormorant Garamond',serif;font-style:italic;
+  font-size:clamp(10px,.755vw,15px);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.l-bar-toggle{width:38px;height:38px;border-radius:50%;border:1px solid rgba(44,42,38,.45);
+.l-bar-toggle{width:38px;height:38px;border-radius:50%;border:1px solid rgba(242,246,248,.6);
   background:transparent;color:inherit;font-size:12px;cursor:pointer;flex-shrink:0;
   transition:background .35s}
-.l-bar-toggle:hover{background:rgba(44,42,38,.08)}
+.l-bar-toggle:hover{background:rgba(242,246,248,.18)}
 .l-bar-title{font-family:'Jost',sans-serif;font-weight:300;font-size:12px;letter-spacing:.2em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:1}
-.l-bar-track{flex:1;height:2px;background:rgba(44,42,38,.18);border-radius:1px;min-width:60px}
-.l-bar-fill{height:100%;background:#2c2a26;border-radius:1px}
+.l-bar-track{flex:1;height:2px;background:rgba(242,246,248,.28);border-radius:1px;min-width:60px}
+.l-bar-fill{height:100%;background:#8fd6ea;border-radius:1px}
 .l-bar-close{border:none;background:transparent;color:inherit;font-size:14px;cursor:pointer;
   opacity:.55;flex-shrink:0;transition:opacity .3s}
 .l-bar-close:hover{opacity:1}
@@ -589,10 +595,15 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-sub-link{color:inherit;border-bottom:1px solid currentColor;text-decoration:none}
 
 /* ---- narrow ---- */
-@media (max-width:760px){
-  .l-strip-label{display:none}
+/* The title size is fluid (.79vw), so the ten lines fit exactly until the clamp
+   bottoms out at 10px — which happens at ~1325px. Below that the row can only
+   shrink by truncating, so switch to numbers alone instead: better a clean index
+   than ten half-words. The POEM panel holds the full list either way. */
+@media (max-width:1324px){
   .l-strip-title{display:none}
-  .l-strip-items{justify-content:flex-start;gap:26px}
+  .l-strip-item{flex:0 0 auto}
+  .l-strip-items{justify-content:flex-start;gap:clamp(16px,2.2vw,30px)}
+  .l-strip-num{font-size:11px}
 }
 @media (max-width:560px){
   .l-nav-optional{display:none}

@@ -47,15 +47,33 @@ in a panel that opens over it.
 `LANDING_CSS` string at the bottom. Layers, back to front: the painting (twice — see
 below), a scrim, the nav, the hero block, the bottom bar, and the panel.
 
-**The bottom bar has two states and one slot.** Idle it's the tracklist; once a track
-is playing it becomes the player in place. That matters on a one-screen layout — a
-separate fixed player bar would have covered the tracklist it was launched from.
+**The bottom bar has two states and one slot.** Idle it's the tracklist — all ten
+lines, in italic, in poem order; once a track is playing it becomes the player in
+place. That matters on a one-screen layout — a separate fixed player bar would have
+covered the tracklist it was launched from.
+
+It's a gradient scrim, not a solid bar. A solid one cut ~70px off the bottom of the
+painting, which on this canvas is the sand and the near water. Ten titles only fit
+un-truncated because the type is fluid (`clamp(10px,.755vw,15px)`); when that clamp
+bottoms out at ~1325px the row can no longer shrink except by truncating, so the
+media query at 1324px drops to numbers alone. Keep those two numbers in step — a
+breakpoint below the clamp floor means ten half-words with ellipses, which is worse
+than a clean index. Items are `flex:0 1 auto`, not `1 1 0`: equal thirds gave
+"Wake up!" the same width as "what belongs to the sea will always return to the
+sea." and truncated the long ones to nothing.
 
 **The poem and the mailing list are panels, not sections.** `ALBUM` / `ALL TEN` opens
 the poem; `PRE-SAVE` opens the signup. Escape closes. This is what keeps the page one
 screen while still having somewhere to put the poem.
 
-### The painting is rendered twice
+### The painting
+
+`public/images/hero.webp`, from the PNG master in `artwork/`. It is **1672×941**, which
+is the current weak point: on a 1440-wide retina screen the browser paints it at 2880
+device pixels, a 1.7× upscale, and it reads soft. Quality isn't the lever — it's encoded
+at q92 — resolution is. A replacement wants to be ~3840×2160 for the same crop.
+
+#### It is rendered twice
 
 ```
 .l-bg-blur   object-fit: cover  + blur(34px) scale(1.14)
