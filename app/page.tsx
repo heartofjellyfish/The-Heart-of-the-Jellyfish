@@ -19,7 +19,7 @@ export default function Home() {
       */}
       <link
         rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600&family=La+Belle+Aurore&family=Petit+Formal+Script&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400;1,500;1,600&family=Jost:wght@200;300;400&display=swap"
+        href="https://fonts.googleapis.com/css2?family=La+Belle+Aurore&family=Shadows+Into+Light+Two&family=Nothing+You+Could+Do&family=The+Girl+Next+Door&family=Sacramento&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400;1,500;1,600&family=Jost:wght@200;300;400&display=swap"
       />
       <Landing />
     </>

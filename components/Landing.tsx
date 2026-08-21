@@ -78,12 +78,12 @@ const FIRST_DEMO = AVAILABLE_DEMOS[0];
 const HERO_IMAGE = '/images/hero.webp';
 
 /**
- * Where the poem breaks: five couplets, each a call and its answer. "Wake up!"
- * pairs with "The heart of the jellyfish." — the waking and what the waking is
- * for — rather than standing alone. Indices are track numbers, so this reads the
- * same as the sleeve.
+ * Where the poem breaks. The first four lines run together — the sea rising, the
+ * dead, the dream and the doubt are one continuous drowning — and "Wake up!"
+ * starts the second movement, paired with what the waking is for. Indices are
+ * track numbers, so this reads the same as the sleeve.
  */
-const STANZAS = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]];
+const STANZAS = [[1, 2, 3, 4], [5, 6], [7, 8], [9, 10]];
 
 /**
  * Where the one meta line ("NEW ALBUM · 12 · 20 · 2026 · IN 121 DAYS") sits.
@@ -108,33 +108,6 @@ const CORMORANT = "'Cormorant Garamond', serif";
  */
 const POEM_FONTS = [
   {
-    key: 'cormorant',
-    label: 'Cormorant italic',
-    family: "'Cormorant Garamond',serif",
-    style: 'italic',
-    weight: '500',
-    size: 'clamp(17px,2.5vh,26px)',
-    lh: '1.55',
-  },
-  {
-    key: 'caveat',
-    label: 'Caveat',
-    family: "'Caveat',cursive",
-    style: 'normal',
-    weight: '500',
-    size: 'clamp(20px,3vh,32px)',
-    lh: '1.35',
-  },
-  {
-    key: 'petit',
-    label: 'Petit Formal Script',
-    family: "'Petit Formal Script',cursive",
-    style: 'normal',
-    weight: '400',
-    size: 'clamp(15px,2.2vh,24px)',
-    lh: '1.75',
-  },
-  {
     key: 'belle',
     label: 'La Belle Aurore',
     family: "'La Belle Aurore',cursive",
@@ -143,10 +116,55 @@ const POEM_FONTS = [
     size: 'clamp(15px,2.3vh,25px)',
     lh: '1.65',
   },
+  {
+    key: 'shadows',
+    label: 'Shadows Into Light Two',
+    family: "'Shadows Into Light Two',cursive",
+    style: 'normal',
+    weight: '400',
+    size: 'clamp(16px,2.4vh,26px)',
+    lh: '1.6',
+  },
+  {
+    key: 'nothing',
+    label: 'Nothing You Could Do',
+    family: "'Nothing You Could Do',cursive",
+    style: 'normal',
+    weight: '400',
+    size: 'clamp(15px,2.2vh,24px)',
+    lh: '1.75',
+  },
+  {
+    key: 'girl',
+    label: 'The Girl Next Door',
+    family: "'The Girl Next Door',cursive",
+    style: 'normal',
+    weight: '400',
+    size: 'clamp(16px,2.4vh,26px)',
+    lh: '1.6',
+  },
+  {
+    key: 'sacramento',
+    label: 'Sacramento',
+    family: "'Sacramento',cursive",
+    style: 'normal',
+    weight: '400',
+    size: 'clamp(18px,2.7vh,29px)',
+    lh: '1.5',
+  },
+  {
+    key: 'cormorant',
+    label: 'Cormorant italic',
+    family: "'Cormorant Garamond',serif",
+    style: 'italic',
+    weight: '500',
+    size: 'clamp(17px,2.5vh,26px)',
+    lh: '1.55',
+  },
 ] as const;
 
 type PoemFontKey = (typeof POEM_FONTS)[number]['key'];
-const POEM_FONT: PoemFontKey = 'cormorant';
+const POEM_FONT: PoemFontKey = 'belle';
 
 /** Bars drawn in the waveform. 400 peaks per track downsample into this cleanly. */
 const WAVE_BARS = 160;
@@ -824,14 +842,18 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 
 /* One variable set per candidate face. Sizes are not interchangeable: the
    scripts have much smaller x-heights than Cormorant. */
-.l-poem-f-cormorant{--poem-family:'Cormorant Garamond',serif;--poem-style:italic;
-  --poem-weight:500;--poem-size:clamp(17px,2.5vh,26px);--poem-lh:1.55}
-.l-poem-f-caveat{--poem-family:'Caveat',cursive;--poem-style:normal;
-  --poem-weight:500;--poem-size:clamp(20px,3vh,32px);--poem-lh:1.35}
-.l-poem-f-petit{--poem-family:'Petit Formal Script',cursive;--poem-style:normal;
-  --poem-weight:400;--poem-size:clamp(15px,2.2vh,24px);--poem-lh:1.75}
 .l-poem-f-belle{--poem-family:'La Belle Aurore',cursive;--poem-style:normal;
   --poem-weight:400;--poem-size:clamp(15px,2.3vh,25px);--poem-lh:1.65}
+.l-poem-f-shadows{--poem-family:'Shadows Into Light Two',cursive;--poem-style:normal;
+  --poem-weight:400;--poem-size:clamp(16px,2.4vh,26px);--poem-lh:1.6}
+.l-poem-f-nothing{--poem-family:'Nothing You Could Do',cursive;--poem-style:normal;
+  --poem-weight:400;--poem-size:clamp(15px,2.2vh,24px);--poem-lh:1.75}
+.l-poem-f-girl{--poem-family:'The Girl Next Door',cursive;--poem-style:normal;
+  --poem-weight:400;--poem-size:clamp(16px,2.4vh,26px);--poem-lh:1.6}
+.l-poem-f-sacramento{--poem-family:'Sacramento',cursive;--poem-style:normal;
+  --poem-weight:400;--poem-size:clamp(18px,2.7vh,29px);--poem-lh:1.5}
+.l-poem-f-cormorant{--poem-family:'Cormorant Garamond',serif;--poem-style:italic;
+  --poem-weight:500;--poem-size:clamp(17px,2.5vh,26px);--poem-lh:1.55}
 
 .l-poem-num{position:absolute;right:calc(100% + .7em);top:.34em;
   font-family:'Jost',sans-serif;font-weight:300;font-size:10px;letter-spacing:.16em;

@@ -144,9 +144,11 @@ and arrow keys (Shift for 30s).
 
 ### The poem's type
 
-`POEM_FONTS` holds four candidate faces, each setting CSS variables rather than a
+`POEM_FONTS` holds the candidate faces, each setting CSS variables rather than a
 font-family alone — the scripts have much smaller x-heights than Cormorant and need
-their own size and leading. Cormorant italic is the default.
+their own size and leading. La Belle Aurore is the current default, with Cormorant
+italic the runner-up. Caveat and Petit Formal Script were tried and rejected: the
+first reads as a marker note, the second as a wedding invitation.
 
 **`/?type=1` opens a live tuner** in the poem panel: four font buttons and a size
 slider, writing `--poem-scale`. It's a dev affordance and renders for nobody else.
