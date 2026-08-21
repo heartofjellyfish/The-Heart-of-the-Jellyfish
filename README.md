@@ -49,10 +49,9 @@ ships.
 
 ### Demo audio
 
-`public/audio/NN-<slug>.mp3` — seven of the ten are up (02, 03, 05, 06, 07, 09, 10), rescued
-from the old Squarespace site before that plan lapsed. Tracks 01, 04 and 08 have no demo yet;
-they open the player bar labelled `demo 待上传`, which is the intended state, not a bug. Drop
-a correctly-named file in and add its number to `AVAILABLE_DEMOS`.
+`public/audio/NN-<slug>.mp3` — all ten tracks, 128 kbps, 45 MB total. `AVAILABLE_DEMOS`
+in [components/Landing.tsx](components/Landing.tsx) says which are playable; drop a number
+to pull one back to "demo 待上传".
 
 ## Where this repo sits
 

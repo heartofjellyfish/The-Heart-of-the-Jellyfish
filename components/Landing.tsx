@@ -65,11 +65,12 @@ const FILES = [
 ];
 
 /**
- * Which tracks actually have a demo in `public/audio/`. Keep in sync when a new
- * file goes in — it drives which track LISTEN NOW starts on, and which lines the
- * poem panel marks as playable.
+ * Which tracks have a demo in `public/audio/`. All ten, as of the 2026-08-21
+ * bounces. Kept as a list rather than assumed, so pulling a track back to
+ * unreleased is one edit: drop its number and the poem panel dims that line,
+ * the bar labels it "demo 待上传", and LISTEN NOW skips past it.
  */
-const AVAILABLE_DEMOS = [2, 3, 5, 6, 7, 9, 10];
+const AVAILABLE_DEMOS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const FIRST_DEMO = AVAILABLE_DEMOS[0];
 
 /**
@@ -371,11 +372,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                   );
                 })}
               </ol>
-              <div className="l-poem-foot">
-                点一行听 demo · CLICK A LINE TO HEAR IT
-                <br />
-                01 · 04 · 08 demo 待上传
-              </div>
+              <div className="l-poem-foot">点一行听 demo · CLICK A LINE TO HEAR IT</div>
             </div>
           ) : (
             <div className="l-sub">

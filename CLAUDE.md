@@ -122,18 +122,26 @@ not the work.
 
 ### Demo audio
 
-`public/audio/NN-<slug>.mp3` — seven of ten are up (02, 03, 05, 06, 07, 09, 10), rescued
-from the Squarespace site before that plan lapsed. 01, 04 and 08 have no demo; they read
-slightly quieter in the poem panel and open the bar labelled `demo 待上传`. That's the
-intended placeholder, not a failure. Adding a correctly-named file plus its number in
-`AVAILABLE_DEMOS` is the whole deployment step — that array also decides which track
-LISTEN NOW starts on, so the main call to action never lands on a missing file.
+`public/audio/NN-<slug>.mp3` — **all ten**, from the 2026-08-21 bounces. Transcoded to
+128 kbps CBR 44.1 kHz stereo with metadata stripped (`ffmpeg -b:a 128k -map_metadata -1`),
+which took the set from 63 MB to 45 MB; the sources were a mix of 160 and 320 kbps.
+Durations were checked against the originals afterwards — transcoding is where a track
+quietly loses its tail. Masters are not in this repo.
 
-Three of the seven were matched to tracks by position, not filename: the Squarespace page
-listed titles in the body and URLs in a head JSON blob, and four filenames carried their
-own track numbers at exactly the predicted index, which pinned the ordering. The inferred
-three are 02 (`seagull bar with vocal`), 03 (`Afternoon Swim`) and 06 (`OurOwnStar_Oct30`).
-If one sounds wrong, that's why.
+Track 04 is a rough mix ("Rough with Woodwinds"), not a production bounce like the other
+nine. Swap it when a production version exists.
+
+`AVAILABLE_DEMOS` lists which tracks are playable. It's all ten now, but it stays a list
+rather than an assumption: removing a number dims that line in the poem panel, labels the
+bar `demo 待上传`, and makes LISTEN NOW skip past it.
+
+**A correction worth keeping.** An earlier pass rescued seven demos off the Squarespace
+CDN and matched three of them to tracks by position, because that page listed titles in
+the body and URLs in a head JSON blob. Two of those three were wrong — `seagull bar with
+vocal` and `OurOwnStar_Oct30` are not album tracks at all, and had been sitting on 02 and
+06. Positional inference across two independent orderings is not evidence; it looked like
+evidence because four filenames carried their own track numbers and corroborated. If a
+mapping can't be read off the file itself, get it from Qi.
 
 ### What was removed, and why
 
