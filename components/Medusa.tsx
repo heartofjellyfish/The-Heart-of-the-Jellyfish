@@ -62,6 +62,26 @@ const POEM = [
   'Sea risen',
 ];
 
+/**
+ * The shore painting behind the hero. Swap the file at this path to change the
+ * artwork — nothing else references it.
+ */
+const HERO_IMAGE = '/images/hero.jpg';
+
+/**
+ * Which tracks actually have a demo in `public/audio/`. Keep in sync when you
+ * drop a new file in — it only drives which track "LISTEN NOW" starts on.
+ */
+const AVAILABLE_DEMOS = [2, 3, 5, 6, 7, 9, 10];
+const FIRST_DEMO = AVAILABLE_DEMOS[0];
+
+const NAV = [
+  { label: 'HOME', href: '/', active: true, optional: false },
+  { label: 'ALBUM', href: '#poem', active: false, optional: false },
+  // Dropped below 560px so PRE-SAVE keeps its place on the right.
+  { label: 'DESCENT', href: '/descent', active: false, optional: true },
+];
+
 const JOST = "'Jost', sans-serif";
 const CORMORANT = "'Cormorant Garamond', serif";
 
@@ -452,7 +472,7 @@ export function Medusa({
         }}
       />
 
-      <header
+      <nav
         style={{
           position: 'fixed',
           top: 0,
@@ -462,128 +482,174 @@ export function Medusa({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          padding: '22px 32px',
+          padding: '26px clamp(24px,3vw,52px)',
           fontFamily: JOST,
           fontWeight: 300,
-          fontSize: 12,
-          letterSpacing: '.38em',
+          fontSize: 11.5,
+          letterSpacing: '.3em',
           color: uiColor,
           transition: 'color 1.2s',
         }}
       >
-        <div style={{ fontWeight: 400 }}>QI · 琦</div>
-        <div>12 · 20 · 2026</div>
-      </header>
+        <div style={{ display: 'flex', gap: 'clamp(20px,2.6vw,42px)', alignItems: 'baseline' }}>
+          {NAV.map((item) => (
+            <a
+              key={item.label}
+              href={item.href}
+              className={'m-nav' + (item.optional ? ' m-nav-optional' : '')}
+              style={
+                item.active
+                  ? { borderBottom: '1px solid currentColor', paddingBottom: 5 }
+                  : undefined
+              }
+            >
+              {item.label}
+            </a>
+          ))}
+        </div>
+        <a href="#subscribe" className="m-nav">
+          PRE-SAVE
+        </a>
+      </nav>
 
       <main style={{ position: 'relative', zIndex: 2 }}>
         {/* ---------------- Hero ---------------- */}
-        <section style={{ position: 'relative', minHeight: '100vh', overflow: 'hidden' }}>
+        <section className="m-hero" style={{ position: 'relative', overflow: 'hidden' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/images/heart-of-the-jellyfish.webp"
-            alt=""
+            src={HERO_IMAGE}
+            alt="A figure on the shore, looking down at a jellyfish in the shallows"
             style={{
               position: 'absolute',
               inset: 0,
               width: '100%',
               height: '100%',
               objectFit: 'cover',
-              WebkitMaskImage: 'linear-gradient(180deg,#000 58%,transparent 97%)',
-              maskImage: 'linear-gradient(180deg,#000 58%,transparent 97%)',
+              objectPosition: 'center 45%',
             }}
           />
+          {/* just enough scrim to keep white type off the pale sky */}
           <div
             style={{
-              position: 'relative',
-              zIndex: 2,
+              position: 'absolute',
+              inset: 0,
+              background:
+                'linear-gradient(180deg,rgba(24,74,112,.26),rgba(24,74,112,.05) 30%,transparent 55%)',
+              pointerEvents: 'none',
+            }}
+          />
+
+          <div
+            style={{
+              position: 'absolute',
+              left: 'clamp(24px,3vw,52px)',
+              top: 'clamp(96px,17vh,190px)',
               display: 'flex',
               flexDirection: 'column',
-              gap: 16,
-              padding: '15vh 8vw 0',
-              color: '#fdfeff',
-              textShadow: '0 1px 22px rgba(10,50,80,.4),0 1px 4px rgba(10,50,80,.2)',
-              maxWidth: 640,
+              alignItems: 'flex-start',
+              color: '#fff',
+              textShadow: '0 1px 3px rgba(12,52,84,.30), 0 1px 26px rgba(12,52,84,.34)',
             }}
           >
-            <div
-              style={{
-                fontFamily: JOST,
-                fontWeight: 300,
-                fontSize: 11,
-                letterSpacing: '.55em',
-                opacity: 0.92,
-              }}
-            >
-              QI · 琦 — DEBUT ALBUM · 首张概念专辑
-            </div>
-            <h1
-              style={{
-                fontFamily: CORMORANT,
-                fontStyle: 'italic',
-                fontWeight: 500,
-                fontSize: 'clamp(30px,7vw,118px)',
-                lineHeight: 1,
-                margin: '0 0 4px',
-                whiteSpace: 'nowrap',
-                color: '#fdfeff',
-                textShadow: '0 2px 34px rgba(10,50,80,.45),0 1px 6px rgba(10,50,80,.25)',
-              }}
-            >
-              <Drift text="The Heart of the Jellyfish" />
-            </h1>
-            <div style={{ fontSize: 16, letterSpacing: '.66em', fontWeight: 300 }}>水母之心</div>
-            <div
-              style={{
-                width: 42,
-                height: 1,
-                background: 'rgba(253,254,255,.65)',
-                margin: '4px 0',
-                boxShadow: '0 1px 8px rgba(10,50,80,.3)',
-              }}
-            />
             <div
               style={{
                 fontFamily: JOST,
                 fontWeight: 300,
                 fontSize: 12,
-                letterSpacing: '.3em',
-                opacity: 0.95,
+                letterSpacing: '.34em',
+                marginBottom: 'clamp(14px,2.2vh,26px)',
+              }}
+            >
+              NEW ALBUM · 2026
+            </div>
+
+            <h1
+              style={{
+                fontFamily: CORMORANT,
+                fontStyle: 'italic',
+                fontWeight: 500,
+                fontSize: 'clamp(42px,7.2vw,104px)',
+                lineHeight: 1.04,
+                margin: 0,
+              }}
+            >
+              The Heart
+              <br />
+              of the Jellyfish
+            </h1>
+
+            <div
+              style={{
+                fontSize: 13,
+                letterSpacing: '.55em',
+                fontWeight: 300,
+                marginTop: 'clamp(12px,1.8vh,20px)',
+              }}
+            >
+              水母之心
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 20,
+                marginTop: 'clamp(22px,3.6vh,46px)',
+              }}
+            >
+              <button
+                type="button"
+                className="m-play"
+                aria-label={'Listen — ' + TITLES[FIRST_DEMO - 1]}
+                onClick={() => playTrack(FIRST_DEMO)}
+              >
+                <svg width="13" height="15" viewBox="0 0 13 15" fill="currentColor" aria-hidden>
+                  <path d="M0 0l13 7.5L0 15z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="m-play-label"
+                onClick={() => playTrack(FIRST_DEMO)}
+              >
+                LISTEN NOW
+              </button>
+            </div>
+
+            <div
+              style={{
+                fontFamily: JOST,
+                fontWeight: 300,
+                fontSize: 11,
+                letterSpacing: '.28em',
+                opacity: 0.82,
+                marginTop: 'clamp(18px,2.6vh,30px)',
               }}
             >
               12 · 20 · 2026 — 还有 {days} 天
             </div>
           </div>
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '5vh',
-              left: 0,
-              right: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 8,
-              color: '#eaf4f9',
-              zIndex: 2,
-            }}
-          >
-            <div style={{ fontSize: 18, animation: 'medusa-sink 2.6s ease-in-out infinite' }}>↓</div>
-            <div
-              style={{
-                fontFamily: JOST,
-                fontWeight: 300,
-                fontSize: 10,
-                letterSpacing: '.6em',
-                opacity: 0.8,
-              }}
-            >
-              下潜 DIVE
+
+          {/* ---- tracklist strip, the divider between shore and water ---- */}
+          <div className="m-strip">
+            <div className="m-strip-label">TRACKLIST</div>
+            <div className="m-strip-items">
+              {POEM.slice(0, 4).map((line, i) => (
+                <a key={i} href={'#t' + (i + 1)} className="m-strip-item">
+                  <span className="m-strip-num">{String(i + 1).padStart(2, '0')}</span>
+                  <span className="m-strip-title">{line}</span>
+                </a>
+              ))}
             </div>
+            <a href="#poem" className="m-strip-arrow" aria-label="Scroll to the full tracklist">
+              ↓
+            </a>
           </div>
         </section>
 
         {/* ---------------- Poem index ---------------- */}
         <section
+          id="poem"
           style={{
             minHeight: '100vh',
             display: 'flex',
@@ -1124,6 +1190,7 @@ export function Medusa({
 
         {/* ---------------- Email ---------------- */}
         <section
+          id="subscribe"
           style={{
             minHeight: '92vh',
             display: 'flex',
@@ -1293,6 +1360,81 @@ body{background:#0a2438}
 .medusa .m-poem a:hover{color:#f6fbfd;opacity:1}
 .medusa ::selection{background:rgba(143,215,235,.35)}
 .medusa ::placeholder{color:rgba(63,54,41,.45)}
+
+.medusa .m-hero{
+  height:100vh;      /* fallback */
+  height:100svh;     /* iOS/Android: ignore the collapsing toolbar */
+}
+
+.medusa .m-nav{
+  color:inherit;text-decoration:none;white-space:nowrap;
+  opacity:.88;transition:opacity .4s;
+}
+.medusa .m-nav:hover{opacity:1}
+
+@media (max-width:560px){
+  .medusa .m-nav-optional{display:none}
+  .medusa nav{letter-spacing:.2em;font-size:11px}
+}
+
+.medusa .m-play{
+  width:clamp(58px,4.6vw,76px);height:clamp(58px,4.6vw,76px);
+  border-radius:50%;border:1px solid rgba(255,255,255,.8);background:transparent;
+  color:#fff;cursor:pointer;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;padding-left:4px;
+  transition:background .45s,border-color .45s;
+}
+.medusa .m-play:hover{background:rgba(255,255,255,.16);border-color:#fff}
+.medusa .m-play-label{
+  border:none;background:none;padding:0;color:inherit;cursor:pointer;
+  font-family:'Jost',sans-serif;font-weight:300;font-size:12px;letter-spacing:.34em;
+  opacity:.92;transition:opacity .4s;
+}
+.medusa .m-play-label:hover{opacity:1}
+
+/* the cream strip that ends the shore and starts the water */
+.medusa .m-strip{
+  position:absolute;left:0;right:0;bottom:0;
+  height:clamp(60px,8.6vh,84px);
+  display:flex;align-items:center;gap:clamp(18px,2.6vw,44px);
+  padding:0 clamp(24px,3vw,52px);
+  background:#f3efe7;color:#2c2a26;
+  overflow-x:auto;scrollbar-width:none;
+}
+.medusa .m-strip::-webkit-scrollbar{display:none}
+.medusa .m-strip-label{
+  font-family:'Jost',sans-serif;font-weight:400;font-size:11px;letter-spacing:.34em;
+  flex-shrink:0;
+}
+.medusa .m-strip-items{
+  flex:1;display:flex;align-items:baseline;justify-content:space-between;
+  gap:clamp(18px,2.6vw,44px);min-width:0;
+}
+.medusa .m-strip-item{
+  display:flex;align-items:baseline;gap:11px;min-width:0;
+  color:inherit;text-decoration:none;opacity:1;transition:opacity .35s;
+}
+.medusa .m-strip-item:hover{opacity:.55}
+.medusa .m-strip-num{
+  font-family:'Jost',sans-serif;font-weight:300;font-size:11px;letter-spacing:.2em;
+  color:#a29b90;flex-shrink:0;
+}
+.medusa .m-strip-title{
+  font-family:'Cormorant Garamond',serif;font-size:15px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.medusa .m-strip-arrow{
+  font-size:15px;opacity:.5;flex-shrink:0;color:inherit;text-decoration:none;
+  transition:opacity .35s;
+}
+.medusa .m-strip-arrow:hover{opacity:1}
+
+/* below ~760px the strip can't hold four titles — show numbers only */
+@media (max-width:760px){
+  .medusa .m-strip-label{display:none}
+  .medusa .m-strip-title{display:none}
+  .medusa .m-strip-items{justify-content:flex-start;gap:26px}
+}
 
 .medusa .m-demo{
   font-family:'Jost',sans-serif;font-weight:300;letter-spacing:.4em;
