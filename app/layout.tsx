@@ -11,23 +11,23 @@ const cormorant = Cormorant_Garamond({
 });
 
 const DESCRIPTION =
-  'A debut album by Qi · 琦. Ten songs that read as a poem. Releasing 2026.12.20. 水母之心 — 首张概念专辑。';
+  'A debut album by Qi. Ten songs that read as a poem. Releasing 2026.12.20.';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://qi.land'),
-  title: '水母之心 / The Heart of the Jellyfish — Qi',
+  title: 'The Heart of the Jellyfish — Qi',
   description: DESCRIPTION,
   openGraph: {
     type: 'music.album',
     url: 'https://qi.land',
-    siteName: 'Qi · 琦',
-    title: '水母之心 / The Heart of the Jellyfish — Qi',
+    siteName: 'Qi',
+    title: 'The Heart of the Jellyfish — Qi',
     description: DESCRIPTION,
     images: [{ url: '/images/og-cover.jpg', width: 1200, height: 892, alt: 'The Heart of the Jellyfish — album cover' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: '水母之心 / The Heart of the Jellyfish — Qi',
+    title: 'The Heart of the Jellyfish — Qi',
     description: DESCRIPTION,
     images: ['/images/og-cover.jpg'],
   },

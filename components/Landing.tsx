@@ -14,15 +14,12 @@
  * and cost ~100 kB to never be seen. It lives on at /descent in its R3F form.
  */
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * The album *is* the poem — ten titles that read straight through. Punctuation
  * and lower-case openings are canon, not sloppiness: they're what makes the
  * tracklist run on as verse. Do not "fix" the capitalisation.
- *
- * "\n" marks the one title that breaks across two lines in the poem's own
- * setting; the tracklist strip flattens it back to a single line.
  */
 const POEM = [
   'Sea rising',
@@ -32,7 +29,7 @@ const POEM = [
   'Wake up!',
   'The heart of the jellyfish.',
   'You shall see:',
-  'what belongs to the sea\nwill always return to the sea.',
+  'what belongs to the sea will always return to the sea.',
   'The day after, without us—',
   'sea risen.',
 ];
@@ -68,7 +65,7 @@ const FILES = [
  * Which tracks have a demo in `public/audio/`. All ten, as of the 2026-08-21
  * bounces. Kept as a list rather than assumed, so pulling a track back to
  * unreleased is one edit: drop its number and the poem panel dims that line,
- * the bar labels it "demo 待上传", and LISTEN NOW skips past it.
+ * the bar labels it "DEMO PENDING", and LISTEN NOW skips past it.
  */
 const AVAILABLE_DEMOS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const FIRST_DEMO = AVAILABLE_DEMOS[0];
@@ -80,10 +77,126 @@ const FIRST_DEMO = AVAILABLE_DEMOS[0];
  */
 const HERO_IMAGE = '/images/hero.webp';
 
+/**
+ * Where the poem breaks: five couplets, each a call and its answer. "Wake up!"
+ * pairs with "The heart of the jellyfish." — the waking and what the waking is
+ * for — rather than standing alone. Indices are track numbers, so this reads the
+ * same as the sleeve.
+ */
+const STANZAS = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]];
+
+/**
+ * Where the one meta line ("NEW ALBUM · 12 · 20 · 2026 · IN 121 DAYS") sits.
+ * Four positions, one edit to switch — they read very differently against the
+ * painting, so this is a look-at-it decision, not a reasoned one.
+ */
+type MetaPlacement = 'eyebrow' | 'underTitle' | 'underPlay' | 'topLeft';
+const META_PLACEMENT: MetaPlacement = 'underTitle';
+
 const JOST = "'Jost', sans-serif";
 const CORMORANT = "'Cormorant Garamond', serif";
+/**
+ * Candidate faces for the poem. Each sets CSS variables rather than a
+ * font-family alone, because the scripts have much smaller x-heights than
+ * Cormorant and need their own size and leading to stay readable.
+ *
+ * Cormorant italic is the default: it is the album's own type, set rather than
+ * scrawled. Try the others live at `/?type=1`.
+ *
+ * Once one is chosen, drop the rest from the Google Fonts link in app/page.tsx —
+ * they are only loaded so the choice can be seen.
+ */
+const POEM_FONTS = [
+  {
+    key: 'cormorant',
+    label: 'Cormorant italic',
+    family: "'Cormorant Garamond',serif",
+    style: 'italic',
+    weight: '500',
+    size: 'clamp(17px,2.5vh,26px)',
+    lh: '1.55',
+  },
+  {
+    key: 'caveat',
+    label: 'Caveat',
+    family: "'Caveat',cursive",
+    style: 'normal',
+    weight: '500',
+    size: 'clamp(20px,3vh,32px)',
+    lh: '1.35',
+  },
+  {
+    key: 'petit',
+    label: 'Petit Formal Script',
+    family: "'Petit Formal Script',cursive",
+    style: 'normal',
+    weight: '400',
+    size: 'clamp(15px,2.2vh,24px)',
+    lh: '1.75',
+  },
+  {
+    key: 'belle',
+    label: 'La Belle Aurore',
+    family: "'La Belle Aurore',cursive",
+    style: 'normal',
+    weight: '400',
+    size: 'clamp(15px,2.3vh,25px)',
+    lh: '1.65',
+  },
+] as const;
+
+type PoemFontKey = (typeof POEM_FONTS)[number]['key'];
+const POEM_FONT: PoemFontKey = 'cormorant';
+
+/** Bars drawn in the waveform. 400 peaks per track downsample into this cleanly. */
+const WAVE_BARS = 160;
+
 
 type Panel = 'poem' | 'subscribe' | null;
+
+/**
+ * The seek bar's waveform. Peaks come precomputed from `public/waveforms.json`
+ * (see scripts/waveform.mjs) — decoding a 4 MB mp3 in the browser to draw a
+ * 26px graphic would be absurd.
+ *
+ * Two identical sets of bars: one dim, one lit and clipped to the play head.
+ * Only the clip rect's width changes as playback advances, so the 160 bars are
+ * memoised and never re-created.
+ */
+function Waveform({ data, pct }: { data: number[]; pct: number }) {
+  const bars = React.useMemo(() => {
+    const step = data.length / WAVE_BARS;
+    return Array.from({ length: WAVE_BARS }, (_, i) => {
+      let peak = 0;
+      for (let j = Math.floor(i * step); j < Math.floor((i + 1) * step); j++) {
+        if (data[j] > peak) peak = data[j];
+      }
+      // A floor, so silence still reads as a bar rather than a gap.
+      const h = 9 + (peak / 255) * 82;
+      return <rect key={i} x={i + 0.18} y={(100 - h) / 2} width={0.64} height={h} rx={0.32} />;
+    });
+  }, [data]);
+
+  return (
+    <svg
+      className="l-wave"
+      viewBox={`0 0 ${WAVE_BARS} 100`}
+      preserveAspectRatio="none"
+      aria-hidden
+    >
+      <defs>
+        <clipPath id="l-wave-clip">
+          <rect x="0" y="0" width={(pct / 100) * WAVE_BARS} height="100" />
+        </clipPath>
+      </defs>
+      <g className="l-wave-dim">{bars}</g>
+      <g className="l-wave-lit" clipPath="url(#l-wave-clip)">
+        {bars}
+      </g>
+    </svg>
+  );
+}
+
 
 /* ------------------------------------------------------------------ */
 
@@ -95,6 +208,11 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [pct, setPct] = useState(0);
   const [missing, setMissing] = useState(false);
   const [sent, setSent] = useState(false);
+  const [peaks, setPeaks] = useState<Record<string, number[]> | null>(null);
+  /** `/?type=1` opens the poem type tuner. Dev affordance, costs the page nothing. */
+  const [tuner, setTuner] = useState(false);
+  const [font, setFont] = useState<PoemFontKey>(POEM_FONT);
+  const [fontScale, setFontScale] = useState(1);
 
   const emailRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -114,6 +232,10 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     return () => window.clearInterval(iv);
   }, [releaseDate]);
 
+  useEffect(() => {
+    setTuner(new URLSearchParams(window.location.search).get('type') === '1');
+  }, []);
+
   /* --- Esc closes whatever panel is open -------------------------- */
   useEffect(() => {
     if (!panel) return;
@@ -125,6 +247,17 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   }, [panel]);
 
   /* --- audio ------------------------------------------------------ */
+  const peaksRequested = useRef(false);
+  const loadPeaks = useCallback(() => {
+    if (peaksRequested.current) return;
+    peaksRequested.current = true;
+    fetch('/waveforms.json')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setPeaks(d))
+      // No peaks is not an error — the bar falls back to a hairline.
+      .catch(() => {});
+  }, []);
+
   const ensureAudio = useCallback(() => {
     if (audioRef.current) return audioRef.current;
     const au = new Audio();
@@ -150,6 +283,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const playTrack = useCallback(
     (n: number) => {
       if (n < 1 || n > FILES.length) return;
+      loadPeaks();
       const au = ensureAudio();
       if (curRef.current === n) {
         if (au.paused) {
@@ -171,14 +305,64 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         .play()
         .then(() => setPlaying(true))
         .catch(() => {
-          // No demo uploaded yet — the bar still opens, labelled "demo 待上传".
+          // No demo uploaded yet — the bar still opens, labelled "DEMO PENDING".
           setMissing(true);
           setPlaying(false);
         });
     },
-    [ensureAudio],
+    [ensureAudio, loadPeaks],
   );
   playTrackRef.current = playTrack;
+
+  /* --- seeking ---------------------------------------------------- */
+  const seekRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
+
+  const seekToClientX = useCallback((clientX: number) => {
+    const el = seekRef.current;
+    const au = audioRef.current;
+    if (!el || !au || !au.duration || !isFinite(au.duration)) return;
+    const r = el.getBoundingClientRect();
+    const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+    au.currentTime = f * au.duration;
+    pctRef.current = f * 100;
+    setPct(f * 100);
+  }, []);
+
+  const onSeekDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      draggingRef.current = true;
+      // Capture keeps the drag alive outside the 2px bar. It throws if the
+      // pointer isn't active (synthetic events, some browsers) — not fatal.
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {}
+      seekToClientX(e.clientX);
+    },
+    [seekToClientX],
+  );
+  const onSeekMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (draggingRef.current) seekToClientX(e.clientX);
+    },
+    [seekToClientX],
+  );
+  const onSeekUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    draggingRef.current = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+  }, []);
+  const onSeekKey = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const au = audioRef.current;
+    if (!au || !au.duration) return;
+    const step = e.shiftKey ? 30 : 5;
+    if (e.key === 'ArrowRight') au.currentTime = Math.min(au.duration, au.currentTime + step);
+    else if (e.key === 'ArrowLeft') au.currentTime = Math.max(0, au.currentTime - step);
+    else if (e.key === 'Home') au.currentTime = 0;
+    else return;
+    e.preventDefault();
+  }, []);
 
   const stop = useCallback(() => {
     audioRef.current?.pause();
@@ -200,8 +384,14 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     [],
   );
 
+  const META =
+    'NEW ALBUM · 12 · 20 · 2026 · ' +
+    (days === 0 ? 'OUT TODAY' : days === 1 ? 'IN 1 DAY' : 'IN ' + days + ' DAYS');
+
+  const waveData = cur > 0 ? peaks?.[String(cur).padStart(2, '0')] ?? null : null;
+
   const nowTitle = cur
-    ? (missing ? 'demo 待上传 · ' : '') +
+    ? (missing ? 'DEMO PENDING · ' : '') +
       String(cur).padStart(2, '0') +
       ' — ' +
       TITLES[cur - 1]
@@ -239,15 +429,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
 
       <nav className="l-nav">
         <div className="l-nav-left">
-          <a href="/" className="l-nav-item l-nav-active">
-            HOME
-          </a>
-          <button type="button" className="l-nav-item" onClick={() => setPanel('poem')}>
-            ALBUM
-          </button>
-          <a href="/descent" className="l-nav-item l-nav-optional">
-            DESCENT
-          </a>
+          {META_PLACEMENT === 'topLeft' && <div className="l-meta">{META}</div>}
         </div>
         <button type="button" className="l-nav-item" onClick={() => setPanel('subscribe')}>
           PRE-SAVE
@@ -255,13 +437,13 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       </nav>
 
       <div className="l-hero">
-        <div className="l-eyebrow">NEW ALBUM · 2026</div>
+        {META_PLACEMENT === 'eyebrow' && <div className="l-meta l-meta-eyebrow">{META}</div>}
         <h1 className="l-title">
           The Heart
           <br />
           of the Jellyfish
         </h1>
-        <div className="l-title-cn">水母之心</div>
+        {META_PLACEMENT === 'underTitle' && <div className="l-meta l-meta-under">{META}</div>}
 
         <div className="l-play-row">
           <button
@@ -279,7 +461,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           </button>
         </div>
 
-        <div className="l-countdown">12 · 20 · 2026 — 还有 {days} 天</div>
+        {META_PLACEMENT === 'underPlay' && <div className="l-meta l-meta-under">{META}</div>}
       </div>
 
       {/* ---- the one bar at the bottom: tracklist, or the player ---- */}
@@ -295,8 +477,29 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               {playing ? '❚❚' : '▶'}
             </button>
             <div className="l-bar-title">{nowTitle}</div>
-            <div className="l-bar-track">
-              <div className="l-bar-fill" style={{ width: pct.toFixed(1) + '%' }} />
+            <div
+              ref={seekRef}
+              className="l-bar-track"
+              role="slider"
+              tabIndex={0}
+              aria-label="Seek"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(pct)}
+              onPointerDown={onSeekDown}
+              onPointerMove={onSeekMove}
+              onPointerUp={onSeekUp}
+              onKeyDown={onSeekKey}
+            >
+              {waveData ? (
+                <Waveform data={waveData} pct={pct} />
+              ) : (
+                <div className="l-bar-line">
+                  <div className="l-bar-fill" style={{ width: pct.toFixed(1) + '%' }}>
+                    <span className="l-bar-knob" />
+                  </div>
+                </div>
+              )}
             </div>
             <button type="button" className="l-bar-close" aria-label="Close player" onClick={stop}>
               ✕
@@ -314,16 +517,48 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                   title={String(i + 1).padStart(2, '0') + ' — ' + TITLES[i]}
                 >
                   <span className="l-strip-num">{String(i + 1).padStart(2, '0')}</span>
-                  <span className="l-strip-title">{line.replace('\n', ' ')}</span>
+                  <span className="l-strip-title">{line}</span>
                 </button>
               ))}
             </div>
             <button type="button" className="l-strip-all" onClick={() => setPanel('poem')}>
-              诗 · POEM
+              POEM
             </button>
           </>
         )}
       </div>
+
+      {/* ---- poem type tuner, /?type=1 ---- */}
+      {tuner && panel === 'poem' && (
+        <div className="l-tuner">
+          <div className="l-tuner-row">
+            {POEM_FONTS.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                className={'l-tuner-btn' + (f.key === font ? ' l-tuner-on' : '')}
+                onClick={() => setFont(f.key)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0.7}
+              max={1.6}
+              step={0.05}
+              value={fontScale}
+              aria-label="Poem size"
+              onChange={(e) => setFontScale(Number(e.target.value))}
+            />
+            <span className="l-tuner-val">
+              {font} · ×{fontScale.toFixed(2)}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* ---- panels ---- */}
       {panel && (
@@ -344,42 +579,38 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
 
           {panel === 'poem' ? (
             <div className="l-poem">
-              <div className="l-poem-head">THE HEART OF THE JELLYFISH · 水母之心</div>
-              <ol className="l-poem-lines">
-                {POEM.map((line, i) => {
-                  const n = i + 1;
-                  const has = AVAILABLE_DEMOS.includes(n);
-                  return (
-                    <li key={i}>
-                      <button
-                        type="button"
-                        className={'l-poem-line' + (has ? '' : ' l-poem-soon')}
-                        onClick={() => playFromPoem(n)}
-                        aria-label={
-                          (has ? 'Play demo — ' : 'No demo yet — ') + TITLES[n - 1]
-                        }
-                      >
-                        <span className="l-poem-num">{String(n).padStart(2, '0')}</span>
-                        <span className="l-poem-text">
-                          {line.split('\n').map((seg, k) => (
-                            <span key={k} className="l-poem-seg">
-                              {seg}
-                            </span>
-                          ))}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ol>
-              <div className="l-poem-foot">点一行听 demo · CLICK A LINE TO HEAR IT</div>
+              <div className="l-poem-head">THE HEART OF THE JELLYFISH</div>
+              <div
+                className={'l-poem-body l-poem-f-' + font}
+                style={{ ['--poem-scale' as string]: fontScale } as React.CSSProperties}
+              >
+                {STANZAS.map((stanza, si) => (
+                  <div className="l-poem-stanza" key={si}>
+                    {stanza.map((n) => {
+                      const has = AVAILABLE_DEMOS.includes(n);
+                      return (
+                        <button
+                          key={n}
+                          type="button"
+                          className={'l-poem-line' + (has ? '' : ' l-poem-soon')}
+                          onClick={() => playFromPoem(n)}
+                          aria-label={(has ? 'Play demo — ' : 'No demo yet — ') + TITLES[n - 1]}
+                        >
+                          <span className="l-poem-num" aria-hidden>
+                            {String(n).padStart(2, '0')}
+                          </span>
+                          {POEM[n - 1]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="l-sub">
               <h2 className="l-sub-title">Follow thy heart ;)</h2>
               <p className="l-sub-copy">
-                留下邮箱,专辑浮出水面那天,你会第一个知道。
-                <br />
                 Leave your email — you&apos;ll be the first to know when it surfaces.
               </p>
               {sent ? (
@@ -397,17 +628,17 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                   <input
                     ref={emailRef}
                     type="email"
-                    placeholder="Email address · 邮箱"
+                    placeholder="Email address"
                     aria-label="Email address"
                     className="l-sub-input"
                   />
                   <button type="submit" className="l-sub-btn">
-                    订阅 SIGN UP
+                    SIGN UP
                   </button>
                 </form>
               )}
               <div className="l-sub-foot">
-                QI · 琦 — 12 · 20 · 2026 ·{' '}
+                QI — 12 · 20 · 2026 ·{' '}
                 <a href="https://qi.land" className="l-sub-link">
                   QI.LAND
                 </a>
@@ -432,8 +663,11 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
 const LANDING_CSS = `
 html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .landing{position:fixed;inset:0;overflow:hidden;color:#fff;
-  font-family:'Noto Serif SC','Cormorant Garamond',serif}
+  font-family:'Cormorant Garamond',serif}
 .landing ::selection{background:rgba(143,215,235,.35)}
+/* Normalises the UA button font. Note it is (0,1,1) and beats any bare .l-*
+   class, so every button rule below that sets a font has to be written as
+   ".landing .l-foo" to win. That is why those selectors look over-qualified. */
 .landing button{font:inherit}
 
 /* ---- background ---- */
@@ -461,7 +695,6 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-nav-item{color:inherit;text-decoration:none;white-space:nowrap;
   background:none;border:none;padding:0;cursor:pointer;opacity:.88;transition:opacity .4s}
 .l-nav-item:hover{opacity:1}
-.l-nav-active{border-bottom:1px solid currentColor;padding-bottom:5px}
 
 /* ---- hero ---- */
 .l-hero{position:absolute;z-index:10;
@@ -470,23 +703,25 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   text-shadow:0 1px 3px rgba(12,52,84,.30),0 1px 26px rgba(12,52,84,.34);
   animation:l-rise 1.6s cubic-bezier(.2,.7,.2,1) both}
 @keyframes l-rise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
-.l-eyebrow{font-family:'Jost',sans-serif;font-weight:300;font-size:12px;
-  letter-spacing:.34em;margin-bottom:clamp(14px,2.2vh,26px)}
+/* One meta line, four possible homes. Same type in all of them so the choice is
+   only about position. */
+.l-meta{font-family:'Jost',sans-serif;font-weight:300;font-size:11px;
+  letter-spacing:.3em;white-space:nowrap}
+.l-meta-eyebrow{margin-bottom:clamp(14px,2.2vh,26px)}
+.l-meta-under{margin-top:clamp(16px,2.4vh,28px);opacity:.88}
 .l-title{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
   font-size:clamp(42px,7.2vw,104px);line-height:1.04;margin:0}
-.l-title-cn{font-size:13px;letter-spacing:.55em;font-weight:300;margin-top:clamp(12px,1.8vh,20px)}
-.l-play-row{display:flex;align-items:center;gap:20px;margin-top:clamp(22px,3.6vh,46px)}
+.l-play-row{display:flex;align-items:center;gap:20px;margin-top:clamp(26px,4.2vh,52px)}
 .l-play{width:clamp(58px,4.6vw,76px);height:clamp(58px,4.6vw,76px);border-radius:50%;
   border:1px solid rgba(255,255,255,.8);background:transparent;color:#fff;cursor:pointer;
   flex-shrink:0;display:flex;align-items:center;justify-content:center;padding-left:4px;
   transition:background .45s,border-color .45s}
 .l-play:hover{background:rgba(255,255,255,.16);border-color:#fff}
-.l-play-label{border:none;background:none;padding:0;color:inherit;cursor:pointer;
+.landing .l-play-label{border:none;background:none;padding:0;color:inherit;cursor:pointer;
   font-family:'Jost',sans-serif;font-weight:300;font-size:12px;letter-spacing:.34em;
   opacity:.92;transition:opacity .4s}
 .l-play-label:hover{opacity:1}
-.l-countdown{font-family:'Jost',sans-serif;font-weight:300;font-size:11px;
-  letter-spacing:.28em;opacity:.82;margin-top:clamp(18px,2.6vh,30px)}
+
 
 /* ---- the bar: tracklist, or the player ---- */
 /* A scrim, not a block. A solid bar cut ~70px off the bottom of the painting —
@@ -499,7 +734,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   color:#f2f6f8;overflow-x:auto;scrollbar-width:none;
   text-shadow:0 1px 8px rgba(6,26,44,.55)}
 .l-bar::-webkit-scrollbar{display:none}
-.l-strip-all{font-family:'Jost',sans-serif;font-weight:300;font-size:10px;
+.landing .l-strip-all{font-family:'Jost',sans-serif;font-weight:300;font-size:10px;
   letter-spacing:.3em;flex-shrink:0;background:none;border:none;padding:0;color:inherit;
   cursor:pointer;opacity:.7;transition:opacity .35s;white-space:nowrap}
 .l-strip-all:hover{opacity:1}
@@ -524,15 +759,33 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-strip-title{font-family:'Cormorant Garamond',serif;font-style:italic;
   font-size:clamp(10px,.755vw,15px);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.l-bar-toggle{width:38px;height:38px;border-radius:50%;border:1px solid rgba(242,246,248,.6);
+.landing .l-bar-toggle{width:38px;height:38px;border-radius:50%;border:1px solid rgba(242,246,248,.6);
   background:transparent;color:inherit;font-size:12px;cursor:pointer;flex-shrink:0;
   transition:background .35s}
 .l-bar-toggle:hover{background:rgba(242,246,248,.18)}
 .l-bar-title{font-family:'Jost',sans-serif;font-weight:300;font-size:12px;letter-spacing:.2em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:1}
-.l-bar-track{flex:1;height:2px;background:rgba(242,246,248,.28);border-radius:1px;min-width:60px}
-.l-bar-fill{height:100%;background:#8fd6ea;border-radius:1px}
-.l-bar-close{border:none;background:transparent;color:inherit;font-size:14px;cursor:pointer;
+/* Looks like a 2px hairline, but the hit area is the full bar height so it can
+   actually be grabbed. The visible line is the ::before. */
+.l-bar-track{flex:1;min-width:60px;height:26px;display:flex;align-items:center;
+  cursor:pointer;position:relative;touch-action:none;outline:none}
+.l-bar-line{position:absolute;left:0;right:0;height:2px;
+  background:rgba(242,246,248,.28);border-radius:1px}
+.l-bar-fill{position:relative;height:2px;background:#8fd6ea;border-radius:1px}
+
+/* The waveform fills the same hit area the hairline did, so seeking is
+   identical either way. */
+.l-wave{position:absolute;inset:0;width:100%;height:100%;display:block}
+.l-wave-dim rect{fill:rgba(242,246,248,.30)}
+.l-wave-lit rect{fill:#8fd6ea}
+.l-bar-knob{position:absolute;right:0;top:50%;width:9px;height:9px;border-radius:50%;
+  background:#8fd6ea;transform:translate(50%,-50%) scale(0);
+  transition:transform .2s}
+.l-bar-track:hover .l-bar-knob,
+.l-bar-track:focus-visible .l-bar-knob{transform:translate(50%,-50%) scale(1)}
+.l-bar-track:focus-visible .l-bar-line{background:rgba(242,246,248,.6)}
+.l-bar-track:focus-visible .l-wave-dim rect{fill:rgba(242,246,248,.5)}
+.landing .l-bar-close{border:none;background:transparent;color:inherit;font-size:14px;cursor:pointer;
   opacity:.55;flex-shrink:0;transition:opacity .3s}
 .l-bar-close:hover{opacity:1}
 
@@ -543,34 +796,50 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   background:rgba(8,34,56,.80);backdrop-filter:blur(14px);
   animation:l-fade .5s ease both;overflow-y:auto}
 @keyframes l-fade{from{opacity:0}to{opacity:1}}
-.l-panel-close{position:absolute;top:22px;right:clamp(24px,3vw,52px);
+.landing .l-panel-close{position:absolute;top:22px;right:clamp(24px,3vw,52px);
   background:none;border:none;color:#fff;font-size:18px;cursor:pointer;
   opacity:.6;transition:opacity .3s;z-index:2}
 .l-panel-close:hover{opacity:1}
 
-.l-poem{display:flex;flex-direction:column;align-items:center;text-align:center;
-  margin:auto;max-width:min(760px,92vw)}
+.l-poem{display:flex;flex-direction:column;align-items:flex-start;text-align:left;
+  margin:auto;max-width:min(880px,94vw);
+  /* room for the numbers to hang outside the text column */
+  padding-left:3.2em}
 .l-poem-head{font-family:'Jost',sans-serif;font-weight:300;font-size:10px;
-  letter-spacing:.5em;opacity:.6;margin-bottom:clamp(20px,4vh,44px)}
-.l-poem-lines{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
-  gap:clamp(4px,.9vh,10px);width:100%}
-.l-poem-line{display:flex;align-items:baseline;gap:16px;width:100%;
-  background:none;border:none;padding:3px 0;color:#eaf3f8;cursor:pointer;text-align:left;
-  font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
-  font-size:clamp(17px,2.5vh,26px);line-height:1.5;
-  opacity:.92;transition:opacity .35s,color .35s}
-.l-poem-line:hover{opacity:1;color:#fff}
-/* Tracks with no demo yet read slightly quieter — enough to hint, not enough to
+  letter-spacing:.5em;opacity:.55;margin-bottom:clamp(24px,5vh,52px)}
+.l-poem-body{display:flex;flex-direction:column;
+  gap:clamp(18px,3.2vh,38px)}          /* the space between stanzas */
+.l-poem-stanza{display:flex;flex-direction:column;gap:clamp(1px,.35vh,5px)}
+
+.landing .l-poem-line{position:relative;display:block;width:100%;text-align:left;
+  background:none;border:none;padding:2px 0;color:#eef5f9;cursor:pointer;
+  font-family:var(--poem-family);font-style:var(--poem-style);font-weight:var(--poem-weight);
+  font-size:calc(var(--poem-size) * var(--poem-scale,1));line-height:var(--poem-lh);
+  opacity:.94;transition:opacity .35s,color .35s}
+.landing .l-poem-line:hover{opacity:1;color:#fff}
+/* Tracks with no demo read slightly quieter — enough to hint, not enough to
    break the poem's even colour. The poem is the work; availability is metadata. */
-.l-poem-soon{opacity:.62}
-.l-poem-soon:hover{opacity:.8;color:#eaf3f8}
-.l-poem-num{font-family:'Jost',sans-serif;font-style:normal;font-weight:300;
-  font-size:10px;letter-spacing:.2em;opacity:.5;flex-shrink:0;width:2.2em}
-.l-poem-text{display:flex;flex-direction:column}
-.l-poem-seg{display:block}
-.l-poem-foot{font-family:'Jost',sans-serif;font-weight:300;font-size:10px;
-  letter-spacing:.34em;opacity:.5;line-height:2.4;margin-top:clamp(20px,4vh,44px);
-  text-align:center}
+.landing .l-poem-soon{opacity:.62}
+.landing .l-poem-soon:hover{opacity:.8;color:#eef5f9}
+
+/* One variable set per candidate face. Sizes are not interchangeable: the
+   scripts have much smaller x-heights than Cormorant. */
+.l-poem-f-cormorant{--poem-family:'Cormorant Garamond',serif;--poem-style:italic;
+  --poem-weight:500;--poem-size:clamp(17px,2.5vh,26px);--poem-lh:1.55}
+.l-poem-f-caveat{--poem-family:'Caveat',cursive;--poem-style:normal;
+  --poem-weight:500;--poem-size:clamp(20px,3vh,32px);--poem-lh:1.35}
+.l-poem-f-petit{--poem-family:'Petit Formal Script',cursive;--poem-style:normal;
+  --poem-weight:400;--poem-size:clamp(15px,2.2vh,24px);--poem-lh:1.75}
+.l-poem-f-belle{--poem-family:'La Belle Aurore',cursive;--poem-style:normal;
+  --poem-weight:400;--poem-size:clamp(15px,2.3vh,25px);--poem-lh:1.65}
+
+.l-poem-num{position:absolute;right:calc(100% + .7em);top:.34em;
+  font-family:'Jost',sans-serif;font-weight:300;font-size:10px;letter-spacing:.16em;
+  opacity:0;transition:opacity .3s}
+.l-poem-line:hover .l-poem-num{opacity:.5}
+/* No cursor to hover with — show them, or the poem hides that it is playable. */
+@media (hover:none){.l-poem-num{opacity:.38}}
+
 
 .l-sub{display:flex;flex-direction:column;align-items:center;text-align:center;
   gap:20px;margin:auto;max-width:min(560px,92vw)}
@@ -582,7 +851,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   border-bottom:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;
   font-size:15px;font-family:inherit;outline:none;text-align:center}
 .l-sub-input::placeholder{color:rgba(255,255,255,.45)}
-.l-sub-btn{padding:13px 28px;border:1px solid rgba(255,255,255,.7);background:transparent;
+.landing .l-sub-btn{padding:13px 28px;border:1px solid rgba(255,255,255,.7);background:transparent;
   color:#fff;font-family:'Jost',sans-serif;font-weight:300;font-size:11px;
   letter-spacing:.4em;cursor:pointer;transition:background .4s,color .4s}
 .l-sub-btn:hover{background:#fff;color:#0b2438}
@@ -603,9 +872,21 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   .l-strip-num{font-size:11px}
 }
 @media (max-width:560px){
-  .l-nav-optional{display:none}
   .l-nav{letter-spacing:.2em;font-size:11px}
+  .l-meta{font-size:10px;letter-spacing:.22em}
 }
+
+/* Dev-only, behind /?type=1 — never rendered for a visitor. */
+.l-tuner{position:absolute;left:18px;top:18px;z-index:40;max-width:240px;
+  display:flex;flex-direction:column;gap:10px;align-items:flex-start;
+  padding:14px 18px;border-radius:4px;
+  background:rgba(6,26,44,.88);backdrop-filter:blur(8px);
+  font-family:'Jost',sans-serif;font-weight:300;font-size:11px;letter-spacing:.12em}
+.l-tuner-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.l-tuner-btn{background:none;border:1px solid rgba(255,255,255,.28);color:#dfeaf1;
+  padding:6px 11px;border-radius:3px;cursor:pointer;font-size:11px;letter-spacing:.1em}
+.l-tuner-on{background:rgba(143,214,234,.22);border-color:#8fd6ea;color:#fff}
+.l-tuner-val{opacity:.7;min-width:12ch}
 
 @media (prefers-reduced-motion: reduce){
   .landing *{animation:none !important}
