@@ -29,23 +29,30 @@ npm run dev          # http://localhost:3000
 
 | URL | What it shows |
 |---|---|
-| `/` | **The public site.** Shader-driven descent + the ten-track poem + demo player. No three.js — see the Medusa section in `CLAUDE.md` |
+| `/` | **The public site.** One screen: the shore painting, the album, the demo player, and panels for the poem and the mailing list. No scroll |
 | `/descent` | The R3F 3D descent (real water, real GLB jellyfish, shipwreck). Was `/` until the 2026-07-27 launch |
 | `/descent?tweak=1` | Same, with Leva sliders top-right for live sunset / sky / water / lights tuning |
 | `/descent?focus=heart` | Locks depth at frame VI (the jellyfish heart). No poem overlay |
 | `/descent?focus=abyss` | Locks depth at frame X (the deep). No poem overlay |
 | `/preview-jelly` | Standalone GLB inspector for the Chrysaora — animations, material override, lighting test |
 
-`/` is deliberately the light one: 111 kB of JS against `/descent`'s 425 kB, and it needs no
-model downloads, so it holds up on a phone. The 3D work isn't abandoned — it just isn't the
-front door yet.
+`/` is deliberately the light one: 108 kB First Load JS against `/descent`'s 425 kB, and it
+needs no model downloads, so it holds up on a phone. (102 kB of that 108 is the React/Next
+runtime every route pays; the page's own code is 5.7 kB.) The 3D work isn't abandoned — it just isn't the
+front door yet. See `CLAUDE.md` for how the single screen is put together.
+
+### Artwork
+
+`public/images/hero.webp` is the shore painting, and swapping that file is the only step to
+change it. The PNG master is in `artwork/` — versioned, but outside `public/` so it never
+ships.
 
 ### Demo audio
 
 `public/audio/NN-<slug>.mp3` — seven of the ten are up (02, 03, 05, 06, 07, 09, 10), rescued
 from the old Squarespace site before that plan lapsed. Tracks 01, 04 and 08 have no demo yet;
-clicking them opens the player bar labelled `demo 待上传`, which is the intended state, not a
-bug. Drop a correctly-named file in and it goes live with no code change.
+they open the player bar labelled `demo 待上传`, which is the intended state, not a bug. Drop
+a correctly-named file in and add its number to `AVAILABLE_DEMOS`.
 
 ## Where this repo sits
 

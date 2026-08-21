@@ -1,9 +1,9 @@
 # qi.land web — context for Claude
 
 The site for Qi · 琦's debut album *The Heart of the Jellyfish* (release: 2026-12-20).
-One arc, two renderings of it: `/` is a shader-only descent (what the public sees) and
-`/descent` is the R3F one with real water and real models. Both go above water → past the
-jellyfish → into the abyss.
+Two things live here. `/` is the public front page: one screen, no scroll, the shore
+painting with the album over it. `/descent` is the R3F telling of the same story — above
+water → past the jellyfish → into the abyss — kept for later, not the front door.
 
 ## Stack
 
@@ -35,59 +35,101 @@ Constants live at the top of OceanScene: `SURFACE_Y`, `JELLY_Y`, `ABYSS_Y`, `WRE
 - `/descent?focus=heart` — locks at d=0.55
 - `/descent?focus=abyss` — locks at d=0.92
 - `?tweak=1` — shows leva panel
-- `/` — the shader-only treatment, and what the public sees (see below); shares no code with the above
+- `/` — the one-screen front page (see below); shares no code with the above
 
-## The front page (`/`) — the shader-only treatment
+## The front page (`/`) — one screen
 
-`/` and `/descent` are two treatments of the same 11-frame arc. As of 2026-07-27 the
-shader one took the front door because it was the one that was finished end to end; the R3F
-descent moved to `/descent` and stays in the repo. They share nothing but the storyboard.
-`/medusa` 301s to `/`.
+`/` is a single screen. No scroll: `html, body { overflow: hidden }` and the root
+is `position: fixed`. Everything the visitor can reach is either on that screen or
+in a panel that opens over it.
 
-| | `/descent` (R3F) | `/` (Medusa) |
-|---|---|---|
-| engine | R3F + three.js + real GLBs | one full-screen WebGL triangle, no three.js |
-| the jellyfish | Chrysaora model, lit and animated | drawn analytically in the fragment shader |
-| scroll input | `depthRef` (a ref, read in `useFrame`) | `uD` uniform, sampled each rAF from `scrollY` |
-| first load JS | ~425 kB | ~111 kB |
+[components/Landing.tsx](components/Landing.tsx) is the whole thing — markup plus a
+`LANDING_CSS` string at the bottom. Layers, back to front: the painting (twice — see
+below), a scrim, the nav, the hero block, the bottom bar, and the panel.
 
-Why it's built the way it is:
+**The bottom bar has two states and one slot.** Idle it's the tracklist; once a track
+is playing it becomes the player in place. That matters on a one-screen layout — a
+separate fixed player bar would have covered the tracklist it was launched from.
 
-- **Ported from a Claude Design file** (`Medusa.dc.html`, project `1d97dab2-…`). That design
-  is the source of truth for the look — if the palette or the jelly silhouette needs to
-  change, change it there too, or the two drift apart. The GLSL in
-  [components/medusaShader.ts](components/medusaShader.ts) is copied verbatim for that reason;
-  resist "tidying" it.
-- **Inline styles, not Tailwind.** The design is inline-styled and the port keeps that
-  1:1 so a diff against the design stays readable. The one exception is
-  [`MEDUSA_CSS`](components/Medusa.tsx) at the bottom of the component: anything with a
-  `:hover` state has to keep its resting value in a class, because inline styles outrank
-  stylesheet rules and the hover would never apply.
-- **The route owns its own fonts.** Medusa names families literally (`'Cormorant Garamond'`,
-  `'Jost'`); the root layout only exposes Cormorant through next/font's hashed
-  `--font-cormorant`, so [app/page.tsx](app/page.tsx) renders its own Google Fonts `<link>`.
-- **`scroll-behavior: smooth`** is set on `<html>` by an effect and torn down on unmount —
-  it's needed for the poem's anchor links, but it must not leak onto `/descent`, whose
-  camera is scroll-driven.
+**The poem and the mailing list are panels, not sections.** `ALBUM` / `ALL TEN` opens
+the poem; `PRE-SAVE` opens the signup. Escape closes. This is what keeps the page one
+screen while still having somewhere to put the poem.
 
-Two deliberate departures from the design file, both fixing runtime bugs in it:
+### The painting is rendered twice
 
-- Track 03's `rotate(-2deg)` survives the reveal. The design's reveal wrote
-  `transform: translateY(...)` straight onto the element and silently killed the tilt.
-- The `▷ DEMO` controls are real `<button>`s, so they're keyboard-reachable.
+```
+.l-bg-blur   object-fit: cover  + blur(34px) scale(1.14)
+.l-bg        object-fit: cover           (wide)
+             object-fit: contain         (narrower than 13:10)
+```
 
-**Demo audio:** seven of ten are in `public/audio/` (02, 03, 05, 06, 07, 09, 10), rescued off
-the Squarespace CDN on 2026-07-27 before that plan lapsed. 01, 04 and 08 are still absent and
-render as `demo 待上传` — intended placeholder, not a failure. Adding a correctly-named file
-is the whole deployment step.
+Same file, so the second one is a cache hit. On a wide screen the sharp layer covers
+everything and the blur is never seen. Narrower than 13:10 — phones, portrait tablets —
+a cover crop would push the jellyfish off one edge or the figure off the other, since
+the composition puts them at opposite extremes. So the sharp layer switches to `contain`
+and the blur becomes its surround.
 
-Three of those seven were matched to tracks by position rather than by filename — the
-Squarespace page listed titles in the body and URLs in a head JSON blob, and four filenames
-carried their own track numbers at exactly the predicted index, which fixed the ordering.
-The inferred three are 02 (`seagull bar with vocal`), 03 (`Afternoon Swim`) and 06
-(`OurOwnStar_Oct30`). If one sounds wrong, that's why.
+**Two traps in that `contain` rule, both already paid for:**
 
-**Still not done:** the email signup is local-only (`setSent(true)`); it posts nowhere.
+- The box has to be shortened so the painting lands *on* the bar rather than behind it,
+  and it must be an explicit `height: calc(100% - <bar>)`. Setting `bottom` alone does
+  nothing, because the base rule's `height: 100%` over-constrains it. And `height: auto`
+  is worse than useless: on an absolutely positioned **replaced** element, `auto` height
+  resolves from the intrinsic ratio and drops the bottom offset entirely, which parks
+  the painting at the top of the frame.
+- A `mask-image` on the sharp layer cannot feather the letterbox seam. The mask applies
+  to the element box, not to the `contain`ed content inside it, so the gradient lands in
+  empty space. The edge is fine unmasked — the blur behind it is the same sky.
+
+Positioning for both layers lives in CSS rather than inline, because a media query has
+to be able to override it and inline styles outrank stylesheet rules. That's the same
+reason every `:hover` state keeps its resting value in a class.
+
+### The poem is canon
+
+The ten titles read as one poem, and the punctuation is the poem:
+
+```
+Sea rising / in memory of those who chose the sea— / a dream so real... /
+Wait—why is the dream so real? / Wake up! / The heart of the jellyfish. /
+You shall see: / what belongs to the sea \n will always return to the sea. /
+The day after, without us— / sea risen.
+```
+
+Lower-case openings and trailing marks are deliberate — they're what makes the tracklist
+run on as verse. Don't "fix" them. `POEM` holds these; the `\n` in track 08 is the line
+break the poem itself takes, which the strip flattens back to one line. `TITLES` is a
+separate array of title-case names for the player and for `aria-label`s — player metadata,
+not the work.
+
+### Demo audio
+
+`public/audio/NN-<slug>.mp3` — seven of ten are up (02, 03, 05, 06, 07, 09, 10), rescued
+from the Squarespace site before that plan lapsed. 01, 04 and 08 have no demo; they read
+slightly quieter in the poem panel and open the bar labelled `demo 待上传`. That's the
+intended placeholder, not a failure. Adding a correctly-named file plus its number in
+`AVAILABLE_DEMOS` is the whole deployment step — that array also decides which track
+LISTEN NOW starts on, so the main call to action never lands on a missing file.
+
+Three of the seven were matched to tracks by position, not filename: the Squarespace page
+listed titles in the body and URLs in a head JSON blob, and four filenames carried their
+own track numbers at exactly the predicted index, which pinned the ordering. The inferred
+three are 02 (`seagull bar with vocal`), 03 (`Afternoon Swim`) and 06 (`OurOwnStar_Oct30`).
+If one sounds wrong, that's why.
+
+### What was removed, and why
+
+The front page used to be a WebGL treatment ported from a Claude Design file — the whole
+ocean, jellyfish included, drawn analytically in one fragment shader and revealed by
+scrolling. Once the painting went full-bleed and the scroll went away, that canvas sat
+permanently behind an opaque image, drawing frames nobody could see. Deleting it took the
+route from 112 kB to 108 kB First Load JS — a small number, because 102 kB of that is the
+React/Next runtime; the page's own code halved, 9.5 kB to 5.7 kB. Deleted (`Medusa.tsx`,
+`medusaShader.ts` — both recoverable from git). The 3D telling of the same arc is alive
+at `/descent`.
+
+**Still not done:** the signup is local-only (`setSent(true)`); it posts nowhere. And
+`PRE-SAVE` opens that signup rather than a DSP pre-save, because there isn't one yet.
 
 ## Adding a 3D prop (recipe for new sessions)
 
