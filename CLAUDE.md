@@ -150,10 +150,33 @@ their own size and leading. La Belle Aurore is the current default, with Cormora
 italic the runner-up. Caveat and Petit Formal Script were tried and rejected: the
 first reads as a marker note, the second as a wedding invitation.
 
-**`/?type=1` opens a live tuner** in the poem panel: four font buttons and a size
-slider, writing `--poem-scale`. It's a dev affordance and renders for nobody else.
-Once a face is settled, drop the unused families from the Google Fonts link in
-app/page.tsx — they are only loaded so the choice can be seen.
+Settled on **Nothing You Could Do**; Cormorant italic stays loaded as the runner-up
+and for the rest of the page. Rejected along the way: Caveat (reads as a marker note),
+Petit Formal Script (a wedding invitation), La Belle Aurore, Shadows Into Light Two,
+The Girl Next Door, Sacramento.
+
+The poem's caption is deliberately **not** in the poem's hand. "The heart of the
+jellyfish." is also line 06 — in the same face the title would read as the poem's
+first line. Small technical sans keeps the registers apart: that is the label on the
+sleeve, this is the song.
+
+**`/?tune=1` opens a live tuner** (top right): vignette strength and spread, poem face
+and size. Dev affordance, renders for nobody else. `?type=1` still works.
+
+### The countdown and the vignette
+
+The meta line is a live second-by-second countdown to release. It is its own
+component with its own interval so the rest of the page — the waveform above all —
+is not reconciled once a second. The page is statically prerendered, so the HTML
+carries a build-time number and the client disagrees on first render; that is what
+`suppressHydrationWarning` is for. `prefers-reduced-motion` gets days instead: an
+eight-digit number changing every second is the most restless thing on a still page.
+
+The vignette is a radial-gradient overlay at `z-index:1` — above the painting, below
+every piece of type. It has two knobs, both CSS variables so the tuner can drive them
+live: `--vig-strength` (corner darkness) and `--vig-inner` (where the darkening
+starts, as a percentage of the radius; larger means a tighter ring). Defaults live in
+the `VIGNETTE` constant.
 
 ### A CSS trap worth remembering
 

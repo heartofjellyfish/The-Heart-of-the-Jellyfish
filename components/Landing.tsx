@@ -78,17 +78,15 @@ const FIRST_DEMO = AVAILABLE_DEMOS[0];
 const HERO_IMAGE = '/images/hero.webp';
 
 /**
- * Where the poem breaks. The first four lines run together — the sea rising, the
- * dead, the dream and the doubt are one continuous drowning — and "Wake up!"
- * starts the second movement, paired with what the waking is for. Indices are
- * track numbers, so this reads the same as the sleeve.
+ * Where the poem breaks. Four stanzas, uneven on purpose — the movements are not
+ * the same length. Indices are track numbers, so this reads the same as the sleeve.
  */
-const STANZAS = [[1, 2, 3, 4], [5, 6], [7, 8], [9, 10]];
+const STANZAS = [[1, 2, 3], [4, 5, 6], [7, 8], [9, 10]];
 
 /**
- * Where the one meta line ("NEW ALBUM · 12 · 20 · 2026 · IN 121 DAYS") sits.
- * Four positions, one edit to switch — they read very differently against the
- * painting, so this is a look-at-it decision, not a reasoned one.
+ * Where the one meta line (the ticking countdown) sits. Four positions, one edit
+ * to switch — they read very differently against the painting, so this is a
+ * look-at-it decision, not a reasoned one.
  */
 type MetaPlacement = 'eyebrow' | 'underTitle' | 'underPlay' | 'topLeft';
 const META_PLACEMENT: MetaPlacement = 'underTitle';
@@ -108,24 +106,6 @@ const CORMORANT = "'Cormorant Garamond', serif";
  */
 const POEM_FONTS = [
   {
-    key: 'belle',
-    label: 'La Belle Aurore',
-    family: "'La Belle Aurore',cursive",
-    style: 'normal',
-    weight: '400',
-    size: 'clamp(15px,2.3vh,25px)',
-    lh: '1.65',
-  },
-  {
-    key: 'shadows',
-    label: 'Shadows Into Light Two',
-    family: "'Shadows Into Light Two',cursive",
-    style: 'normal',
-    weight: '400',
-    size: 'clamp(16px,2.4vh,26px)',
-    lh: '1.6',
-  },
-  {
     key: 'nothing',
     label: 'Nothing You Could Do',
     family: "'Nothing You Could Do',cursive",
@@ -133,24 +113,6 @@ const POEM_FONTS = [
     weight: '400',
     size: 'clamp(15px,2.2vh,24px)',
     lh: '1.75',
-  },
-  {
-    key: 'girl',
-    label: 'The Girl Next Door',
-    family: "'The Girl Next Door',cursive",
-    style: 'normal',
-    weight: '400',
-    size: 'clamp(16px,2.4vh,26px)',
-    lh: '1.6',
-  },
-  {
-    key: 'sacramento',
-    label: 'Sacramento',
-    family: "'Sacramento',cursive",
-    style: 'normal',
-    weight: '400',
-    size: 'clamp(18px,2.7vh,29px)',
-    lh: '1.5',
   },
   {
     key: 'cormorant',
@@ -164,13 +126,72 @@ const POEM_FONTS = [
 ] as const;
 
 type PoemFontKey = (typeof POEM_FONTS)[number]['key'];
-const POEM_FONT: PoemFontKey = 'belle';
+const POEM_FONT: PoemFontKey = 'nothing';
+
+/**
+ * The vignette: how dark the corners go, and how far in the darkening starts.
+ * `inner` is where the gradient is still fully clear, as a percentage of the
+ * radius — larger means a tighter ring hugging the edges.
+ */
+const VIGNETTE = { strength: 0.38, inner: 42 };
 
 /** Bars drawn in the waveform. 400 peaks per track downsample into this cleanly. */
 const WAVE_BARS = 160;
 
 
 type Panel = 'poem' | 'subscribe' | null;
+
+function secondsUntil(releaseDate: string) {
+  const target = new Date(releaseDate + 'T00:00:00').getTime();
+  return Math.max(0, Math.ceil((target - Date.now()) / 1000));
+}
+
+/**
+ * The release, counted in seconds, ticking.
+ *
+ * Its own component with its own interval, so the rest of the page — the
+ * waveform above all — is not reconciled once a second for a number nothing
+ * else depends on.
+ *
+ * The page is statically prerendered, so the HTML carries a build-time number
+ * and the client's first render disagrees with it. That is what
+ * suppressHydrationWarning is for: ten million seconds out, a value stale by one
+ * build is visually identical, and it snaps to the truth on mount.
+ *
+ * Reduced motion gets days instead — an eight-digit number changing every second
+ * is by far the most restless thing on an otherwise still page.
+ */
+function Countdown({ releaseDate }: { releaseDate: string }) {
+  const [secs, setSecs] = useState(() => secondsUntil(releaseDate));
+  const [still, setStill] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const apply = () => setStill(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    const iv = window.setInterval(() => setSecs(secondsUntil(releaseDate)), 1000);
+    return () => {
+      mq.removeEventListener('change', apply);
+      window.clearInterval(iv);
+    };
+  }, [releaseDate]);
+
+  if (secs <= 0) return <>ALBUM OUT NOW</>;
+  if (still) {
+    const days = Math.ceil(secs / 86400);
+    return (
+      <>
+        ALBUM RELEASE IN {days.toLocaleString('en-US')} {days === 1 ? 'DAY' : 'DAYS'}
+      </>
+    );
+  }
+  return (
+    <span suppressHydrationWarning>
+      ALBUM RELEASE IN {secs.toLocaleString('en-US')} {secs === 1 ? 'SECOND' : 'SECONDS'}
+    </span>
+  );
+}
 
 /**
  * The seek bar's waveform. Peaks come precomputed from `public/waveforms.json`
@@ -219,7 +240,6 @@ function Waveform({ data, pct }: { data: number[]; pct: number }) {
 /* ------------------------------------------------------------------ */
 
 export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }) {
-  const [days, setDays] = useState(0);
   const [panel, setPanel] = useState<Panel>(null);
   const [cur, setCur] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -227,10 +247,11 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [missing, setMissing] = useState(false);
   const [sent, setSent] = useState(false);
   const [peaks, setPeaks] = useState<Record<string, number[]> | null>(null);
-  /** `/?type=1` opens the poem type tuner. Dev affordance, costs the page nothing. */
+  /** `/?tune=1` (or `?type=1`) opens the tuner. Dev affordance; renders for nobody else. */
   const [tuner, setTuner] = useState(false);
   const [font, setFont] = useState<PoemFontKey>(POEM_FONT);
   const [fontScale, setFontScale] = useState(1);
+  const [vig, setVig] = useState(VIGNETTE);
 
   const emailRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -239,19 +260,9 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   /** Lets the `ended` listener advance a track without capturing a stale closure. */
   const playTrackRef = useRef<(n: number) => void>(() => {});
 
-  /* --- countdown -------------------------------------------------- */
   useEffect(() => {
-    const tick = () => {
-      const target = new Date(releaseDate + 'T00:00:00').getTime();
-      setDays(Math.max(0, Math.ceil((target - Date.now()) / 864e5)));
-    };
-    tick();
-    const iv = window.setInterval(tick, 60000);
-    return () => window.clearInterval(iv);
-  }, [releaseDate]);
-
-  useEffect(() => {
-    setTuner(new URLSearchParams(window.location.search).get('type') === '1');
+    const q = new URLSearchParams(window.location.search);
+    setTuner(q.get('tune') === '1' || q.get('type') === '1');
   }, []);
 
   /* --- Esc closes whatever panel is open -------------------------- */
@@ -402,9 +413,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     [],
   );
 
-  const META =
-    'NEW ALBUM · 12 · 20 · 2026 · ' +
-    (days === 0 ? 'OUT TODAY' : days === 1 ? 'IN 1 DAY' : 'IN ' + days + ' DAYS');
 
   const waveData = cur > 0 ? peaks?.[String(cur).padStart(2, '0')] ?? null : null;
 
@@ -444,10 +452,23 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         alt="A figure on the shore, looking down at a jellyfish in the shallows"
       />
       <div className="l-scrim" />
+      <div
+        className="l-vignette"
+        style={
+          {
+            ['--vig-strength' as string]: vig.strength,
+            ['--vig-inner' as string]: vig.inner + '%',
+          } as React.CSSProperties
+        }
+      />
 
       <nav className="l-nav">
         <div className="l-nav-left">
-          {META_PLACEMENT === 'topLeft' && <div className="l-meta">{META}</div>}
+          {META_PLACEMENT === 'topLeft' && (
+            <div className="l-meta">
+              <Countdown releaseDate={releaseDate} />
+            </div>
+          )}
         </div>
         <button type="button" className="l-nav-item" onClick={() => setPanel('subscribe')}>
           PRE-SAVE
@@ -455,13 +476,21 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       </nav>
 
       <div className="l-hero">
-        {META_PLACEMENT === 'eyebrow' && <div className="l-meta l-meta-eyebrow">{META}</div>}
+        {META_PLACEMENT === 'eyebrow' && (
+          <div className="l-meta l-meta-eyebrow">
+            <Countdown releaseDate={releaseDate} />
+          </div>
+        )}
         <h1 className="l-title">
           The Heart
           <br />
           of the Jellyfish
         </h1>
-        {META_PLACEMENT === 'underTitle' && <div className="l-meta l-meta-under">{META}</div>}
+        {META_PLACEMENT === 'underTitle' && (
+          <div className="l-meta l-meta-under">
+            <Countdown releaseDate={releaseDate} />
+          </div>
+        )}
 
         <div className="l-play-row">
           <button
@@ -479,7 +508,11 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           </button>
         </div>
 
-        {META_PLACEMENT === 'underPlay' && <div className="l-meta l-meta-under">{META}</div>}
+        {META_PLACEMENT === 'underPlay' && (
+          <div className="l-meta l-meta-under">
+            <Countdown releaseDate={releaseDate} />
+          </div>
+        )}
       </div>
 
       {/* ---- the one bar at the bottom: tracklist, or the player ---- */}
@@ -546,9 +579,36 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         )}
       </div>
 
-      {/* ---- poem type tuner, /?type=1 ---- */}
-      {tuner && panel === 'poem' && (
+      {/* ---- tuner, /?tune=1 ---- */}
+      {tuner && (
         <div className="l-tuner">
+          <div className="l-tuner-head">VIGNETTE</div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0}
+              max={0.85}
+              step={0.01}
+              value={vig.strength}
+              aria-label="Vignette strength"
+              onChange={(e) => setVig((v) => ({ ...v, strength: Number(e.target.value) }))}
+            />
+            <span className="l-tuner-val">strength {vig.strength.toFixed(2)}</span>
+          </div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0}
+              max={80}
+              step={1}
+              value={vig.inner}
+              aria-label="Vignette spread"
+              onChange={(e) => setVig((v) => ({ ...v, inner: Number(e.target.value) }))}
+            />
+            <span className="l-tuner-val">inner {vig.inner}%</span>
+          </div>
+
+          <div className="l-tuner-head">POEM TYPE</div>
           <div className="l-tuner-row">
             {POEM_FONTS.map((f) => (
               <button
@@ -572,7 +632,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               onChange={(e) => setFontScale(Number(e.target.value))}
             />
             <span className="l-tuner-val">
-              {font} · ×{fontScale.toFixed(2)}
+              {font} ×{fontScale.toFixed(2)}
             </span>
           </div>
         </div>
@@ -694,6 +754,14 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-bg-blur{filter:blur(34px) saturate(1.06);transform:scale(1.14)}
 .l-scrim{position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(180deg,rgba(24,74,112,.28),rgba(24,74,112,.05) 30%,transparent 55%)}
+
+/* Darkens the corners so the painting sits in the frame rather than running off
+   it, and so white type near the edges has something to sit on. Above the art,
+   below every piece of type — z-index 1 against the nav/hero/bar's 10 and 20. */
+.l-vignette{position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:radial-gradient(ellipse at center,
+    transparent var(--vig-inner,42%),
+    rgba(5,22,38,var(--vig-strength,.38)) 100%)}
 
 /* Narrower than 13:10 a cover crop pushes either the jellyfish or the figure out
    of frame, so show the painting whole and let the blur surround it. The top edge
@@ -823,8 +891,12 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   margin:auto;max-width:min(880px,94vw);
   /* room for the numbers to hang outside the text column */
   padding-left:3.2em}
-.l-poem-head{font-family:'Jost',sans-serif;font-weight:300;font-size:10px;
-  letter-spacing:.5em;opacity:.55;margin-bottom:clamp(24px,5vh,52px)}
+/* A caption, not a headline. It is deliberately NOT set in the poem's hand: the
+   words "The heart of the jellyfish." are also line 06, and in the same face the
+   title would read as the poem's first line. Small technical sans keeps the two
+   registers apart — this is the label on the sleeve, that is the song. */
+.l-poem-head{font-family:'Jost',sans-serif;font-weight:300;font-size:9.5px;
+  letter-spacing:.46em;opacity:.4;margin-bottom:clamp(34px,7vh,74px)}
 .l-poem-body{display:flex;flex-direction:column;
   gap:clamp(18px,3.2vh,38px)}          /* the space between stanzas */
 .l-poem-stanza{display:flex;flex-direction:column;gap:clamp(1px,.35vh,5px)}
@@ -842,16 +914,8 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 
 /* One variable set per candidate face. Sizes are not interchangeable: the
    scripts have much smaller x-heights than Cormorant. */
-.l-poem-f-belle{--poem-family:'La Belle Aurore',cursive;--poem-style:normal;
-  --poem-weight:400;--poem-size:clamp(15px,2.3vh,25px);--poem-lh:1.65}
-.l-poem-f-shadows{--poem-family:'Shadows Into Light Two',cursive;--poem-style:normal;
-  --poem-weight:400;--poem-size:clamp(16px,2.4vh,26px);--poem-lh:1.6}
 .l-poem-f-nothing{--poem-family:'Nothing You Could Do',cursive;--poem-style:normal;
   --poem-weight:400;--poem-size:clamp(15px,2.2vh,24px);--poem-lh:1.75}
-.l-poem-f-girl{--poem-family:'The Girl Next Door',cursive;--poem-style:normal;
-  --poem-weight:400;--poem-size:clamp(16px,2.4vh,26px);--poem-lh:1.6}
-.l-poem-f-sacramento{--poem-family:'Sacramento',cursive;--poem-style:normal;
-  --poem-weight:400;--poem-size:clamp(18px,2.7vh,29px);--poem-lh:1.5}
 .l-poem-f-cormorant{--poem-family:'Cormorant Garamond',serif;--poem-style:italic;
   --poem-weight:500;--poem-size:clamp(17px,2.5vh,26px);--poem-lh:1.55}
 
@@ -899,7 +963,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 }
 
 /* Dev-only, behind /?type=1 — never rendered for a visitor. */
-.l-tuner{position:absolute;left:18px;top:18px;z-index:40;max-width:240px;
+.l-tuner{position:absolute;right:18px;top:76px;z-index:40;max-width:230px;
   display:flex;flex-direction:column;gap:10px;align-items:flex-start;
   padding:14px 18px;border-radius:4px;
   background:rgba(6,26,44,.88);backdrop-filter:blur(8px);
@@ -909,6 +973,8 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   padding:6px 11px;border-radius:3px;cursor:pointer;font-size:11px;letter-spacing:.1em}
 .l-tuner-on{background:rgba(143,214,234,.22);border-color:#8fd6ea;color:#fff}
 .l-tuner-val{opacity:.7;min-width:12ch}
+.l-tuner-head{font-size:9px;letter-spacing:.34em;opacity:.45;margin-top:4px}
+.l-tuner input[type=range]{width:120px;accent-color:#8fd6ea}
 
 @media (prefers-reduced-motion: reduce){
   .landing *{animation:none !important}
