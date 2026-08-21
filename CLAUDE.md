@@ -185,6 +185,13 @@ This is the path the user will repeatedly walk. **Follow it.**
 
 ## Don't
 
+- **Don't touch `.next/` while the dev server is running.** `next dev` and `next build`
+  share that directory, so either `npm run build` or `rm -rf .next` during a session
+  yanks the running server's chunks out from under it and every request 500s with
+  `Cannot find module './500.js'`. Nothing is wrong with the code; the fix is always
+  stop the server, clear the directory, start it again. If a production build needs
+  verifying mid-session, stop the preview first — or build into a separate directory
+  with `next build --distDir .next-prod`.
 - Don't introduce a state library — the `depthRef` pattern is intentional and stays.
 - Don't `useGLTF.preload` heavy assets at module scope (breaks first-paint budget).
 - Don't add a prop without picking its depth window — "always visible" props clutter the descent.
