@@ -53,31 +53,49 @@ ships.
 in [components/Landing.tsx](components/Landing.tsx) says which are playable; drop a number
 to pull one back to "demo 待上传".
 
-**Loudness standard: -16 LUFS integrated, true peak ≤ -1 dBTP.** *(last updated 2026-08-22)*
+**Loudness standard: -12 LUFS integrated, true peak <= -1 dBTP.** *(last updated 2026-08-22)*
 
 The ten tracks came from different mix/export sessions and arrived spanning -11.4 to
 -27.6 LUFS — a 16 LU spread, so the player jumped from painfully loud to inaudible
-between tracks. They are now all within 0.3 LU of -16.
+between tracks. They are now all within 0.1 LU of -12.
 
-Why these numbers, and why it matters if you re-export a track:
+Why -12 and not the streaming number:
 
-- **-16 LUFS**, not streaming's -14, because this album's dynamic tracks (06 at LRA 15,
-  10 at LRA 13) need the extra headroom. Pushing to -14 forces real compression on them.
-- **Match the target per track, don't re-normalize the set.** A new export at a different
-  level will stick out again; bring it to -16 before dropping it in.
-- **Normalize with linear gain + a true-peak limiter, NOT `loudnorm`'s dynamic mode.**
-  ffmpeg's `loudnorm` two-pass squashed 06 from LRA 15.3 to 10.7 — it compresses toward
-  its LRA target. Applying a flat `volume=NdB` and letting an oversampled `alimiter` catch
-  only the peaks preserved LRA exactly on nine of ten tracks (06 lost 0.7 LU).
-- **01 needs an oversampled limiter.** Its source is already clipped (+1.7 dBTP), so a
-  sample-domain limiter at -1 dBFS still lands at +0.1 dBTP after MP3 encoding. Limit at
-  4× oversampling with a -1.5 dBFS ceiling.
-- Pre-normalization copies live at `public/audio/_original_backup/` (in this repo, so
-  they ship to Vercel too — 38 MB of dead weight worth deleting once the new mixes settle)
-  and outside the repo at `/Users/qliu/Qi Land/audio-originals/`.
+- **The site's `<audio>` player does no loudness normalization**, so the file level IS the
+  playback level. Streaming services flatten everything to their own target (Spotify,
+  YouTube, Tidal ≈ -14 LUFS; Apple Music Sound Check ≈ -16), which means **what you upload
+  to Spotify does not change how loud it plays there** — Spotify turns a hot master back
+  down. The only place a louder file actually plays louder is this site. Qi wants the site
+  to sit a touch above Spotify, so -12 it is: 2 dB hotter than what a visitor's ear is
+  calibrated to from their last tab.
+- **-12 is where this album's own mixes already live.** 03 arrived at -11.4 and 10 at -12.3
+  straight out of their sessions, so at -12 the limiter barely touches them (0.7 and 1.3 dB
+  of peak clamping, LRA untouched). That makes -12 a property of the material, not a number
+  imposed on it.
+- **-11 is the wall.** Measured across all four candidate targets, 06 falls off a cliff past
+  -12: LRA 15.3 -> 12.3 at -12, but -> 11.4 at -11, with 14.5 dB of peak clamping. Don't go hotter.
 
-These are 128 kbps web demos re-encoded to 160 kbps, not masters. If real WAV/AIFF masters
-show up, normalize from those instead — one less generation of MP3 loss.
+How to normalize (matters if you re-export a track):
+
+- **Linear gain + an oversampled true-peak limiter, NOT `loudnorm`'s dynamic mode.** ffmpeg's
+  `loudnorm` two-pass compresses toward its LRA target and squashed 06 from LRA 15.3 to 10.7
+  for no reason. A flat `volume=NdB` into `aresample=176400,alimiter=limit=0.841,aresample=44100`
+  clamps only the peaks. Iterate the gain 2-3 times, since limiting drags the integrated
+  reading back down.
+- **Oversample the limiter on every track at this target.** At -12 most tracks need 5-13 dB of
+  peak clamping; a sample-domain limiter at -1 dBFS still overshoots to positive dBTP once MP3
+  encoding adds intersample peaks. 01 is the worst case — its source is already clipped at
+  +1.7 dBTP.
+- **Match the target per track; don't re-normalize the set.** A new export at a different level
+  will stick out again. Bring it to -12 before dropping it in.
+- Pre-normalization copies live at `public/audio/_original_backup/` (in this repo, so they ship
+  to Vercel too — 38 MB of dead weight worth deleting once the mixes settle) and outside the
+  repo at `/Users/qliu/Qi Land/audio-originals/`. **Always normalize from those originals, not
+  from the current files** — re-limiting already-limited audio compounds the damage.
+
+These are 128 kbps web demos re-encoded to 160 kbps, not masters. At -12 the limiter is working
+hard on lossy source material, which is the real argument for redoing this from WAV/AIFF masters
+if they ever surface.
 
 ## Where this repo sits
 
