@@ -149,41 +149,39 @@ const VIGNETTE = { strength: 0.14, inner: 0 };
 const HERO_TYPE_SCALE = 1.15;
 
 /**
- * Ten treatments for the album title. Only the surface of the letters changes —
- * face, size and position are identical in all ten.
+ * How deep the album title sits in the surface.
  *
- * All ten carry the letterpress edge Qi picked: a dark line above the glyph and
- * a light one below, which is the direction that reads as stamped into a surface
- * rather than raised off it. 'press' is that edge and nothing else; the other
- * nine add a skin over it.
+ * Qi picked the letterpress edge over nine noise textures and then asked for it
+ * stronger. Two things were wrong with the version he was looking at, and only
+ * one of them was strength:
  *
- * Every one of those nine is built from feTurbulence rather than from repeating
- * gradients, and that is the whole point. The first batch was woven, laid, ruled
- * — all of them regular grids, and a regular grid at any strength reads as cloth
- * or as a printing screen. Skin, muscle and cracked glaze are irregular at
- * several scales at once, which is exactly what fractal noise is. Two of them
- * ('capillary', 'craze') use type='turbulence' instead of 'fractalNoise',
- * because turbulence sums the absolute value of the noise and so creases along
- * ridges — threshold those ridges and you get filaments rather than blotches.
+ * - The edge was 1px on a 120px letter, under eight thousandths of the cap
+ *   height. Whatever it was doing, it was doing invisibly.
+ * - text-shadow always paints *behind* the glyph, so an offset upward can only
+ *   show a dark line above the letter, never inside it. That reads as a shadow
+ *   cast by something floating, which is the opposite of what we want. A groove
+ *   is shaded on its *inner* walls: dark along the top wall, which faces away
+ *   from the light, bright along the bottom wall, which faces into it.
  *
- * Try them at /?tune=1, then set TITLE_TEXTURE to the winner and delete the
- * losers.
+ * So there are three styles here rather than one, in order of how literally they
+ * commit to that. 'edge' and 'groove' stay text-shadow and just scale up, which
+ * keeps the letters crisp. 'carve' uses an SVG filter to put real shading inside
+ * the glyph — SourceAlpha minus a shifted blur of itself is exactly the band
+ * along one inner edge — and is the only one of the three that can actually look
+ * cut rather than lit.
+ *
+ * DEPTH multiplies all of it. Everything downstream is expressed in multiples of
+ * it, so the slider at /?tune=1 moves the whole construction at once.
  */
-const TITLE_TEXTURES = [
-  { key: 'skin', label: 'A  Skin' },
-  { key: 'pore', label: 'B  Pore' },
-  { key: 'blush', label: 'C  Blush' },
-  { key: 'capillary', label: 'D  Capillary' },
-  { key: 'craze', label: 'E  Crazing' },
-  { key: 'fibre', label: 'F  Fibre' },
-  { key: 'membrane', label: 'G  Membrane' },
-  { key: 'vellum', label: 'H  Vellum' },
-  { key: 'pulse', label: 'I  Pulse' },
-  { key: 'press', label: 'J  Letterpress' },
+const INSET_STYLES = [
+  { key: 'edge', label: 'A  Edge' },
+  { key: 'groove', label: 'B  Groove' },
+  { key: 'carve', label: 'C  Carve' },
 ] as const;
 
-type TexKey = (typeof TITLE_TEXTURES)[number]['key'];
-const TITLE_TEXTURE: TexKey = 'press';
+type InsetKey = (typeof INSET_STYLES)[number]['key'];
+const INSET: InsetKey = 'carve';
+const INSET_DEPTH = 2.2;
 
 /**
  * Candidates for the "this one is sounding" colour, every one of them sampled
@@ -351,7 +349,15 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [vig, setVig] = useState(VIGNETTE);
   const [lit, setLit] = useState<LitKey>(LIT);
   const [typeScale, setTypeScale] = useState(HERO_TYPE_SCALE);
-  const [tex, setTex] = useState<TexKey>(TITLE_TEXTURE);
+  const [inset, setInset] = useState<InsetKey>(INSET);
+  const [depth, setDepth] = useState(INSET_DEPTH);
+  /**
+   * The title's rendered font size, in px. The carve filter's offsets are SVG
+   * attributes, which cannot read em or var(), so the one thing that must scale
+   * with the type has to be measured and passed in. 96 is a placeholder that
+   * renders identically on both hydration passes; the effect corrects it.
+   */
+  const [titlePx, setTitlePx] = useState(96);
   const [stripCut, setStripCut] = useState(false);
   /**
    * Which face the bottom bar is showing. Playback and the bar's view are
@@ -361,6 +367,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [barView, setBarView] = useState<'list' | 'player'>('list');
 
   const stripRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const curRef = useRef(0);
@@ -371,6 +378,20 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     setTuner(q.get('tune') === '1' || q.get('type') === '1');
+  }, []);
+
+  useEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    const read = () => setTitlePx(parseFloat(getComputedStyle(el).fontSize) || 96);
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    window.addEventListener('resize', read);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', read);
+    };
   }, []);
 
   /*
@@ -603,10 +624,56 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           ['--lit-bright' as string]: litVals.bright,
           ['--lit-dim' as string]: litVals.dim,
           ['--type-scale' as string]: typeScale,
+          ['--inset' as string]: depth,
         } as React.CSSProperties
       }
     >
       <style dangerouslySetInnerHTML={{ __html: LANDING_CSS }} />
+
+      {/*
+        The carve. There is no inner-shadow property for text in CSS, so this is
+        the construction that stands in for one, twice over.
+
+        SourceAlpha composited "out" against a *shifted, blurred copy of itself*
+        leaves only the sliver of the glyph the copy failed to cover — a band
+        hugging one inner edge. Shift the copy down and the band lands along the
+        top of every letter; shift it up and it lands along the bottom. Flood each
+        band with a colour, merge them back over the glyph, and the letter has a
+        shadowed upper wall and a lit lower one: a groove, not a shadow.
+
+        The offsets are attributes rather than CSS, so they cannot read
+        var(--inset) and are bound from state instead. Kept modest per unit of
+        depth on purpose — the blur has to stay narrower than a hairline stroke,
+        or the thin parts of the italic fill with shadow and go muddy.
+      */}
+      <svg className="l-defs" aria-hidden focusable="false">
+        <filter
+          id="l-carve"
+          x="-25%"
+          y="-25%"
+          width="150%"
+          height="150%"
+          colorInterpolationFilters="sRGB"
+        >
+          <feOffset in="SourceAlpha" dx="0" dy={titlePx * 0.011 * depth} result="down" />
+          <feGaussianBlur in="down" stdDeviation={titlePx * 0.008 * depth} result="downBlur" />
+          <feComposite in="SourceAlpha" in2="downBlur" operator="out" result="topBand" />
+          <feFlood floodColor="#08243c" floodOpacity="0.72" result="dark" />
+          <feComposite in="dark" in2="topBand" operator="in" result="shade" />
+
+          <feOffset in="SourceAlpha" dx="0" dy={titlePx * -0.008 * depth} result="up" />
+          <feGaussianBlur in="up" stdDeviation={titlePx * 0.005 * depth} result="upBlur" />
+          <feComposite in="SourceAlpha" in2="upBlur" operator="out" result="bottomBand" />
+          <feFlood floodColor="#ffffff" floodOpacity="0.95" result="light" />
+          <feComposite in="light" in2="bottomBand" operator="in" result="sheen" />
+
+          <feMerge>
+            <feMergeNode in="SourceGraphic" />
+            <feMergeNode in="sheen" />
+            <feMergeNode in="shade" />
+          </feMerge>
+        </filter>
+      </svg>
 
       {/*
         One layer, cover at every aspect ratio — only the crop moves. There used
@@ -652,7 +719,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             <Countdown releaseDate={releaseDate} />
           </div>
         )}
-        <h1 className="l-title" data-tex={tex}>
+        <h1 className="l-title" data-inset={inset} ref={titleRef}>
           The Heart
           <br />
           of the Jellyfish
@@ -884,18 +951,30 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             ))}
           </div>
 
-          <div className="l-tuner-head">TITLE TEXTURE</div>
-          <div className="l-tuner-row l-tuner-grid">
-            {TITLE_TEXTURES.map((t) => (
+          <div className="l-tuner-head">TITLE INSET</div>
+          <div className="l-tuner-row">
+            {INSET_STYLES.map((t) => (
               <button
                 key={t.key}
                 type="button"
-                className={'l-tuner-btn' + (t.key === tex ? ' l-tuner-on' : '')}
-                onClick={() => setTex(t.key)}
+                className={'l-tuner-btn' + (t.key === inset ? ' l-tuner-on' : '')}
+                onClick={() => setInset(t.key)}
               >
                 {t.label}
               </button>
             ))}
+          </div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0}
+              max={5}
+              step={0.1}
+              value={depth}
+              aria-label="Inset depth"
+              onChange={(e) => setDepth(Number(e.target.value))}
+            />
+            <span className="l-tuner-val">depth x{depth.toFixed(1)}</span>
           </div>
 
           <div className="l-tuner-head">POEM TYPE</div>
@@ -1167,145 +1246,62 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-meta-under{margin-top:clamp(18px,2.8vh,34px);opacity:.95}
 .l-title{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
   font-size:calc(clamp(42px,7.2vw,104px) * var(--type-scale,1));line-height:1.04;
-  /* background-clip:text paints the fill only inside the element's own box, and
-     at line-height 1.04 that box cuts through the ink: measured at 106px, the
-     glyphs overshoot it by 9px at the bottom and 9.5px at the top, so the
-     descender of "Jellyfish" got no fill at all and simply disappeared. Pad the
-     box out past the ink and pull the same amount back off the margin, so the
-     shape below it does not move. .l-hero is a flex column, so these negative
-     margins cannot collapse into the countdown's margin-top. */
+  /* At line-height 1.04 the element's box is smaller than the ink it holds:
+     measured at 106px, the glyphs overshoot it by 9px at the bottom and 9.5px at
+     the top. Anything that paints from the box rather than from the outline then
+     cuts through the letters — which is how the descender of "Jellyfish" once
+     vanished entirely under background-clip:text, and which also decides where
+     the carve filter's region gets measured from. Pad the box out past the ink
+     and pull the same amount back off the margin, so the shape below does not
+     move. .l-hero is a flex column, so these negative margins cannot collapse
+     into the countdown's margin-top. */
   padding:.2em 0;margin:-.2em 0}
 
-/* ---- title textures, /?tune=1 ----------------------------------------------
-   Nine skins over one letterpress edge. The edge is what Qi picked and it does
-   not change; only what fills the glyph does.
+/* ---- how deep the title sits, /?tune=1 -------------------------------------
+   Three readings of the same idea, all scaled by --inset so one slider moves the
+   whole thing. Every length below is a multiple of it; nothing is a bare pixel.
 
-   Two mechanics are shared by all nine, and both are forced:
+   The physics being imitated is a groove under light from above: the wall at the
+   top of the cut faces away from the light and goes dark, the wall at the bottom
+   faces into it and catches a highlight. Get that pair the wrong way round and
+   the letters pop out of the surface instead of into it. */
 
-   1. background-clip:text needs a transparent text-fill, and text-shadow paints
-      from the glyph outline — it therefore shows straight through that fill and
-      turns each letter into a blurred blob of its own shadow. So the letterpress
-      edge cannot stay a text-shadow here; it becomes a chain of drop-shadow()
-      filters, which act on the rendered result and sit behind the fill. Order
-      matters: dark-up first, light-down second (it takes the first result as its
-      input, which is why its top edge lands flush with the glyph instead of
-      haloing above it), soft ambient last.
+/* A - the original, only no longer 1px. Two hard rims and an ambient shadow
+   underneath. text-shadow paints behind the glyph, so both rims sit just outside
+   the letter rather than inside it — which is why this reads as lit from above
+   rather than as cut, and why it stays perfectly crisp. */
+.l-title[data-inset=edge]{
+  text-shadow:
+    0 calc(-.009em * var(--inset,1)) 0 rgba(8,34,58,.62),
+    0 calc(.009em * var(--inset,1)) 0 rgba(255,255,255,.66),
+    0 calc(.018em * var(--inset,1)) calc(.06em * var(--inset,1)) rgba(8,34,58,.30)}
 
-   2. Everything is feTurbulence. Repeating gradients cannot do this — a regular
-      grid at any strength reads as cloth or as a printing screen, which is what
-      sank the first batch. Skin and muscle and cracked glaze are irregular at
-      several scales at once, which is what fractalNoise is for. 'capillary' and
-      'craze' switch to type='turbulence', which sums |noise| and so creases
-      along ridges: threshold the creases and you get filaments.
+/* B - the same rims, but the dark one is doubled and blurred so it falls off
+   into the surface the way the lip of a depression would, and the light one
+   stays hard because a lit edge is a specular, not a gradient. */
+.l-title[data-inset=groove]{
+  text-shadow:
+    0 calc(-.009em * var(--inset,1)) calc(.009em * var(--inset,1)) rgba(6,28,50,.72),
+    0 calc(-.02em * var(--inset,1)) calc(.036em * var(--inset,1)) rgba(6,28,50,.34),
+    0 calc(.009em * var(--inset,1)) 0 rgba(255,255,255,.76),
+    0 calc(.027em * var(--inset,1)) calc(.09em * var(--inset,1)) rgba(6,28,50,.26)}
 
-   The feColorMatrix under each feTurbulence does the same two jobs every time —
-   the RGB rows are constants, so the layer is a flat colour, and the alpha row
-   is a ramp on the red channel of the noise. A positive ramp gives blotches; a
-   steep negative one keeps only the darkest few percent, which is how a vein or
-   a crack stays a hairline instead of a smear.
+/* C - the only one where the shading is genuinely inside the glyph. See the SVG
+   in the markup for how the two inner bands are built. text-shadow has to go, or
+   it would fight the filter; the ambient shadow comes back as a drop-shadow
+   chained after the filter, which sees the carved result rather than the raw
+   outline. */
+.l-title[data-inset=carve]{
+  text-shadow:none;
+  filter:url(#l-carve)
+         drop-shadow(0 calc(.018em * var(--inset,1)) calc(.08em * var(--inset,1)) rgba(8,34,58,.34))}
 
-   Guarded on @supports, because without background-clip:text the transparent
-   fill would leave the album's name invisible rather than merely untextured. */
-@supports ((-webkit-background-clip:text) or (background-clip:text)){
-  .l-title[data-tex]:not([data-tex=press]){
-    -webkit-background-clip:text;background-clip:text;
-    -webkit-text-fill-color:transparent;
-    text-shadow:none;
-    filter:drop-shadow(0 -1px 0 rgba(12,52,84,.5))
-           drop-shadow(0 1px 0 rgba(255,255,255,.45))
-           drop-shadow(0 2px 20px rgba(12,52,84,.34));
-  }
+/* Every length above is in em, not px. A rim is only read as an edge relative to
+   the stroke it sits on, and the stroke scales with the type: the same 2px that
+   is a crisp edge at 120px is a smear at 48px. The carve's own offsets cannot be
+   em — they are SVG attributes — which is why titlePx exists. */
 
-  /* A - blotches of blood under a fine tooth, on warm ivory rather than white.
-     The colour shift is doing as much work as the grain: paper is neutral, skin
-     never is. */
-  .l-title[data-tex=skin]{background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.30 0 0 0 0 0.27 0.28 0 0 0 -0.075'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23p)'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.013' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.85 0 0 0 0 0.66 0 0 0 0 0.62 0.95 0 0 0 -0.30'/%3E%3C/filter%3E%3Crect width='640' height='420' filter='url(%23m)'/%3E%3C/svg%3E"),
-    linear-gradient(#fffcf9,#fdf3ee)}
-
-  /* B - the same tooth with the warmth taken out. Matte, close, no blood. */
-  .l-title[data-tex=pore]{background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='pc'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' seed='13' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.29 0 0 0 0 0.36 0 0 0 0 0.43 0.32 0 0 0 -0.08'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23pc)'/%3E%3C/svg%3E"),
-    linear-gradient(#ffffff,#fbfcfd)}
-
-  /* C - no grain at all, only uneven warmth. The letters have a complexion. */
-  .l-title[data-tex=blush]{background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Cfilter id='m2'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.011' numOctaves='4' seed='23' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.84 0 0 0 0 0.60 0 0 0 0 0.57 1.25 0 0 0 -0.38'/%3E%3C/filter%3E%3Crect width='640' height='420' filter='url(%23m2)'/%3E%3C/svg%3E"),
-    linear-gradient(#fffdfc,#fdf2ef)}
-
-  /* D - ridged noise cut at the bottom 9%, which leaves winding filaments a
-     pixel or two wide. Sparse on purpose: a whole net of them stops reading as
-     vessels and starts reading as marble. */
-  .l-title[data-tex=capillary]{background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420'%3E%3Cfilter id='v'%3E%3CfeTurbulence type='turbulence' baseFrequency='0.03' numOctaves='2' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.60 0 0 0 0 0.20 0 0 0 0 0.22 -5.4 0 0 0 0.52'/%3E%3C/filter%3E%3Crect width='420' height='420' filter='url(%23v)'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='pf'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2' seed='31' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.40 0 0 0 0 0.31 0 0 0 0 0.30 0.17 0 0 0 -0.05'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23pf)'/%3E%3C/svg%3E"),
-    linear-gradient(#fffdfc,#fff8f6)}
-
-  /* E - the same trick at a higher frequency and a steeper cut, in the sea's
-     colour instead of blood: the crazing on a glaze that has aged. The most
-     brittle of the nine. */
-  .l-title[data-tex=craze]{background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='c'%3E%3CfeTurbulence type='turbulence' baseFrequency='0.075' numOctaves='1' seed='19' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.14 0 0 0 0 0.28 0 0 0 0 0.38 -30 0 0 0 0.78'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url(%23c)'/%3E%3C/svg%3E"),
-    linear-gradient(#ffffff,#fdfeff)}
-
-  /* F - noise stretched 65:1 across the axes becomes striation rather than
-     blotch, and the whole layer is rotated -12deg so the fibres run with the
-     italic instead of across it. Heart muscle. */
-  .l-title[data-tex=fibre]{background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='820' height='560'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.006 0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.26 0 0 0 0 0.28 0.66 0 0 0 -0.21'/%3E%3C/filter%3E%3Cg transform='rotate(-12 410 280)'%3E%3Crect x='-820' y='-560' width='2460' height='1680' filter='url(%23f)'/%3E%3C/g%3E%3C/svg%3E"),
-    linear-gradient(#fffcfa,#fdf5f2)}
-
-  /* G - the fragile one. The fill itself is only ~three-quarters opaque, so the
-     painting comes faintly through the letters. That weak fill cannot carry the
-     hard dark edge (it would show through and dirty the glyph), so this variant
-     softens the edge and leans on a deeper ambient shadow to hold the type off
-     the sky. A jellyfish bell. */
-  .l-title[data-tex=membrane]{background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='pf'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2' seed='31' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.40 0 0 0 0 0.31 0 0 0 0 0.30 0.17 0 0 0 -0.05'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23pf)'/%3E%3C/svg%3E"),
-    linear-gradient(rgba(255,255,255,.8),rgba(255,252,250,.66))}
-  .l-title[data-tex=membrane]{
-    filter:drop-shadow(0 -1px 0 rgba(12,52,84,.26))
-           drop-shadow(0 1px 0 rgba(255,255,255,.5))
-           drop-shadow(0 3px 24px rgba(12,52,84,.44))}
-
-  /* H - thin and warm and slightly translucent, with a tooth too fine to
-     resolve as marks. Fragility from thinness rather than from damage. */
-  .l-title[data-tex=vellum]{background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='t'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.3' numOctaves='1' seed='41' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.34 0 0 0 0 0.28 0.24 0 0 0 -0.07'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23t)'/%3E%3C/svg%3E"),
-    linear-gradient(rgba(255,251,246,.92),rgba(255,246,239,.84))}
-
-  /* I - A, beating. 1s is 60bpm and the curve is a double thump, systole then
-     the smaller diastole, rather than a sine: a sine reads as a glow fading in
-     and out, two thumps read as a pulse. Amplitude is deliberately under 6% —
-     at the size this type is set, anything you can watch happening is too much.
-     The storyboard has the heartbeat driving the whole site from frame VI on;
-     this is the first place it shows up. */
-  .l-title[data-tex=pulse]{background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.30 0 0 0 0 0.27 0.28 0 0 0 -0.075'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23p)'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.013' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.85 0 0 0 0 0.66 0 0 0 0 0.62 0.95 0 0 0 -0.30'/%3E%3C/filter%3E%3Crect width='640' height='420' filter='url(%23m)'/%3E%3C/svg%3E"),
-    linear-gradient(#fffcf9,#fdf3ee);
-    animation:l-pulse 1s ease-in-out infinite}
-}
-
-@keyframes l-pulse{
-  0%{opacity:1}
-  7%{opacity:.945}
-  15%{opacity:1}
-  25%{opacity:.972}
-  34%{opacity:1}
-  100%{opacity:1}
-}
-@media (prefers-reduced-motion:reduce){
-  .l-title[data-tex=pulse]{animation:none}
-}
-
-/* J - the edge on its own, and the only variant that is not a fill: solid white
-   letters, a dark line above and a light one below. No clipping, so it can stay
-   a text-shadow and live outside the @supports block. */
-.l-title[data-tex=press]{
-  text-shadow:0 -1px 0 rgba(12,52,84,.55),0 1px 0 rgba(255,255,255,.5),
-              0 2px 20px rgba(12,52,84,.34)}
+.l-defs{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
 
 .l-act-primary{display:flex;align-items:center;gap:clamp(14px,1.4vw,20px)}
 .l-play-row{display:flex;align-items:center;gap:clamp(14px,1.4vw,20px);margin-top:clamp(26px,4.2vh,52px)}

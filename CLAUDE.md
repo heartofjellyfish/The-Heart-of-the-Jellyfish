@@ -194,65 +194,66 @@ version looked like. Weighting the early stops far below linear (.04 and .14 whe
 linear would be .30 and .52) hides the onset: at 44% of the radius alpha is 0.02, at
 62% it is 0.07, and the darkness lands where it belongs, in the last fifth.
 
-### The title's ten textures
+### How deep the title sits
 
-`.l-title` carries a `data-tex` attribute. All ten values share the letterpress
-edge Qi picked — a dark line above the glyph, a light one below, which is the
-direction that reads as *stamped into* a surface rather than raised off it.
-`press` is that edge alone; the other nine add a skin over it. Pick one at
-`/?tune=1`, then set `TITLE_TEXTURE` and delete the losers.
+`.l-title` carries a `data-inset` attribute with three values, and `--inset` on
+`.landing` scales all three. Pick at `/?tune=1`, then set `INSET` / `INSET_DEPTH`.
 
-**Every skin is feTurbulence, and that is the point.** The first batch was linen,
-laid paper, ruled caustics — all repeating gradients, all regular grids, and a
-regular grid at any strength reads as cloth or as a printing screen. Qi's brief
-was skin, tissue, fragility: those are irregular at several scales at once, which
-is what fractal noise is for. `capillary` and `craze` switch to
-`type='turbulence'`, which sums |noise| and therefore creases along ridges —
-threshold the creases and you get filaments instead of blotches.
+Qi rejected nine noise textures inside the letters and asked instead for the
+letterpress edge to be *stronger*. Two things were wrong with what he was looking
+at, and only one of them was strength:
 
-Each layer is one `feTurbulence` + one `feColorMatrix`, and the matrix always
-does the same two jobs: the RGB rows are constants (so the layer is a flat
-colour) and the alpha row is a ramp on the noise's red channel. Positive ramp →
-blotches. Steep negative ramp → only the darkest few percent survive, which is
-how a vein stays a hairline instead of a smear.
+- The edge was **1px on a 120px letter** — under eight thousandths of the cap
+  height. Whatever it was doing, it was doing invisibly.
+- **`text-shadow` always paints behind the glyph.** An offset upward can only put
+  a dark line *above* the letter, never inside it, so it reads as a shadow cast by
+  something floating — the opposite of inset. A groove is shaded on its inner
+  walls: dark along the top wall, which faces away from the light, bright along
+  the bottom, which faces into it. Reverse that pair and the letters pop out of
+  the surface instead of into it.
 
-**Tune these by measuring, not by squinting.** Draw the data-URI to a canvas and
-read mean alpha, coverage and max alpha off `getImageData`. Two of the first
-attempts were wrong in a way that is hard to see and obvious in numbers: `craze`
-covered 33% of the area, which is a mottle rather than a crack network, and
-`blush` covered 99%, which is a flat pink wash rather than a complexion. The
-non-obvious part is that `type='turbulence'` piles its output up near zero, so a
-threshold that *looks* aggressive (`-6R + 0.5`) still lets a third of the field
-through; `craze` needed `-30R + 0.78`.
+`edge` and `groove` stay text-shadow and just scale up. `carve` is the only one
+with shading genuinely inside the glyph, and the construction is worth knowing
+because CSS has no inner shadow for text:
 
-Two things about `background-clip:text` are worth carrying forward, because both
-produced bugs that looked like something else:
+> `SourceAlpha` composited `operator="out"` against a **shifted, blurred copy of
+> itself** leaves only the sliver the copy failed to cover — a band hugging one
+> inner edge. Shift the copy down, the band lands along the top of every letter;
+> shift it up, along the bottom. `feFlood` each band with a colour, `feMerge` them
+> back over the glyph.
 
-- **The fill is painted only inside the element's own box.** At `line-height:1.04`
-  the h1's box is *smaller than the ink* — measured 9px of overshoot top and bottom
-  at a 106px font — so the descender of "Jellyfish" received no background and
-  vanished. It reads as the font being cropped; it is actually the background
-  stopping. The fix is `padding:.2em 0` with `margin:-.2em 0` to cancel it. Any
-  future change to `line-height`, or a face with deeper descenders, has to keep
-  that padding ahead of the ink.
-- **`text-shadow` shows straight through a transparent text-fill**, turning each
-  letter into a blurred blob of its own shadow. The nine clipped variants therefore
-  set `text-shadow:none` and stand in a chain of `drop-shadow()` filters, which act
-  on the rendered result and stay behind the fill. Order matters: dark-up, then
-  light-down (it takes the first result as *its* input, which is why its top edge
-  lands flush with the glyph instead of haloing above it), then the soft ambient.
-  `membrane` overrides the chain — its fill is only ~three-quarters opaque, so the
-  hard dark edge would show through and dirty the glyph.
+**Everything scales with the type, and this is the part that bit.** A rim only
+reads as an edge *relative to the stroke it sits on*, and Cormorant italic's
+hairlines at 106px are only ~4px wide. The first carve used absolute px offsets
+(`dy = 2.4 × depth` = 5.3px) — wider than the hairlines, so the shadow swallowed
+whole strokes and the title went grey and muddy. The CSS rims are therefore in
+`em`, and the filter — whose `dy` and `stdDeviation` are SVG *attributes* and so
+can read neither `em` nor `var()` — takes a measured `titlePx` from a
+ResizeObserver on the h1 and multiplies. Verified proportional: `dy/fontSize` is
+0.0242 at both 119.6px and 48.3px.
 
-Note that the negative margins do **not** collapse: `.l-hero` is a flex column, so
-the h1's `-.2em` bottom margin *adds* to the countdown's `margin-top`. That is the
-intent — outer edges land exactly where they did before the padding existed — but
-it means the two numbers are coupled.
+The `.l-defs` SVG holding the filter must be in the document but never seen:
+zero-size and `overflow:hidden`, **not** `display:none`, which stops the filter
+resolving in some engines.
 
-`pulse` is `skin` plus a 1s (=60bpm) double-thump opacity keyframe, systole then
-the smaller diastole. A sine reads as a glow; two thumps read as a heartbeat.
-Amplitude is under 6% on purpose — at this type size anything you can *watch*
-happening is too much. Disabled under `prefers-reduced-motion`.
+One consequence of the padding on `.l-title` (see below) is that the filter
+region is measured from a box that already contains the ink.
+
+### The title's box is smaller than its ink
+
+At `line-height:1.04` the h1's box cuts through the glyphs — measured 9px of
+overshoot at the bottom and 9.5px at the top at a 106px font. Anything that
+paints from the box rather than from the outline then clips the letters. This
+first showed up as the descender of "Jellyfish" disappearing completely under
+`background-clip:text`, which reads as the font being cropped and is actually the
+background stopping.
+
+Fix is `padding:.2em 0` with `margin:-.2em 0` to cancel it. The negative margins
+do **not** collapse: `.l-hero` is a flex column, so the h1's `-.2em` bottom margin
+*adds* to the countdown's `margin-top`. That is the intent — outer edges land
+exactly where they did before the padding existed — but it means the two numbers
+are coupled. Any future change to `line-height`, or a face with deeper
+descenders, has to keep the padding ahead of the ink.
 
 ### Two traps worth remembering
 

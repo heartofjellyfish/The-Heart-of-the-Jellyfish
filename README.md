@@ -49,9 +49,35 @@ ships.
 
 ### Demo audio
 
-`public/audio/NN-<slug>.mp3` — all ten tracks, 128 kbps, 45 MB total. `AVAILABLE_DEMOS`
+`public/audio/NN-<slug>.mp3` — all ten tracks, 160 kbps, ~49 MB total. `AVAILABLE_DEMOS`
 in [components/Landing.tsx](components/Landing.tsx) says which are playable; drop a number
 to pull one back to "demo 待上传".
+
+**Loudness standard: -16 LUFS integrated, true peak ≤ -1 dBTP.** *(last updated 2026-08-22)*
+
+The ten tracks came from different mix/export sessions and arrived spanning -11.4 to
+-27.6 LUFS — a 16 LU spread, so the player jumped from painfully loud to inaudible
+between tracks. They are now all within 0.3 LU of -16.
+
+Why these numbers, and why it matters if you re-export a track:
+
+- **-16 LUFS**, not streaming's -14, because this album's dynamic tracks (06 at LRA 15,
+  10 at LRA 13) need the extra headroom. Pushing to -14 forces real compression on them.
+- **Match the target per track, don't re-normalize the set.** A new export at a different
+  level will stick out again; bring it to -16 before dropping it in.
+- **Normalize with linear gain + a true-peak limiter, NOT `loudnorm`'s dynamic mode.**
+  ffmpeg's `loudnorm` two-pass squashed 06 from LRA 15.3 to 10.7 — it compresses toward
+  its LRA target. Applying a flat `volume=NdB` and letting an oversampled `alimiter` catch
+  only the peaks preserved LRA exactly on nine of ten tracks (06 lost 0.7 LU).
+- **01 needs an oversampled limiter.** Its source is already clipped (+1.7 dBTP), so a
+  sample-domain limiter at -1 dBFS still lands at +0.1 dBTP after MP3 encoding. Limit at
+  4× oversampling with a -1.5 dBFS ceiling.
+- Pre-normalization copies live at `public/audio/_original_backup/` (in this repo, so
+  they ship to Vercel too — 38 MB of dead weight worth deleting once the new mixes settle)
+  and outside the repo at `/Users/qliu/Qi Land/audio-originals/`.
+
+These are 128 kbps web demos re-encoded to 160 kbps, not masters. If real WAV/AIFF masters
+show up, normalize from those instead — one less generation of MP3 loss.
 
 ## Where this repo sits
 
