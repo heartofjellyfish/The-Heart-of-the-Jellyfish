@@ -20,19 +20,41 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
  * The album *is* the poem — ten titles that read straight through. Punctuation
  * and lower-case openings are canon, not sloppiness: they're what makes the
  * tracklist run on as verse. Do not "fix" the capitalisation.
+ *
+ * Each line is stored as its **sense units**, not as one string, because on a
+ * phone the long ones do not fit and the browser's own break is nonsense: it
+ * fills the row and drops whatever is left, so 02 came out as “…who chose the
+ * sea” / “—” with the dash alone on a line of its own, and 08 as “…the sea will
+ * always” / “return to the sea.”, cut mid-clause. In prose that is merely ugly.
+ * Here the turned line looks exactly like the next track — same left edge, same
+ * leading — so a bad break does not just read badly, it invents a line of verse
+ * that is not in the album.
+ *
+ * So the breaks are authored. The units are the caesuras Qi would read aloud;
+ * .l-poem-ink lays them out as a wrapping flex row, which breaks BETWEEN units
+ * first and only ever inside one when a single unit cannot fit at all. Two units
+ * means one honest break, three means the line can give twice on a small phone
+ * without ever landing somewhere the poem does not have a pause.
+ *
+ * The \u2060 before an em dash is a word joiner: UAX-14 allows a break either
+ * side of —, which is how the dash got orphaned in the first place. It is
+ * zero-width — the string still reads as written.
  */
-const POEM = [
-  'Sea rising',
-  'in memory of those who chose the sea—',
-  'a dream so real...',
-  'Wait—why is the dream so real?',
-  'Wake up!',
-  'The heart of the jellyfish.',
-  'You shall see:',
-  'what belongs to the sea will always return to the sea.',
-  'The day after, without us—',
-  'sea risen.',
+const POEM_LINES: readonly (readonly string[])[] = [
+  ['Sea rising'],
+  ['in memory of those', 'who chose the sea\u2060—'],
+  ['a dream so real...'],
+  ['Wait\u2060—\u2060why is', 'the dream so real?'],
+  ['Wake up!'],
+  ['The heart of', 'the jellyfish.'],
+  ['You shall see:'],
+  ['what belongs to the sea', 'will always return', 'to the sea.'],
+  ['The day after,', 'without us\u2060—'],
+  ['sea risen.'],
 ];
+
+/** The same ten lines as flat strings, for the strip that runs them together. */
+const POEM = POEM_LINES.map((units) => units.join(' '));
 
 /** Player metadata — title case, no trailing punctuation. The poem is the poem. */
 const TITLES = [
@@ -1514,9 +1536,16 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                           </span>
                           {/* The words are their own box — see .l-poem-ink. The
                               button stays full width so a silent line is easy
-                              to hit; the ink is what fills and what seeks. */}
+                              to hit; the ink is what fills and what seeks.
+                              Its children are the line's sense units, so a line
+                              too long for the phone turns where the poem does —
+                              see POEM_LINES. */}
                           <span className="l-poem-ink" ref={on ? attachInk : undefined}>
-                            {POEM[n - 1]}
+                            {POEM_LINES[n - 1].map((unit, ui) => (
+                              <span className="l-poem-unit" key={ui}>
+                                {unit}
+                              </span>
+                            ))}
                             {on && <span className="l-poem-time" ref={poemTimeRef} aria-hidden />}
                           </span>
                         </button>
@@ -2099,10 +2128,14 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 
 /* One variable set per candidate face. Sizes are not interchangeable: the
    scripts have much smaller x-heights than Cormorant. */
+/* --poem-space is that face's own space advance, measured off the font. The ink
+   row is a flex container, so the gaps between sense units are drawn by CSS, not
+   by space characters — and if the number is wrong the poem visibly loosens or
+   crowds at every word boundary that happens to be a unit boundary. */
 .l-poem-f-nothing{--poem-family:'Nothing You Could Do',cursive;--poem-style:normal;
-  --poem-weight:400;--poem-size:clamp(15px,2.2vh,24px);--poem-lh:1.75}
+  --poem-weight:400;--poem-size:clamp(15px,2.2vh,24px);--poem-lh:1.75;--poem-space:.525em}
 .l-poem-f-cormorant{--poem-family:'Cormorant Garamond',serif;--poem-style:italic;
-  --poem-weight:500;--poem-size:clamp(17px,2.5vh,26px);--poem-lh:1.55}
+  --poem-weight:500;--poem-size:clamp(17px,2.5vh,26px);--poem-lh:1.55;--poem-space:.234em}
 
 .l-poem-num{position:absolute;right:calc(100% + .55em);top:.06em;
   font-family:'Nothing You Could Do',cursive;font-weight:400;
@@ -2133,7 +2166,15 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    cannot see. The ink box hugs its own text, which is the length they CAN see,
    and both the fill and the seek are read off it. vertical-align keeps a line
    that wraps from pushing its own row down by a descender. */
-.l-poem-ink{position:relative;display:inline-block;max-width:100%;vertical-align:top}
+/* A wrapping flex row rather than a run of text, which is what makes the break
+   authored instead of greedy: flex only breaks BETWEEN items, so the line gives
+   at a caesura from POEM_LINES and nowhere else. A unit that cannot fit even
+   alone still wraps inside itself — the guarantee is "turn at a pause if there
+   is one", not "never overflow". Still shrink-to-fit (inline-flex), because the
+   fill and the seek are both measured off this box hugging its own words. */
+.l-poem-ink{position:relative;display:inline-flex;flex-wrap:wrap;
+  column-gap:var(--poem-space,.5em);row-gap:0;
+  max-width:100%;vertical-align:top}
 
 @supports ((-webkit-background-clip:text) or (background-clip:text)){
   .landing .l-poem-playing .l-poem-ink{
