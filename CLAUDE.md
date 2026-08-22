@@ -365,7 +365,7 @@ exactly where they did before the padding existed — but it means the two numbe
 are coupled. Any future change to `line-height`, or a face with deeper
 descenders, has to keep the padding ahead of the ink.
 
-### Two traps worth remembering
+### Three traps worth remembering
 
 **Specificity.** `.landing button{font:inherit}` normalises the UA button font at
 (0,1,1), which beats any bare `.l-foo` class — so every button rule that sets a font
@@ -383,6 +383,18 @@ Warning` does not save you either: it covers an element's own text, not its
 descendants, and the countdown's digits are three levels down. The fix is to render
 the *same placeholder on both passes* and fill in from `useEffect` — remove the
 mismatch rather than silence it.
+
+**Emoji-by-default characters.** A handful of otherwise ordinary symbols — U+25B6 `▶`
+among them — carry *emoji presentation by default* in Unicode, so iOS and Android
+substitute the colour emoji font for them. The glyph then ignores `color`, and a
+transport button that is pure white on every desktop arrives on a phone as a
+grey-blue cartoon triangle. It never shows up in a desktop preview, and Chrome on
+macOS renders it as text, so nothing local catches it. **Draw UI glyphs, don't type
+them.** The play/pause marks live as `--glyph-play` / `--glyph-pause` on `.landing`
+(inline SVG data URIs), used as an SVG element in the bar and as a `mask` over a
+`var(--lit)` fill in the poem margin — one shape, one colour, no font in the path.
+Text glyphs are only safe when the codepoint has *text* presentation by default,
+which `✕`, `←` and U+275A do.
 
 ### Demo audio
 

@@ -1176,13 +1176,35 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             >
               ←
             </button>
+            {/*
+              Drawn, not typed. U+25B6 has emoji presentation by default, so iOS
+              rendered the transport as a colour emoji — a grey-blue triangle
+              that ignored `color` and sat next to the pure-white hero button
+              looking broken. An inline SVG is the same shape the hero uses and
+              takes currentColor everywhere.
+            */}
             <button
               type="button"
               className="l-bar-toggle"
               aria-label={playing ? 'Pause' : 'Play'}
               onClick={() => playTrack(cur)}
             >
-              {playing ? '❚❚' : '▶'}
+              {playing ? (
+                <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor" aria-hidden>
+                  <path d="M0 0h3.2v12H0zM6.8 0H10v12H6.8z" />
+                </svg>
+              ) : (
+                <svg
+                  className="l-bar-tri"
+                  width="10"
+                  height="12"
+                  viewBox="0 0 10 12"
+                  fill="currentColor"
+                  aria-hidden
+                >
+                  <path d="M0 0l10 6L0 12z" />
+                </svg>
+              )}
             </button>
             <div className="l-bar-title">{nowTitle}</div>
             <div
@@ -1604,6 +1626,11 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   --lit:#eef6f8;
   --lit-bright:#ffffff;
   --lit-dim:rgba(238,246,248,.26);
+  /* The transport, as vectors. Every play/pause mark on the page reads from
+     these, so the bar and the poem margin can never drift apart — and so no
+     platform gets to substitute an emoji for one of them. */
+  --glyph-play:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 12'%3E%3Cpath d='M0 0l10 6L0 12z'/%3E%3C/svg%3E");
+  --glyph-pause:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 12'%3E%3Cpath d='M0 0h2.8v12H0zM7.2 0H10v12H7.2z'/%3E%3C/svg%3E");
   /* Multiplies the hero block's type — title, countdown, the two actions. Every
      one of those is already fluid, so this scales the whole curve rather than
      any one breakpoint. The bottom tracklist is deliberately NOT on it: its
@@ -1950,10 +1977,20 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   .landing .l-strip-item{display:inline;overflow:visible}
 }
 
-.l-bar-toggle{width:38px;height:38px;border-radius:50%;border:1px solid rgba(242,246,248,.6);
-  background:transparent;color:inherit;font-size:12px;cursor:pointer;flex-shrink:0;
-  transition:background .35s}
+/* Colour stated, not inherited. The bar's #f2f6f8 was already what it wanted,
+   but the glyph is the one thing on this page that must be unambiguously the
+   same white as the hero's — say it here so it survives whatever the bar's own
+   colour becomes. */
+.landing .l-bar-toggle{width:38px;height:38px;border-radius:50%;
+  border:1px solid rgba(242,246,248,.6);background:transparent;color:#fff;
+  cursor:pointer;flex-shrink:0;transition:background .35s;
+  display:flex;align-items:center;justify-content:center;padding:0}
 .l-bar-toggle:hover{background:rgba(242,246,248,.18)}
+/* A triangle centred on its bounding box looks left-of-centre in a circle,
+   because its mass sits on the flat edge. The hero pads by 4 on a 58-76px ring;
+   this one is 38px, so 1.5. Pause is two bars and is genuinely symmetric — it
+   gets nothing. */
+.l-bar-toggle .l-bar-tri{margin-left:1.5px}
 /* The title yields first. Track 08's name is 53 characters and was squeezing the
    waveform down to its 60px floor; the waveform is the thing you aim at, the
    title is a label you can read the end of somewhere else. */
@@ -2169,13 +2206,21 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .landing .l-poem-playing .l-poem-num{transition:opacity .3s,color .18s}
 .landing .l-poem-playing:hover .l-poem-num,
 .landing .l-poem-playing:focus-visible .l-poem-num{color:transparent}
-.landing .l-poem-playing .l-poem-num::after{position:absolute;right:0;top:50%;
-  transform:translateY(-50%);font-family:'Jost',sans-serif;font-weight:300;
-  /* Positive tracking, or the two heavy bars of U+275A merge into one block at
-     this size and the pause sign stops reading as a pause sign. */
-  font-size:.9em;letter-spacing:.16em;color:var(--lit);
-  opacity:0;transition:opacity .18s;content:'❚❚'}
-.landing .l-poem-playing[data-paused] .l-poem-num::after{content:'▶'}
+/* Both glyphs are drawn, for the same reason the bar's are: U+25B6 is
+   emoji-by-default, so the paused state of a tracklist line came up on iOS as a
+   colour emoji — wrong hue, wrong weight, and immune to var(--lit). A mask over
+   a --lit fill keeps the glyph the exact colour of everything else that means
+   "this is the one sounding", and keeps the two states the same optical weight,
+   which no font pairing of U+275A and U+25B6 ever managed.
+   Sized in em so it tracks the number, which is itself .62em of the verse. */
+.landing .l-poem-playing .l-poem-num::after{content:'';position:absolute;
+  right:0;top:50%;transform:translateY(-50%);display:block;
+  width:.62em;height:.82em;background:var(--lit);
+  -webkit-mask:var(--glyph-pause) right center/contain no-repeat;
+          mask:var(--glyph-pause) right center/contain no-repeat;
+  opacity:0;transition:opacity .18s}
+.landing .l-poem-playing[data-paused] .l-poem-num::after{width:.58em;
+  -webkit-mask-image:var(--glyph-play);mask-image:var(--glyph-play)}
 .landing .l-poem-playing:hover .l-poem-num::after,
 .landing .l-poem-playing:focus-visible .l-poem-num::after{opacity:1}
 /* No cursor to reveal it with, so on a touch screen the sounding line wears the
