@@ -130,10 +130,11 @@ const POEM_FONT: PoemFontKey = 'nothing';
 
 /**
  * The vignette: how dark the corners go, and how far in the darkening starts.
- * `inner` is where the gradient is still fully clear, as a percentage of the
- * radius — larger means a tighter ring hugging the edges.
+ * `inner` is where the ramp begins, as a percentage of the radius. With the eased
+ * curve a low `inner` is fine — the first half of the ramp is nearly invisible —
+ * so it can start early and stay gradual rather than starting late and banding.
  */
-const VIGNETTE = { strength: 0.38, inner: 42 };
+const VIGNETTE = { strength: 0.5, inner: 0 };
 
 /** Bars drawn in the waveform. 400 peaks per track downsample into this cleanly. */
 const WAVE_BARS = 160;
@@ -252,7 +253,9 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [font, setFont] = useState<PoemFontKey>(POEM_FONT);
   const [fontScale, setFontScale] = useState(1);
   const [vig, setVig] = useState(VIGNETTE);
+  const [stripCut, setStripCut] = useState(false);
 
+  const stripRef = useRef<HTMLDivElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const curRef = useRef(0);
@@ -264,6 +267,27 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     const q = new URLSearchParams(window.location.search);
     setTuner(q.get('tune') === '1' || q.get('type') === '1');
   }, []);
+
+  /*
+   * Whether the run-on tracklist is wider than the bar. Measured rather than
+   * guessed at a breakpoint: the width depends on the fluid type, on which font
+   * has finished loading, and on how much room the POEM button leaves — no
+   * media query knows all three. Re-runs when the bar swaps to the player.
+   */
+  useEffect(() => {
+    const el = stripRef.current;
+    if (!el) {
+      setStripCut(false);
+      return;
+    }
+    const check = () => setStripCut(el.scrollWidth > el.clientWidth + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    // A late webfont reflows the sentence without resizing anything.
+    document.fonts?.ready.then(check).catch(() => {});
+    return () => ro.disconnect();
+  }, [cur]);
 
   /* --- Esc closes whatever panel is open -------------------------- */
   useEffect(() => {
@@ -558,18 +582,28 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           </>
         ) : (
           <>
-            <div className="l-strip-items">
+            {/*
+              The ten titles run together as one sentence — which is what they
+              are. Each is still its own button; the hover is the only thing that
+              says so, plus a tooltip naming the track.
+            */}
+            <div
+              ref={stripRef}
+              className={'l-strip-items' + (stripCut ? ' l-strip-cut' : '')}
+            >
               {POEM.map((line, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  className="l-strip-item"
-                  onClick={() => playTrack(i + 1)}
-                  title={String(i + 1).padStart(2, '0') + ' — ' + TITLES[i]}
-                >
-                  <span className="l-strip-num">{String(i + 1).padStart(2, '0')}</span>
-                  <span className="l-strip-title">{line}</span>
-                </button>
+                <React.Fragment key={i}>
+                  {i > 0 && ' '}
+                  <button
+                    type="button"
+                    className="l-strip-item"
+                    onClick={() => playTrack(i + 1)}
+                    title={String(i + 1).padStart(2, '0') + ' — ' + TITLES[i]}
+                    aria-label={'Play ' + String(i + 1).padStart(2, '0') + ' — ' + TITLES[i]}
+                  >
+                    {line}
+                  </button>
+                </React.Fragment>
               ))}
             </div>
             <button type="button" className="l-strip-all" onClick={() => setPanel('poem')}>
@@ -755,12 +789,24 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-scrim{position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(180deg,rgba(24,74,112,.28),rgba(24,74,112,.05) 30%,transparent 55%)}
 
-/* Darkens the corners so the painting sits in the frame rather than running off
-   it, and so white type near the edges has something to sit on. Above the art,
-   below every piece of type — z-index 1 against the nav/hero/bar's 10 and 20. */
+/* Darkens the corners so the painting sits in a frame rather than running off the
+   edges, and so white type near the edges has something to sit on. Above the art,
+   below every piece of type — z-index 1 against the nav/hero/bar's 10 and 20.
+
+   Six stops on an ease-in curve, not two. A straight transparent-to-dark ramp is
+   linear in alpha, and the eye reads the kink where the ramp begins as a hard
+   elliptical ring. Weighting the early stops far below linear (.04, .14 where
+   linear would be .30, .52) hides the onset completely and puts the darkness
+   where it belongs, in the last fifth. --vig-inner marks where the ramp starts;
+   --vig-span is the distance it has left to travel. */
 .l-vignette{position:absolute;inset:0;z-index:1;pointer-events:none;
+  --vig-span:calc(100% - var(--vig-inner,42%));
   background:radial-gradient(ellipse at center,
-    transparent var(--vig-inner,42%),
+    rgba(5,22,38,0) var(--vig-inner,42%),
+    rgba(5,22,38,calc(var(--vig-strength,.38) * .04)) calc(var(--vig-inner,42%) + var(--vig-span) * .30),
+    rgba(5,22,38,calc(var(--vig-strength,.38) * .14)) calc(var(--vig-inner,42%) + var(--vig-span) * .52),
+    rgba(5,22,38,calc(var(--vig-strength,.38) * .32)) calc(var(--vig-inner,42%) + var(--vig-span) * .70),
+    rgba(5,22,38,calc(var(--vig-strength,.38) * .60)) calc(var(--vig-inner,42%) + var(--vig-span) * .86),
     rgba(5,22,38,var(--vig-strength,.38)) 100%)}
 
 /* Narrower than 13:10 a cover crop pushes either the jellyfish or the figure out
@@ -825,27 +871,19 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   cursor:pointer;opacity:.7;transition:opacity .35s;white-space:nowrap}
 .l-strip-all:hover{opacity:1}
 
-/* Ten lines of wildly different length. flex:0 1 auto sizes each to its own text
-   and shrinks them all proportionally when the row overflows, so "Wake up!" does
-   not hold the same 118px as "what belongs to the sea will always return to the
-   sea." — which is what flex:1 1 0 did, truncating the long ones to nothing.
-   min-width:0 is what permits the ellipsis at all. */
-.l-strip-items{flex:1;display:flex;align-items:baseline;justify-content:space-between;
-  gap:clamp(7px,.7vw,18px);min-width:0}
-.l-strip-item{flex:0 1 auto;min-width:0;
-  display:flex;align-items:baseline;gap:6px;
-  background:none;border:none;padding:0;color:inherit;cursor:pointer;
-  opacity:.92;transition:opacity .35s}
-.l-strip-item:hover{opacity:.6}
-.l-strip-num{font-family:'Jost',sans-serif;font-weight:300;font-size:9.5px;
-  letter-spacing:.12em;opacity:.6;flex-shrink:0}
-/* italic, so the bar reads in the poem's voice rather than as a file listing.
-   Size tracks the viewport: ten lines of verse only fit un-truncated if the type
-   gives way as the window narrows. */
-.l-strip-title{font-family:'Cormorant Garamond',serif;font-style:italic;
-  font-size:clamp(10px,.755vw,15px);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.landing .l-bar-toggle{width:38px;height:38px;border-radius:50%;border:1px solid rgba(242,246,248,.6);
+/* One continuous line of verse, not a list. The numbers are gone; each title is
+   an inline button, separated by an ordinary space, so it reads as a sentence and
+   only reveals itself as ten controls under the cursor. */
+.l-strip-items{flex:1;min-width:0;white-space:nowrap;
+  overflow-x:auto;scrollbar-width:none;
+  font-family:'Cormorant Garamond',serif;font-style:italic;
+  font-size:clamp(11px,.8vw,15.5px)}
+.l-strip-items::-webkit-scrollbar{display:none}
+.l-strip-item{display:inline;background:none;border:none;padding:0;color:inherit;
+  cursor:pointer;opacity:.88;transition:opacity .3s,color .3s}
+.l-strip-item:hover{opacity:1;color:#fff}
+
+.l-bar-toggle{width:38px;height:38px;border-radius:50%;border:1px solid rgba(242,246,248,.6);
   background:transparent;color:inherit;font-size:12px;cursor:pointer;flex-shrink:0;
   transition:background .35s}
 .l-bar-toggle:hover{background:rgba(242,246,248,.18)}
@@ -947,15 +985,12 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-sub-link{color:inherit;border-bottom:1px solid currentColor;text-decoration:none}
 
 /* ---- narrow ---- */
-/* The title size is fluid (.79vw), so the ten lines fit exactly until the clamp
-   bottoms out at 10px — which happens at ~1325px. Below that the row can only
-   shrink by truncating, so switch to numbers alone instead: better a clean index
-   than ten half-words. The POEM panel holds the full list either way. */
-@media (max-width:1324px){
-  .l-strip-title{display:none}
-  .l-strip-item{flex:0 0 auto}
-  .l-strip-items{justify-content:flex-start;gap:clamp(16px,2.2vw,30px)}
-  .l-strip-num{font-size:11px}
+/* Applied only when the sentence really is wider than the bar — see the
+   ResizeObserver in the component. It scrolls rather than truncating, and the
+   fade is the reason to push it. */
+.l-strip-cut{
+  -webkit-mask-image:linear-gradient(90deg,#000 86%,transparent);
+  mask-image:linear-gradient(90deg,#000 86%,transparent);
 }
 @media (max-width:560px){
   .l-nav{letter-spacing:.2em;font-size:11px}

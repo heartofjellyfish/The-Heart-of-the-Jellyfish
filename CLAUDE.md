@@ -47,20 +47,21 @@ in a panel that opens over it.
 `LANDING_CSS` string at the bottom. Layers, back to front: the painting (twice — see
 below), a scrim, the nav, the hero block, the bottom bar, and the panel.
 
-**The bottom bar has two states and one slot.** Idle it's the tracklist — all ten
-lines, in italic, in poem order; once a track is playing it becomes the player in
-place. That matters on a one-screen layout — a separate fixed player bar would have
-covered the tracklist it was launched from.
+**The bottom bar has two states and one slot.** Idle it's the poem run together as
+one italic sentence — no numbers, no separators, each line still its own button;
+once a track is playing it becomes the player in place. That matters on a
+one-screen layout — a separate fixed player bar would have covered the tracklist it
+was launched from.
+
+Whether that sentence is wider than the bar is **measured**, not guessed at a
+breakpoint: a `ResizeObserver` (plus `document.fonts.ready`, since a late webfont
+reflows text without resizing anything) toggles `.l-strip-cut`, which fades the
+right edge to say there is more to push. The width depends on the fluid type, on
+which font has loaded, and on what the POEM button leaves over — no media query
+knows all three.
 
 It's a gradient scrim, not a solid bar. A solid one cut ~70px off the bottom of the
-painting, which on this canvas is the sand and the near water. Ten titles only fit
-un-truncated because the type is fluid (`clamp(10px,.755vw,15px)`); when that clamp
-bottoms out at ~1325px the row can no longer shrink except by truncating, so the
-media query at 1324px drops to numbers alone. Keep those two numbers in step — a
-breakpoint below the clamp floor means ten half-words with ellipses, which is worse
-than a clean index. Items are `flex:0 1 auto`, not `1 1 0`: equal thirds gave
-"Wake up!" the same width as "what belongs to the sea will always return to the
-sea." and truncated the long ones to nothing.
+painting, which on this canvas is the sand and the near water. 
 
 **The poem and the mailing list are panels, not sections.** `ALBUM` / `ALL TEN` opens
 the poem; `PRE-SAVE` opens the signup. Escape closes. This is what keeps the page one
@@ -173,10 +174,16 @@ carries a build-time number and the client disagrees on first render; that is wh
 eight-digit number changing every second is the most restless thing on a still page.
 
 The vignette is a radial-gradient overlay at `z-index:1` — above the painting, below
-every piece of type. It has two knobs, both CSS variables so the tuner can drive them
-live: `--vig-strength` (corner darkness) and `--vig-inner` (where the darkening
-starts, as a percentage of the radius; larger means a tighter ring). Defaults live in
-the `VIGNETTE` constant.
+every piece of type. Two knobs, both CSS variables so the tuner drives them live:
+`--vig-strength` (corner darkness) and `--vig-inner` (where the ramp begins, as a
+percentage of the radius). Settled at 0.5 / 0.
+
+**It has six stops on an ease-in curve, not two, and that is the whole point.** A
+straight transparent-to-dark ramp is linear in alpha, and the eye reads the kink
+where the ramp begins as a hard elliptical ring — which is exactly what the first
+version looked like. Weighting the early stops far below linear (.04 and .14 where
+linear would be .30 and .52) hides the onset: at 44% of the radius alpha is 0.02, at
+62% it is 0.07, and the darkness lands where it belongs, in the last fifth.
 
 ### A CSS trap worth remembering
 
