@@ -235,15 +235,32 @@ collapses back to a line along the top wall, leaving the rest of the face
 untouched — crisper and whiter from the same move. Worth remembering the next
 time an inset looks muddy: reach for the blur before the offset.
 
-`edge` and `groove` stay text-shadow and just scale up. `carve` is the only one
-with shading genuinely inside the glyph, and the construction is worth knowing
-because CSS has no inner shadow for text:
+**Four styles, and they divide along one line: inside the glyph or outside it.**
+A real groove has four surfaces, and going down a letter from above they are —
+the lip where the flat surface bends down into the cut (outside, shadowed), the
+far wall (inside, shadowed), the floor, which is the letter face itself, the near
+wall (inside, lit), and the lip bending back out (outside, lit).
 
-> `SourceAlpha` composited `operator="out"` against a **shifted, blurred copy of
-> itself** leaves only the sliver the copy failed to cover — a band hugging one
-> inner edge. Shift the copy down, the band lands along the top of every letter;
-> shift it up, along the bottom. `feFlood` each band with a colour, `feMerge` them
-> back over the glyph.
+`edge` and `groove` draw only the outer pair, because text-shadow paints *behind*
+the glyph and can never reach an inner wall. `carve` draws only the inner pair.
+`cut` runs both, and is the only one of the four that describes an actual groove
+rather than half of one — it is the same SVG filter as `carve` with its lip
+primitives switched on, which is why `CarveFilter` takes a `lip` prop and is
+rendered twice into `.l-defs`.
+
+CSS has no inner shadow for text, so the construction behind every band is worth
+knowing:
+
+> Compositing a shape `operator="out"` against a **shifted, blurred copy of
+> itself** leaves only the sliver one of them failed to cover. Which sliver
+> depends on which way round the two operands go:
+>
+> - `SourceAlpha out shifted-copy` → a band **inside** the glyph, hugging one edge
+> - `shifted-copy out SourceAlpha` → a band **outside** it, lying alongside
+>
+> Shift the copy down and the band lands along the top of every letter; shift it
+> up and it lands along the bottom. `feFlood` each band with a colour, then
+> `feMerge` them back — lips behind `SourceGraphic`, walls in front of it.
 
 **Everything scales with the type, and this is the part that bit.** A rim only
 reads as an edge *relative to the stroke it sits on*, and Cormorant italic's

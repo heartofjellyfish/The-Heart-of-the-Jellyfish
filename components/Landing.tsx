@@ -177,6 +177,7 @@ const INSET_STYLES = [
   { key: 'edge', label: 'A  Edge' },
   { key: 'groove', label: 'B  Groove' },
   { key: 'carve', label: 'C  Carve' },
+  { key: 'cut', label: 'D  Carve + Groove' },
 ] as const;
 
 type InsetKey = (typeof INSET_STYLES)[number]['key'];
@@ -376,6 +377,115 @@ function Waveform({ data, pct }: { data: number[]; pct: number }) {
 
 
 /* ------------------------------------------------------------------ */
+
+/**
+ * The relief filter. CSS has no inner shadow for text, so this builds one — four
+ * times over, one per surface of a cut letter.
+ *
+ * The trick behind every band is the same. Compositing a shape "out" against a
+ * *shifted, blurred copy of itself* leaves only the sliver one of them failed to
+ * cover; which sliver depends on which way round the two go:
+ *
+ *   SourceAlpha  out  shifted-copy   ->  a band INSIDE the glyph, hugging one edge
+ *   shifted-copy out  SourceAlpha    ->  a band OUTSIDE it, lying alongside
+ *
+ * A real groove has four surfaces and the two pairs are exactly those. Going down
+ * the letter from above: the lip where the surface bends into the cut (outside,
+ * shadowed); the far wall (inside, shadowed); the floor, which is the letter face
+ * itself; the near wall (inside, lit); and the lip bending back out (outside,
+ * lit). 'carve' draws only the inner pair. 'cut' adds the outer one, which is
+ * what Qi liked about 'groove' — that style is those same two lips done with
+ * text-shadow, and it cannot have the inner walls because text-shadow only ever
+ * paints behind the glyph. Hence lip, and hence two instances of this filter.
+ *
+ * dir flips every y offset at once, which turns the whole thing inside out into a
+ * ridge. Nothing else has to change: see the note over LIFTS.
+ *
+ * Every offset is a fraction of titlePx rather than a fixed px, because a rim
+ * only reads as an edge relative to the stroke it sits on. The first version of
+ * this used constants and the shadow came out wider than Cormorant's hairlines,
+ * which filled them in and turned the whole title grey.
+ */
+function CarveFilter({
+  id,
+  titlePx,
+  depth,
+  sharp,
+  white,
+  dir,
+  lip,
+}: {
+  id: string;
+  titlePx: number;
+  depth: number;
+  sharp: number;
+  white: number;
+  dir: number;
+  lip: number;
+}) {
+  /* SHARP only ever touches a blur, never an offset — that is what keeps the
+     letter face white. A blurred band spreads across the face and dims the whole
+     letter; a sharp one collapses to a line on the wall and leaves the face
+     alone. The floor of 0.001 is there so the edge still antialiases at SHARP 1. */
+  const wallDy = titlePx * 0.011 * depth * dir;
+  const wallBlur = titlePx * depth * (0.001 + 0.007 * (1 - sharp));
+  const sheenDy = titlePx * -0.008 * depth * dir;
+  const sheenBlur = titlePx * depth * (0.001 + 0.004 * (1 - sharp));
+  /* The lips sit further out and stay softer than the walls: they are a bend in
+     the surface, not a face of it, so they have no hard edge to catch. */
+  const lipDy = titlePx * 0.014 * depth * dir;
+  const lipBlur = titlePx * depth * (0.004 + 0.012 * (1 - sharp));
+  const shade = 0.9 * (1 - white);
+
+  return (
+    <filter
+      id={id}
+      x="-35%"
+      y="-35%"
+      width="170%"
+      height="170%"
+      colorInterpolationFilters="sRGB"
+    >
+      {/* far wall — inside, along the top */}
+      <feOffset in="SourceAlpha" dx="0" dy={wallDy} result="wallShift" />
+      <feGaussianBlur in="wallShift" stdDeviation={wallBlur} result="wallBlur" />
+      <feComposite in="SourceAlpha" in2="wallBlur" operator="out" result="wallBand" />
+      <feFlood floodColor="#08243c" floodOpacity={shade} result="wallInk" />
+      <feComposite in="wallInk" in2="wallBand" operator="in" result="wall" />
+
+      {/* near wall — inside, along the bottom */}
+      <feOffset in="SourceAlpha" dx="0" dy={sheenDy} result="sheenShift" />
+      <feGaussianBlur in="sheenShift" stdDeviation={sheenBlur} result="sheenBlur" />
+      <feComposite in="SourceAlpha" in2="sheenBlur" operator="out" result="sheenBand" />
+      <feFlood floodColor="#ffffff" floodOpacity={0.95} result="sheenInk" />
+      <feComposite in="sheenInk" in2="sheenBand" operator="in" result="sheen" />
+
+      {/* upper lip — outside, where the surface bends down into the cut */}
+      <feOffset in="SourceAlpha" dx="0" dy={-lipDy} result="lipUpShift" />
+      <feGaussianBlur in="lipUpShift" stdDeviation={lipBlur} result="lipUpBlur" />
+      <feComposite in="lipUpBlur" in2="SourceAlpha" operator="out" result="lipUpBand" />
+      <feFlood floodColor="#061c32" floodOpacity={lip * 0.8 * (1 - white)} result="lipUpInk" />
+      <feComposite in="lipUpInk" in2="lipUpBand" operator="in" result="lipUp" />
+
+      {/* lower lip — outside, bending back out and catching the light */}
+      <feOffset in="SourceAlpha" dx="0" dy={lipDy * 0.55} result="lipDownShift" />
+      <feGaussianBlur in="lipDownShift" stdDeviation={lipBlur * 0.35} result="lipDownBlur" />
+      <feComposite in="lipDownBlur" in2="SourceAlpha" operator="out" result="lipDownBand" />
+      <feFlood floodColor="#ffffff" floodOpacity={lip * 0.7} result="lipDownInk" />
+      <feComposite in="lipDownInk" in2="lipDownBand" operator="in" result="lipDown" />
+
+      {/* Lips behind the glyph, walls in front of it. Both lips lie outside the
+          outline, so their order against each other does not matter. */}
+      <feMerge>
+        <feMergeNode in="lipUp" />
+        <feMergeNode in="lipDown" />
+        <feMergeNode in="SourceGraphic" />
+        <feMergeNode in="sheen" />
+        <feMergeNode in="wall" />
+      </feMerge>
+    </filter>
+  );
+}
 
 export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }) {
   const [panel, setPanel] = useState<Panel>(null);
@@ -681,48 +791,28 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       <style dangerouslySetInnerHTML={{ __html: LANDING_CSS }} />
 
       {/*
-        The carve. There is no inner-shadow property for text in CSS, so this is
-        the construction that stands in for one, twice over.
-
-        SourceAlpha composited "out" against a *shifted, blurred copy of itself*
-        leaves only the sliver of the glyph the copy failed to cover — a band
-        hugging one inner edge. Shift the copy down and the band lands along the
-        top of every letter; shift it up and it lands along the bottom. Flood each
-        band with a colour, merge them back over the glyph, and the letter has a
-        shadowed upper wall and a lit lower one: a groove, not a shadow.
-
-        The offsets are attributes rather than CSS, so they cannot read
-        var(--inset) and are bound from state instead. Kept modest per unit of
-        depth on purpose — the blur has to stay narrower than a hairline stroke,
-        or the thin parts of the italic fill with shadow and go muddy.
+        The two filters that do the relief. Same construction, one difference:
+        'cut' turns the outer lips on. See CarveFilter.
       */}
       <svg className="l-defs" aria-hidden focusable="false">
-        <filter
+        <CarveFilter
           id="l-carve"
-          x="-25%"
-          y="-25%"
-          width="150%"
-          height="150%"
-          colorInterpolationFilters="sRGB"
-        >
-          <feOffset in="SourceAlpha" dx="0" dy={titlePx * 0.011 * depth * dir} result="down" />
-          <feGaussianBlur in="down" stdDeviation={titlePx * depth * (0.001 + 0.007 * (1 - sharp))} result="downBlur" />
-          <feComposite in="SourceAlpha" in2="downBlur" operator="out" result="topBand" />
-          <feFlood floodColor="#08243c" floodOpacity={0.9 * (1 - white)} result="dark" />
-          <feComposite in="dark" in2="topBand" operator="in" result="shade" />
-
-          <feOffset in="SourceAlpha" dx="0" dy={titlePx * -0.008 * depth * dir} result="up" />
-          <feGaussianBlur in="up" stdDeviation={titlePx * depth * (0.001 + 0.004 * (1 - sharp))} result="upBlur" />
-          <feComposite in="SourceAlpha" in2="upBlur" operator="out" result="bottomBand" />
-          <feFlood floodColor="#ffffff" floodOpacity="0.95" result="light" />
-          <feComposite in="light" in2="bottomBand" operator="in" result="sheen" />
-
-          <feMerge>
-            <feMergeNode in="SourceGraphic" />
-            <feMergeNode in="sheen" />
-            <feMergeNode in="shade" />
-          </feMerge>
-        </filter>
+          titlePx={titlePx}
+          depth={depth}
+          sharp={sharp}
+          white={white}
+          dir={dir}
+          lip={0}
+        />
+        <CarveFilter
+          id="l-cut"
+          titlePx={titlePx}
+          depth={depth}
+          sharp={sharp}
+          white={white}
+          dir={dir}
+          lip={1}
+        />
       </svg>
 
       {/*
@@ -1391,6 +1481,16 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-title[data-inset=carve]{
   text-shadow:none;
   filter:url(#l-carve)
+         drop-shadow(0 calc(.018em * var(--inset,1) * var(--cast)) calc(.08em * var(--inset,1)) rgba(8,34,58,.34))}
+
+/* D - the whole cut. Same filter with its outer lips switched on, which is the
+   pair of surfaces 'groove' was drawing with text-shadow. Groove can only ever
+   have those two: text-shadow paints behind the glyph, so it has no way to reach
+   the inner walls. Running both pairs at once is the only version of this that
+   describes an actual groove rather than half of one. */
+.l-title[data-inset=cut]{
+  text-shadow:none;
+  filter:url(#l-cut)
          drop-shadow(0 calc(.018em * var(--inset,1) * var(--cast)) calc(.08em * var(--inset,1)) rgba(8,34,58,.34))}
 
 /* Every length above is in em, not px. A rim is only read as an edge relative to
