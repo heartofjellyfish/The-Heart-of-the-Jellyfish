@@ -116,7 +116,7 @@ const ARTIST = {
  * `off`       no credit on the page. CREDITS.md still carries it.
  */
 type CreditPlacement = 'plate' | 'signature' | 'off';
-const CREDIT_PLACEMENT: CreditPlacement = 'plate';
+const CREDIT_PLACEMENT: CreditPlacement = 'signature';
 
 /**
  * Where the poem breaks. Four stanzas, uneven on purpose — the movements are not
@@ -175,7 +175,7 @@ const POEM_FONT: PoemFontKey = 'nothing';
  * curve a low `inner` is fine — the first half of the ramp is nearly invisible —
  * so it can start early and stay gradual rather than starting late and banding.
  */
-const VIGNETTE = { strength: 0.5, inner: 0 };
+const VIGNETTE = { strength: 0.14, inner: 0 };
 
 /**
  * Candidates for the "this one is sounding" colour, every one of them sampled
@@ -717,7 +717,27 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             <svg width="12" height="10" viewBox="0 0 12 10" aria-hidden>
               <path d="M0 .5h12M0 5h12M0 9.5h8" stroke="currentColor" strokeWidth="1" fill="none" />
             </svg>
-            TRACKLIST
+            {/*
+              Typed rather than revealed. The label has to stay readable at rest,
+              so nothing can be hidden and un-hidden — instead the letters brighten
+              one after another, as if a caret were passing under them, and the
+              caret itself appears at the end of the sweep and blinks.
+            */}
+            {/* One wrapper, because the button is inline-flex with a gap meant for
+                icon-to-text — loose letters would each become a flex item and
+                collect that gap between them. */}
+            <span className="l-type">
+              {Array.from('TRACKLIST').map((ch, i) => (
+                <span
+                  key={i}
+                  className="l-tl"
+                  style={{ ['--i' as string]: i } as React.CSSProperties}
+                >
+                  {ch}
+                </span>
+              ))}
+              <span className="l-caret" aria-hidden />
+            </span>
           </button>
         </div>
 
@@ -1121,14 +1141,14 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    corners like paint and never sits on top of type. multiply, because a
    signature is pigment absorbed into the ground, not ink laid over it. */
 .landing .l-credit-signature{position:absolute;z-index:5;
-  right:clamp(26px,4.5vw,88px);bottom:clamp(116px,16vh,158px);
+  right:clamp(30px,5.2vw,104px);bottom:clamp(132px,19vh,196px);
   font-family:'Nothing You Could Do',cursive;
-  font-size:clamp(15px,1.5vw,22px);line-height:1;
-  color:#4a3a26;opacity:.44;mix-blend-mode:multiply;
+  font-size:clamp(20px,2.15vw,34px);line-height:1;
+  color:#3a2a16;opacity:.72;mix-blend-mode:multiply;
   transform:rotate(-3deg);transform-origin:right bottom;
   transition:opacity .6s cubic-bezier(.2,.7,.2,1)}
 .landing .l-credit-signature:hover,
-.landing .l-credit-signature:focus-visible{opacity:.74}
+.landing .l-credit-signature:focus-visible{opacity:.95}
 /* Narrow crops swing the sand out of frame; over water the dark hand vanishes,
    so it lightens and stops multiplying. */
 @media (max-aspect-ratio: 13/10){
@@ -1219,14 +1239,29 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   background:currentColor;opacity:.28}
 .landing .l-act-second{background:none;border:none;padding:2px 0;color:inherit;
   cursor:pointer;font-family:'Jost',sans-serif;font-weight:400;font-size:12px;
-  letter-spacing:.32em;opacity:.84;
+  letter-spacing:.32em;opacity:1;
   text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4);
   display:inline-flex;align-items:center;gap:9px;
   border-bottom:1px solid transparent;
   transition:opacity .4s,border-color .4s}
 .landing .l-act-second svg{opacity:.8;transition:opacity .4s}
 .landing .l-act-second:hover svg{opacity:1}
-.landing .l-act-second:hover{opacity:1;border-bottom-color:currentColor}
+.landing .l-act-second:hover{border-bottom-color:currentColor}
+
+/* 40ms a letter — slower than LISTEN NOW's 26ms ripple on purpose. A ripple is a
+   wave and wants to be continuous; typing is discrete and wants you to hear each
+   key. The two actions move differently because they are different actions. */
+.l-type{display:inline-block;white-space:nowrap}
+.l-tl{display:inline-block;opacity:.74;
+  transition:opacity .09s linear;transition-delay:calc(var(--i,0) * 40ms)}
+.landing .l-act-second:hover .l-tl{opacity:1}
+
+/* Arrives once the sweep has crossed all nine letters, then blinks. */
+.l-caret{display:inline-block;width:1px;height:.9em;margin-left:-.18em;
+  background:currentColor;opacity:0;vertical-align:-.06em}
+.landing .l-act-second:hover .l-caret{
+  animation:l-blink .9s steps(1) infinite;animation-delay:360ms}
+@keyframes l-blink{0%,49%{opacity:1}50%,100%{opacity:0}}
 
 
 /* ---- the bar: tracklist, or the player ---- */
