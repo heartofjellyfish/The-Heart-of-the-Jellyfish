@@ -148,53 +148,66 @@ function secondsUntil(releaseDate: string) {
 }
 
 /**
- * The release, counted in seconds, ticking.
+ * The release, counted down in days / hours / minutes / seconds.
  *
  * Its own component with its own interval, so the rest of the page — the
  * waveform above all — is not reconciled once a second for a number nothing
- * else depends on.
+ * else reads.
  *
  * The page is statically prerendered, so the HTML carries a build-time number
- * and the client's first render disagrees with it. That is what
- * suppressHydrationWarning is for: ten million seconds out, a value stale by one
- * build is visually identical, and it snaps to the truth on mount.
+ * and the client disagrees on first render. That is what suppressHydrationWarning
+ * is for.
  *
- * Reduced motion gets days instead — an eight-digit number changing every second
- * is by far the most restless thing on an otherwise still page.
+ * Each unit is keyed by its own value, so React replaces the node only when that
+ * number actually changes — the seconds tick every second, the days once a day,
+ * and the animation fires per unit rather than on the whole row. The global
+ * prefers-reduced-motion rule kills the animation without touching the count.
  */
 function Countdown({ releaseDate }: { releaseDate: string }) {
   const [secs, setSecs] = useState(() => secondsUntil(releaseDate));
-  const [still, setStill] = useState(false);
 
   useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const apply = () => setStill(mq.matches);
-    apply();
-    mq.addEventListener('change', apply);
     const iv = window.setInterval(() => setSecs(secondsUntil(releaseDate)), 1000);
-    return () => {
-      mq.removeEventListener('change', apply);
-      window.clearInterval(iv);
-    };
+    return () => window.clearInterval(iv);
   }, [releaseDate]);
 
-  if (secs <= 0) return <>ALBUM OUT NOW</>;
-  if (still) {
-    const days = Math.ceil(secs / 86400);
+  if (secs <= 0) {
     return (
-      <>
-        ALBUM RELEASE IN {days.toLocaleString('en-US')} {days === 1 ? 'DAY' : 'DAYS'}
-      </>
+      <div className="l-cd">
+        <div className="l-cd-lead">ALBUM</div>
+        <div className="l-cd-row">
+          <span className="l-cd-num l-cd-out">OUT NOW</span>
+        </div>
+      </div>
     );
   }
+
+  const units: [number, string][] = [
+    [Math.floor(secs / 86400), 'DAYS'],
+    [Math.floor(secs / 3600) % 24, 'HOURS'],
+    [Math.floor(secs / 60) % 60, 'MINUTES'],
+    [secs % 60, 'SECONDS'],
+  ];
+
   return (
-    <span suppressHydrationWarning>
-      ALBUM RELEASE IN {secs.toLocaleString('en-US')} {secs === 1 ? 'SECOND' : 'SECONDS'}
-    </span>
+    <div className="l-cd" suppressHydrationWarning>
+      <div className="l-cd-lead">ALBUM RELEASE IN</div>
+      <div className="l-cd-row">
+        {units.map(([v, label]) => (
+          <span className="l-cd-unit" key={label}>
+            <span className="l-cd-num" key={v}>
+              {v}
+            </span>
+            <span className="l-cd-lbl">{label}</span>
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
 /**
+ * The seek bar's waveform./**
  * The seek bar's waveform. Peaks come precomputed from `public/waveforms.json`
  * (see scripts/waveform.mjs) — decoding a 4 MB mp3 in the browser to draw a
  * 26px graphic would be absurd.
@@ -835,12 +848,34 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   text-shadow:0 1px 3px rgba(12,52,84,.30),0 1px 26px rgba(12,52,84,.34);
   animation:l-rise 1.6s cubic-bezier(.2,.7,.2,1) both}
 @keyframes l-rise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
-/* One meta line, four possible homes. Same type in all of them so the choice is
+/* The countdown, four possible homes. Same type in all of them so the choice is
    only about position. */
-.l-meta{font-family:'Jost',sans-serif;font-weight:300;font-size:11px;
-  letter-spacing:.3em;white-space:nowrap}
+.l-meta{white-space:nowrap}
+
+.l-cd{display:flex;flex-direction:column;gap:clamp(7px,1.1vh,13px)}
+.l-cd-lead{font-family:'Jost',sans-serif;font-weight:300;font-size:9.5px;
+  letter-spacing:.46em;opacity:.72}
+.l-cd-row{display:flex;align-items:flex-end;gap:clamp(14px,1.8vw,32px)}
+.l-cd-unit{display:flex;align-items:baseline;gap:.42em}
+/* Tabular figures, or the row twitches sideways every time a digit changes width. */
+.l-cd-num{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
+  font-size:clamp(21px,2.7vw,40px);line-height:1;
+  font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1;
+  display:inline-block;
+  animation:l-tick .5s cubic-bezier(.16,.9,.24,1) both}
+.l-cd-lbl{font-family:'Jost',sans-serif;font-weight:300;font-size:9px;
+  letter-spacing:.34em;opacity:.62}
+.l-cd-out{animation:none;letter-spacing:.1em}
+
+/* Fires per unit, because each unit's node is keyed by its own value — the
+   seconds land every second, the minutes once a minute, the days once a day. */
+@keyframes l-tick{
+  from{opacity:0;transform:translateY(-.22em) scale(1.18);filter:blur(2px)}
+  60%{opacity:1;filter:blur(0)}
+  to{opacity:1;transform:none;filter:none}
+}
 .l-meta-eyebrow{margin-bottom:clamp(14px,2.2vh,26px)}
-.l-meta-under{margin-top:clamp(16px,2.4vh,28px);opacity:.88}
+.l-meta-under{margin-top:clamp(18px,2.8vh,34px);opacity:.95}
 .l-title{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
   font-size:clamp(42px,7.2vw,104px);line-height:1.04;margin:0}
 .l-play-row{display:flex;align-items:center;gap:20px;margin-top:clamp(26px,4.2vh,52px)}
@@ -994,7 +1029,8 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 }
 @media (max-width:560px){
   .l-nav{letter-spacing:.2em;font-size:11px}
-  .l-meta{font-size:10px;letter-spacing:.22em}
+  .l-cd-row{gap:14px}
+  .l-cd-lead{letter-spacing:.3em}
 }
 
 /* Dev-only, behind /?type=1 — never rendered for a visitor. */

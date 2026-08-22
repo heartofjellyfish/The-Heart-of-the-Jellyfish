@@ -166,12 +166,18 @@ and size. Dev affordance, renders for nobody else. `?type=1` still works.
 
 ### The countdown and the vignette
 
-The meta line is a live second-by-second countdown to release. It is its own
+The meta line counts down in days / hours / minutes / seconds, live. It is its own
 component with its own interval so the rest of the page — the waveform above all —
 is not reconciled once a second. The page is statically prerendered, so the HTML
 carries a build-time number and the client disagrees on first render; that is what
-`suppressHydrationWarning` is for. `prefers-reduced-motion` gets days instead: an
-eight-digit number changing every second is the most restless thing on a still page.
+`suppressHydrationWarning` is for.
+
+**Each unit's node is keyed by its own value.** That is what makes the tick animation
+per-unit: React replaces the seconds node every second and the days node once a day,
+so `l-tick` fires on exactly the number that changed and the others never flicker.
+Figures are tabular (`font-variant-numeric`), or the row twitches sideways whenever a
+digit changes width. The global `prefers-reduced-motion` rule kills the animation
+without touching the count.
 
 The vignette is a radial-gradient overlay at `z-index:1` — above the painting, below
 every piece of type. Two knobs, both CSS variables so the tuner drives them live:
