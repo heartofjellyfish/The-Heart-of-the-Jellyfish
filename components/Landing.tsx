@@ -142,6 +142,13 @@ const POEM_FONT: PoemFontKey = 'nothing';
 const VIGNETTE = { strength: 0.14, inner: 0 };
 
 /**
+ * Multiplier on the hero block's type — title, countdown, both actions. Qi's
+ * setting, arrived at with the slider at /?tune=1. The CSS fallback on .landing
+ * carries the same number; keep the two in step.
+ */
+const HERO_TYPE_SCALE = 1.15;
+
+/**
  * Candidates for the "this one is sounding" colour, every one of them sampled
  * off the painting rather than invented. Drives --lit / --lit-bright /
  * --lit-dim, which in turn drive the poem line, its number, the tracklist line,
@@ -306,7 +313,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [fontScale, setFontScale] = useState(1);
   const [vig, setVig] = useState(VIGNETTE);
   const [lit, setLit] = useState<LitKey>(LIT);
-  const [typeScale, setTypeScale] = useState(1);
+  const [typeScale, setTypeScale] = useState(HERO_TYPE_SCALE);
   const [stripCut, setStripCut] = useState(false);
   /**
    * Which face the bottom bar is showing. Playback and the bar's view are
@@ -999,7 +1006,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
      one of those is already fluid, so this scales the whole curve rather than
      any one breakpoint. The bottom tracklist is deliberately NOT on it: its
      sizing is a measured fit for ten titles and scaling it would break that. */
-  --type-scale:1}
+  --type-scale:1.15}
 .landing ::selection{background:rgba(230,207,130,.32)}
 /* Normalises the UA button font. Note it is (0,1,1) and beats any bare .l-*
    class, so every button rule below that sets a font has to be written as
@@ -1411,15 +1418,26 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   -webkit-mask-image:linear-gradient(90deg,#000 86%,transparent);
   mask-image:linear-gradient(90deg,#000 86%,transparent);
 }
-/* At 375px the countdown reached within 5px of the edge — a 360px phone would
-   have overflowed. All four units have to stay on one line, so the type gives. */
+/* All four countdown units have to stay on one line, so on a phone the type
+   gives. These are still multiplied by --type-scale — a hardcoded px here would
+   silently opt the countdown out of the scale on mobile only, which is exactly
+   the desktop/mobile split this page must not have.
+   
+   The two actions are the exception and do NOT scale below 560px: they sit on
+   one horizontal line with a rule between them, and at 1.15 that row came within
+   8px of a 390px screen's edge. The title has its own line and can grow; this
+   row cannot. */
 @media (max-width:560px){
   .l-nav{letter-spacing:.2em;font-size:11px}
-  .l-cd-lead{letter-spacing:.3em}
+  .l-cd-lead{letter-spacing:.3em;font-size:calc(10px * var(--type-scale,1))}
   .l-cd-row{gap:11px}
   .l-cd-unit{gap:.32em}
-  .l-cd-num{font-size:19px}
-  .l-cd-lbl{font-size:9px;letter-spacing:.14em}
+  .l-cd-num{font-size:calc(18px * var(--type-scale,1))}
+  .l-cd-lbl{font-size:calc(8.6px * var(--type-scale,1));letter-spacing:.14em}
+  .landing .l-play-label,
+  .landing .l-act-second{font-size:11.5px;letter-spacing:.26em}
+  .l-play-row{gap:12px}
+  .l-act-primary{gap:12px}
 }
 
 /* Dev-only, behind /?type=1 — never rendered for a visitor. */
