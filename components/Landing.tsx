@@ -1729,7 +1729,31 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-poem{display:flex;flex-direction:column;align-items:flex-start;text-align:left;
   margin:auto;max-width:min(880px,94vw);
   /* room for the numbers to hang outside the text column */
-  padding-left:3.2em}
+  padding-left:3.2em;
+
+  /* ---- the ink, and the light coming off it ----
+     Two tokens, doing two different jobs:
+
+     --poem-ink   a dark seat directly under the stroke, 1-2px, no more.
+     --poem-halo  a cool bloom hugging it. Not black, because a jellyfish is lit
+                  from inside and the panel is water — and cool rather than
+                  neutral keeps it from reading as haze on the glass.
+
+     Both radii are deliberately tiny, which is the opposite of where this
+     started. The first pass used 10-30px blurs and was invisible on screen even
+     at .7 alpha: this backdrop is a flat 80% navy scrim over a blurred painting,
+     so a wide dark shadow is darkening something already dark, and a wide light
+     one spreads its budget over hundreds of pixels and lands nowhere. The only
+     place either has any contrast to work with is the pixel next to the stroke.
+     Concentrate there and it reads; spread it and it evaporates.
+
+     Which also decides what the effect *is*. There is no legibility problem here
+     to solve — white on this scrim is already about 10:1 — so the halo is not a
+     crutch, it is the light. Tight and bright, the hairline stops looking like
+     UI text set over a picture and starts looking like something luminous in
+     water. If it ever goes fuzzy instead of lit, the blur radius grew. */
+  --poem-ink:rgba(2,14,26,.85);
+  --poem-halo:rgba(186,230,252,.55)}
 /* The poem's own hand, at Qi's call.
    
    The risk this accepts: "The heart of the jellyfish." is also line 06, so in the
@@ -1740,7 +1764,10 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    ratio is the knob, not the font. */
 .l-poem-head{font-family:'Nothing You Could Do',cursive;font-weight:400;
   font-size:clamp(24px,3.4vh,38px);letter-spacing:.01em;line-height:1.2;
-  opacity:.72;margin-bottom:clamp(46px,9.5vh,98px)}
+  opacity:.72;margin-bottom:clamp(46px,9.5vh,98px);
+  /* A wider bloom than the lines get — the strokes are bigger here, so the same
+     7px would sit inside the letterform instead of around it. Same seat. */
+  text-shadow:0 0 11px rgba(186,230,252,.5),0 1px 2px rgba(2,14,26,.8)}
 .l-poem-body{display:flex;flex-direction:column;
   gap:clamp(18px,3.2vh,38px)}          /* the space between stanzas */
 .l-poem-stanza{display:flex;flex-direction:column;gap:clamp(1px,.35vh,5px)}
@@ -1749,8 +1776,16 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   background:none;border:none;padding:2px 0;color:#eef5f9;cursor:pointer;
   font-family:var(--poem-family);font-style:var(--poem-style);font-weight:var(--poem-weight);
   font-size:calc(var(--poem-size) * var(--poem-scale,1));line-height:var(--poem-lh);
-  opacity:.94;transition:opacity .35s,color .35s}
-.landing .l-poem-line:hover{opacity:1;color:#fff}
+  /* Bloom first, seat second — and the seat is offset down while the bloom is
+     centred, so the light still reads as overhead without the glow lopsiding. */
+  text-shadow:0 0 7px var(--poem-halo),
+              0 1px 2px var(--poem-ink);
+  opacity:.94;transition:opacity .35s,color .35s,text-shadow .35s}
+/* Hover brightens the bloom and leaves the seat alone — the line lifts off the
+   water rather than pressing harder into it. */
+.landing .l-poem-line:hover{opacity:1;color:#fff;
+  text-shadow:0 0 9px rgba(220,244,255,.8),
+              0 1px 2px var(--poem-ink)}
 /* Tracks with no demo read slightly quieter — enough to hint, not enough to
    break the poem's even colour. The poem is the work; availability is metadata. */
 .landing .l-poem-soon{opacity:.62}
@@ -1766,6 +1801,9 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-poem-num{position:absolute;right:calc(100% + .55em);top:.06em;
   font-family:'Nothing You Could Do',cursive;font-weight:400;
   font-size:.62em;letter-spacing:0;
+  /* Seat only, no bloom. The number is metadata hanging in the margin; if it
+     lights up the way the verse does it starts competing with it. */
+  text-shadow:0 1px 2px rgba(2,14,26,.7);
   opacity:0;transition:opacity .3s}
 .l-poem-line:hover .l-poem-num{opacity:.5}
 /* No cursor to hover with — show them, or the poem hides that it is playable. */
@@ -1794,7 +1832,33 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
     -webkit-background-clip:text;background-clip:text;
     -webkit-text-fill-color:transparent;
     transition:background-position 1s linear,opacity .35s;
+
+    /* text-shadow has to come off this line, and be replaced rather than
+       dropped. Paint order inside an element is background, then text-shadow,
+       then the glyph fill. Here the fill is transparent and the *background* is
+       the gradient — so a text-shadow would land on top of the very thing it is
+       supposed to sit behind, smearing dark over the progress fill and hollowing
+       out the one line that is meant to be brightest.
+
+       filter runs after the element is rasterised, so drop-shadow sees the
+       gradient-filled glyphs as a finished picture and puts its blur underneath
+       them, which is where a shadow belongs. Two passes only — drop-shadow
+       blurs the whole layer, and it is not cheap.
+
+       The bloom is mixed from --lit so it follows whichever colour is chosen at
+       the top of this file; the rgba above it is the fallback for engines
+       without color-mix, and is the foam value hard-coded. */
+    text-shadow:none;
+    filter:drop-shadow(0 1px 2px rgba(2,14,26,.7))
+           drop-shadow(0 0 6px rgba(238,246,248,.45));
+    filter:drop-shadow(0 1px 2px rgba(2,14,26,.7))
+           drop-shadow(0 0 6px color-mix(in srgb,var(--lit) 45%,transparent));
   }
+  /* Hover is one pseudo-class heavier than .l-poem-playing, so the line's hover
+     shadow outranks the none above it and comes back the moment the cursor is
+     over the line that is sounding — which is exactly when someone is looking at
+     it. Restated at equal weight rather than fought with !important. */
+  .landing .l-poem-playing:hover{text-shadow:none}
   /* the number is a child, so it would inherit the transparent fill */
   .landing .l-poem-playing .l-poem-num{-webkit-text-fill-color:currentColor}
 }
