@@ -1,13 +1,5 @@
 # Asset credits
 
-## The painting
-
-### Shore (`public/images/hero.webp`, master in `artwork/hero_oil.png`)
-**Sho Peng** — https://pengsho.com
-Used with the artist's permission. The front page is built on this canvas, so the
-credit is on the page itself, not only here: see `ARTIST` / `CREDIT_PLACEMENT` in
-[components/Landing.tsx](components/Landing.tsx).
-
 ## 3D models
 
 ### Shipwreck (`public/models/wreck/`)

@@ -72,7 +72,6 @@ Drop the GLB at `public/models/<name>/model.glb`. For anything > 5 MB, gate load
 ## Credits
 
 - Music, lyrics, art direction — **Qi · 琦**
-- The shore painting — **Sho Peng**, [pengsho.com](https://pengsho.com)
 - Three.js Water shader — three.js examples (MIT)
 - Sky atmospheric scattering — Preetham model via drei
 - Chrysaora jellyfish model — Pacific Sea Nettle by NestaEric on Sketchfab

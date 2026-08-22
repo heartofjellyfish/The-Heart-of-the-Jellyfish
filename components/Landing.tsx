@@ -83,42 +83,6 @@ const FEATURED_DEMO = 3;
 const HERO_IMAGE = '/images/hero.webp';
 
 /**
- * The painting is a friend's work, and this page is built on top of it — the
- * whole screen is his canvas with the album set over it. So it gets a credit.
- *
- * The form is a gallery wall label, not a byline, and that choice is the whole
- * design: a label doesn't sell the painter, it identifies the work, which is
- * what a room does when it takes a picture seriously. It also happens to be the
- * one piece of chrome that *adds* to the atmosphere instead of spending it.
- *
- * `work` / `medium` follow Sho Peng's own convention on pengsho.com, where every
- * series is titled "Name, Year" — the credit speaks in the painter's house style
- * rather than in the site's. Leave `work` empty and the label drops that line and
- * credits the painter alone; nothing false ships while the title is unknown.
- */
-const ARTIST = {
-  name: 'Sho Peng',
-  url: 'https://pengsho.com',
-  work: '',
-  medium: 'oil on canvas',
-} as const;
-
-/**
- * Two ways to carry it, one edit to switch — like META_PLACEMENT, this is a
- * look-at-it decision rather than a reasoned one.
- *
- * `plate`     the wall label, top-left, in the nav slot the countdown vacated.
- *             Balances PRE-SAVE, so the nav finally reads as a pair.
- * `signature` the painter's hand in the sand at the lower right, where a canvas
- *             is signed. Quieter still — it reads as part of the picture rather
- *             than as part of the site — at the cost of asserting a mark the
- *             physical painting doesn't carry (the master in artwork/ is unsigned).
- * `off`       no credit on the page. CREDITS.md still carries it.
- */
-type CreditPlacement = 'plate' | 'signature' | 'off';
-const CREDIT_PLACEMENT: CreditPlacement = 'signature';
-
-/**
  * Where the poem breaks. Four stanzas, uneven on purpose — the movements are not
  * the same length. Indices are track numbers, so this reads the same as the sleeve.
  */
@@ -342,6 +306,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [fontScale, setFontScale] = useState(1);
   const [vig, setVig] = useState(VIGNETTE);
   const [lit, setLit] = useState<LitKey>(LIT);
+  const [typeScale, setTypeScale] = useState(1);
   const [stripCut, setStripCut] = useState(false);
   /**
    * Which face the bottom bar is showing. Playback and the bar's view are
@@ -375,13 +340,36 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       setStripCut(false);
       return;
     }
-    const check = () => setStripCut(el.scrollWidth > el.clientWidth + 1);
+    /*
+     * Deferred a frame on purpose. The observer can fire mid-transition — while
+     * the media query is swapping the row from flex to block, the items are
+     * still shrunk and the row measures as fitting when it will not, or the
+     * reverse. Measuring after layout settles gives the honest number: without a
+     * second pass the fade latched on at 1100px wide with nothing to scroll to.
+     *
+     * A timer rather than requestAnimationFrame, because rAF is suspended in a
+     * background tab and the second measurement would simply never arrive.
+     */
+    let t = 0;
+    const measure = () => setStripCut(el.scrollWidth > el.clientWidth + 1);
+    const check = () => {
+      measure();          // the common case, right away
+      window.clearTimeout(t);
+      t = window.setTimeout(measure, 60); // and again once layout has settled
+    };
     check();
     const ro = new ResizeObserver(check);
     ro.observe(el);
+    // Belt and braces: a ResizeObserver on this element misses some window
+    // resizes, so listen for the window too. Both funnel into the same debounce.
+    window.addEventListener('resize', check);
     // A late webfont reflows the sentence without resizing anything.
     document.fonts?.ready.then(check).catch(() => {});
-    return () => ro.disconnect();
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener('resize', check);
+      ro.disconnect();
+    };
   }, [cur]);
 
   /* --- Esc closes whatever panel is open -------------------------- */
@@ -559,42 +547,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       TITLES[cur - 1]
     : '';
 
-  /**
-   * The painting's credit. One element, two costumes — see CREDIT_PLACEMENT.
-   *
-   * At rest the label says what the picture is; on hover it says where to find
-   * the painter. That swap is the point: nothing on the resting page reads as
-   * promotion, and the door is there for anyone who leans in. Both strings sit
-   * in the same grid cell so the cell is sized by the wider of the two and the
-   * exchange costs no layout.
-   */
-  const credit =
-    CREDIT_PLACEMENT === 'off' ? null : (
-      <a
-        className={'l-credit l-credit-' + CREDIT_PLACEMENT}
-        href={ARTIST.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label={'Painting by ' + ARTIST.name + ' — opens ' + ARTIST.url + ' in a new tab'}
-      >
-        {CREDIT_PLACEMENT === 'signature' ? (
-          ARTIST.name
-        ) : (
-          <>
-            {ARTIST.work && <span className="l-credit-work">{ARTIST.work}</span>}
-            <span className="l-credit-line">
-              <span className="l-credit-rest">
-                {ARTIST.medium} · {ARTIST.name}
-              </span>
-              <span className="l-credit-hover" aria-hidden>
-                {ARTIST.url.replace(/^https?:\/\//, '')}
-              </span>
-            </span>
-          </>
-        )}
-      </a>
-    );
-
   /* ---------------------------------------------------------------- */
 
   return (
@@ -605,6 +557,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           ['--lit' as string]: litVals.lit,
           ['--lit-bright' as string]: litVals.bright,
           ['--lit-dim' as string]: litVals.dim,
+          ['--type-scale' as string]: typeScale,
         } as React.CSSProperties
       }
     >
@@ -635,10 +588,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         }
       />
 
-      {/* Above the vignette, below every piece of type — it belongs to the
-          picture, so it takes the picture's light. */}
-      {CREDIT_PLACEMENT === 'signature' && credit}
-
       <nav className="l-nav">
         <div className="l-nav-left">
           {META_PLACEMENT === 'topLeft' && (
@@ -646,7 +595,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               <Countdown releaseDate={releaseDate} />
             </div>
           )}
-          {CREDIT_PLACEMENT === 'plate' && credit}
         </div>
         <button type="button" className="l-nav-item" onClick={() => setPanel('subscribe')}>
           PRE-SAVE
@@ -862,6 +810,20 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             <span className="l-tuner-val">inner {vig.inner}%</span>
           </div>
 
+          <div className="l-tuner-head">HERO TYPE SIZE</div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0.8}
+              max={1.45}
+              step={0.01}
+              value={typeScale}
+              aria-label="Hero type scale"
+              onChange={(e) => setTypeScale(Number(e.target.value))}
+            />
+            <span className="l-tuner-val">×{typeScale.toFixed(2)}</span>
+          </div>
+
           <div className="l-tuner-head">NOW PLAYING COLOUR</div>
           <div className="l-tuner-row">
             {LITS.map((l) => (
@@ -1032,7 +994,12 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
      tracklist line, the waveform, the progress, the seek knob, the selection. */
   --lit:#eef6f8;
   --lit-bright:#ffffff;
-  --lit-dim:rgba(238,246,248,.26)}
+  --lit-dim:rgba(238,246,248,.26);
+  /* Multiplies the hero block's type — title, countdown, the two actions. Every
+     one of those is already fluid, so this scales the whole curve rather than
+     any one breakpoint. The bottom tracklist is deliberately NOT on it: its
+     sizing is a measured fit for ten titles and scaling it would break that. */
+  --type-scale:1}
 .landing ::selection{background:rgba(230,207,130,.32)}
 /* Normalises the UA button font. Note it is (0,1,1) and beats any bare .l-*
    class, so every button rule below that sets a font has to be written as
@@ -1097,91 +1064,6 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   text-shadow:0 1px 2px rgba(10,42,70,.5)}
 .l-nav-item:hover{opacity:1}
 
-/* ---- the painting's credit ---- */
-/* Comes in last and slowest of anything on the page: 2.6s on a 1.9s delay,
-   against the hero's 1.6s. The label goes on the wall after the work is hung,
-   and by the time it arrives the eye has already been given to the painting —
-   which is the only order in which a credit can be quiet. */
-/* Fill mode is "backwards", and the keyframes deliberately have no end frame.
-   A forwards fill keeps applying after the animation ends, and an
-   animation-applied value outranks every normal declaration in the cascade,
-   :hover included — with an explicit end frame of opacity 1 and fill "both",
-   this element was pinned at 1 forever: the resting opacity below never took,
-   and the hover state was dead code that computed correctly and changed
-   nothing. "backwards" fills only during the delay and releases at the end, and
-   an implicit end frame interpolates toward the element's own value — so each
-   variant lands on its own resting opacity with no pop, and hover works. */
-.landing .l-credit{color:inherit;text-decoration:none;display:block;
-  animation:l-credit-in 2.6s cubic-bezier(.2,.7,.2,1) 1.9s backwards}
-@keyframes l-credit-in{from{opacity:0}}
-
-/* -- plate: the wall label -- */
-.l-credit-plate{line-height:1.55;
-  text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4)}
-/* Cormorant italic, because the work's own title is the one thing here that is
-   type rather than caption — same face the album sets its name in. */
-.l-credit-work{display:block;font-family:'Cormorant Garamond',serif;font-style:italic;
-  font-weight:500;font-size:13.5px;letter-spacing:.012em;opacity:.7;
-  transition:opacity .55s}
-/* Both strings share one grid cell, so the cell is as wide as the wider of them
-   and the hover swap moves nothing beside it. */
-.l-credit-line{display:grid;font-size:9.5px;font-weight:400;letter-spacing:.3em}
-.l-credit-rest,.l-credit-hover{grid-area:1/1;white-space:nowrap;
-  text-transform:uppercase;transition:opacity .55s cubic-bezier(.2,.7,.2,1)}
-.l-credit-rest{opacity:.5}
-.l-credit-hover{opacity:0;
-  text-decoration:underline;text-underline-offset:4px;
-  text-decoration-thickness:.5px;text-decoration-color:rgba(255,255,255,.55)}
-.landing .l-credit-plate:hover .l-credit-rest,
-.landing .l-credit-plate:focus-visible .l-credit-rest{opacity:0}
-.landing .l-credit-plate:hover .l-credit-hover,
-.landing .l-credit-plate:focus-visible .l-credit-hover{opacity:.92}
-.landing .l-credit-plate:hover .l-credit-work,
-.landing .l-credit-plate:focus-visible .l-credit-work{opacity:.95}
-/* Under ~560px the plate and PRE-SAVE fight for one line. The caption goes, the
-   title stays: on a phone the work's name is worth more than its medium. */
-@media (max-width:560px){
-  .l-credit-work{font-size:12px}
-  .l-credit-line{font-size:8.5px;letter-spacing:.22em}
-}
-
-/* -- signature: the painter's hand, in the sand -- */
-/* z-index 5 — over the vignette, under nav/hero/bar, so it darkens with the
-   corners like paint and never sits on top of type. multiply, because a
-   signature is pigment absorbed into the ground, not ink laid over it. */
-.landing .l-credit-signature{position:absolute;z-index:5;
-  right:clamp(30px,5.2vw,104px);bottom:clamp(132px,19vh,196px);
-  font-family:'Nothing You Could Do',cursive;
-  font-size:clamp(20px,2.15vw,34px);line-height:1;
-  color:#3a2a16;opacity:.82;mix-blend-mode:multiply;
-  transform:rotate(-3deg);transform-origin:right bottom;
-  transition:opacity .6s cubic-bezier(.2,.7,.2,1)}
-/* The one affordance, and it stays inside the picture: a signature's own
-   underline swash, drawn left-to-right on hover. A pointer cursor alone never
-   tells anyone a painted name is a door, and the alternatives — a tooltip, a
-   box, an icon — are all site chrome landing on the canvas. This is a second
-   stroke of the same pen. */
-.landing .l-credit-signature::after{content:'';position:absolute;
-  left:2%;right:6%;bottom:-.16em;height:1px;background:currentColor;
-  transform:scaleX(0);transform-origin:left center;opacity:.75;
-  transition:transform .55s cubic-bezier(.2,.7,.2,1)}
-.landing .l-credit-signature:hover,
-.landing .l-credit-signature:focus-visible{opacity:1}
-.landing .l-credit-signature:hover::after,
-.landing .l-credit-signature:focus-visible::after{transform:scaleX(1)}
-/* Narrow crops swing the sand out of frame entirely and the picture becomes the
-   jellyfish alone — so both halves of the desktop placement stop being true. The
-   dark hand vanishes over water, so it lightens and stops multiplying; and the
-   lower *right* is now the jellyfish and its tentacles, so the name crosses the
-   one subject the crop was chosen to keep. It moves to the lower left, which the
-   tentacles trail away from and which prints have always been free to sign. */
-@media (max-aspect-ratio: 13/10){
-  .landing .l-credit-signature{color:#e8eef2;mix-blend-mode:normal;opacity:.62;
-    text-shadow:0 1px 4px rgba(10,42,70,.5);
-    right:auto;left:clamp(24px,5vw,60px);bottom:clamp(120px,15vh,172px);
-    transform-origin:left bottom}
-}
-
 /* ---- hero ---- */
 .l-hero{position:absolute;z-index:10;
   left:clamp(24px,3vw,52px);top:clamp(96px,17vh,190px);
@@ -1198,20 +1080,20 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    .62 opacity over a pale sky, which is nowhere near enough. The hero's shared
    text-shadow is tuned for large glyphs — small letterspaced caps need a tight
    dark one of their own, and the weight up from 300 to 400. */
-.l-cd-lead{font-family:'Jost',sans-serif;font-weight:400;font-size:10px;
-  letter-spacing:.42em;opacity:.92;
+.l-cd-lead{font-family:'Jost',sans-serif;font-weight:400;
+  letter-spacing:.42em;opacity:.92;font-size:calc(11px * var(--type-scale,1));
   text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4)}
 .l-cd-row{display:flex;align-items:flex-end;gap:clamp(14px,1.8vw,32px)}
 .l-cd-unit{display:flex;align-items:baseline;gap:.42em}
 /* Tabular figures, or the row twitches sideways every time a digit changes width. */
 .l-cd-num{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
   text-shadow:0 1px 3px rgba(10,42,70,.45);
-  font-size:clamp(21px,2.7vw,40px);line-height:1;
+  font-size:calc(clamp(21px,2.7vw,40px) * var(--type-scale,1));line-height:1;
   font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1;
   display:inline-block;
   animation:l-tick .5s cubic-bezier(.16,.9,.24,1) both}
-.l-cd-lbl{font-family:'Jost',sans-serif;font-weight:400;font-size:10px;
-  letter-spacing:.26em;opacity:.9;
+.l-cd-lbl{font-family:'Jost',sans-serif;font-weight:400;
+  letter-spacing:.26em;opacity:.9;font-size:calc(11px * var(--type-scale,1));
   text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4)}
 .l-cd-out{animation:none;letter-spacing:.1em}
 
@@ -1225,7 +1107,34 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-meta-eyebrow{margin-bottom:clamp(14px,2.2vh,26px)}
 .l-meta-under{margin-top:clamp(18px,2.8vh,34px);opacity:.95}
 .l-title{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
-  font-size:clamp(42px,7.2vw,104px);line-height:1.04;margin:0}
+  font-size:calc(clamp(42px,7.2vw,104px) * var(--type-scale,1));line-height:1.04;margin:0}
+
+/* A woven grain in the title, so the letters read as cloth rather than as ink
+   floating over a painting. Two repeating gradients at a 3px pitch — warp and
+   weft — laid over flat white and clipped to the glyphs.
+
+   The shadow has to change with it. text-shadow paints from the glyph outline
+   and shows straight through a transparent text-fill, which turns each letter
+   into a blurred blob of its own shadow; drop-shadow filters the rendered
+   result instead, so it sees the woven fill and stays behind it. Hence
+   text-shadow:none plus two drop-shadows standing in for the pair the hero
+   passes down.
+
+   Guarded, because without background-clip:text the transparent fill would make
+   the album's name invisible rather than merely untextured. */
+@supports ((-webkit-background-clip:text) or (background-clip:text)){
+  .l-title{
+    background-image:
+      repeating-linear-gradient(90deg,rgba(46,86,112,.17) 0 1px,transparent 1px 3px),
+      repeating-linear-gradient(0deg,rgba(46,86,112,.13) 0 1px,transparent 1px 3px),
+      linear-gradient(#fff,#fff);
+    -webkit-background-clip:text;background-clip:text;
+    -webkit-text-fill-color:transparent;
+    text-shadow:none;
+    filter:drop-shadow(0 1px 3px rgba(12,52,84,.34))
+           drop-shadow(0 2px 20px rgba(12,52,84,.32));
+  }
+}
 .l-act-primary{display:flex;align-items:center;gap:clamp(14px,1.4vw,20px)}
 .l-play-row{display:flex;align-items:center;gap:clamp(14px,1.4vw,20px);margin-top:clamp(26px,4.2vh,52px)}
 /* The primary action. On hover the ring fills and the glyph inverts — the button
@@ -1250,8 +1159,8 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .landing .l-play:focus-visible::after{opacity:0;transform:scale(1.42)}
 .l-act-primary:hover .l-play svg{transform:scale(1.12)}
 .landing .l-play-label{border:none;background:none;padding:0;color:inherit;cursor:pointer;
-  font-family:'Jost',sans-serif;font-weight:400;font-size:12px;letter-spacing:.32em;
-  opacity:1;transition:opacity .4s;
+  font-family:'Jost',sans-serif;font-weight:400;letter-spacing:.32em;
+  font-size:calc(12px * var(--type-scale,1));opacity:1;transition:opacity .4s;
   text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4)}
 /* A wave through the word: each letter lifts on its own delay and settles in the
    same order on the way out. 26ms apart is enough to read as a ripple and short
@@ -1264,8 +1173,8 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-act-rule{width:1px;align-self:stretch;margin:0 clamp(4px,.7vw,14px);
   background:currentColor;opacity:.28}
 .landing .l-act-second{background:none;border:none;padding:2px 0;color:inherit;
-  cursor:pointer;font-family:'Jost',sans-serif;font-weight:400;font-size:12px;
-  letter-spacing:.32em;opacity:1;
+  cursor:pointer;font-family:'Jost',sans-serif;font-weight:400;letter-spacing:.32em;
+  font-size:calc(12px * var(--type-scale,1));opacity:1;
   text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4);
   display:inline-flex;align-items:center;gap:9px;
   border-bottom:1px solid transparent;
