@@ -212,6 +212,19 @@ at, and only one of them was strength:
   the bottom, which faces into it. Reverse that pair and the letters pop out of
   the surface instead of into it.
 
+**Three knobs, not one, because the qualities pull against each other.** Qi's
+follow-up was "嵌进去的感觉,但我又想要锐利,够白" — carved *and* crisp *and*
+white. `DEPTH` is how far the shading reaches in; `SHARP` is how hard its edge
+is; `WHITE` is how much of the letter face stays pure white, by taking the dark
+band's opacity down.
+
+The greyness is `SHARP` and `WHITE` together, and `DEPTH` is not the culprit. The
+dark band is merged *over* the glyph, so the more it is blurred the further it
+spreads across the face and the more the whole letter dims. Sharpen it and it
+collapses back to a line along the top wall, leaving the rest of the face
+untouched — crisper and whiter from the same move. Worth remembering the next
+time an inset looks muddy: reach for the blur before the offset.
+
 `edge` and `groove` stay text-shadow and just scale up. `carve` is the only one
 with shading genuinely inside the glyph, and the construction is worth knowing
 because CSS has no inner shadow for text:

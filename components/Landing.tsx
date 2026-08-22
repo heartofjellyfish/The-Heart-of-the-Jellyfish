@@ -181,7 +181,29 @@ const INSET_STYLES = [
 
 type InsetKey = (typeof INSET_STYLES)[number]['key'];
 const INSET: InsetKey = 'carve';
+
+/**
+ * Three knobs, because the three things Qi asked for pull against each other and
+ * one slider cannot separate them.
+ *
+ * DEPTH  - how far into the letter the shading reaches.
+ * SHARP  - how hard its edge is. 0 is a soft falloff, 1 is a crisp slab with only
+ *          enough blur left to antialias.
+ * WHITE  - how much of the letter face stays pure white, by taking the dark
+ *          band's opacity down. 1 removes the shading entirely.
+ *
+ * The greyness he was seeing is SHARP and WHITE together, not DEPTH: the dark
+ * band is merged *over* the glyph, so the more it is blurred the further it
+ * spreads across the face, and the whole letter dims. Sharpen it and it collapses
+ * back to a line along the top wall, leaving the rest of the face untouched —
+ * which is both the crisper and the whiter result, from the same move.
+ */
 const INSET_DEPTH = 2.2;
+/* Defaults moved toward what Qi actually asked for — sharper and whiter than
+   the first carve — so the slider starts in the right neighbourhood rather
+   than at the grey setting he was reacting to. */
+const INSET_SHARP = 0.85;
+const INSET_WHITE = 0.5;
 
 /**
  * Candidates for the "this one is sounding" colour, every one of them sampled
@@ -351,6 +373,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [typeScale, setTypeScale] = useState(HERO_TYPE_SCALE);
   const [inset, setInset] = useState<InsetKey>(INSET);
   const [depth, setDepth] = useState(INSET_DEPTH);
+  const [sharp, setSharp] = useState(INSET_SHARP);
+  const [white, setWhite] = useState(INSET_WHITE);
   /**
    * The title's rendered font size, in px. The carve filter's offsets are SVG
    * attributes, which cannot read em or var(), so the one thing that must scale
@@ -625,6 +649,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           ['--lit-dim' as string]: litVals.dim,
           ['--type-scale' as string]: typeScale,
           ['--inset' as string]: depth,
+          ['--sharp' as string]: sharp,
+          ['--white' as string]: white,
         } as React.CSSProperties
       }
     >
@@ -656,13 +682,13 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           colorInterpolationFilters="sRGB"
         >
           <feOffset in="SourceAlpha" dx="0" dy={titlePx * 0.011 * depth} result="down" />
-          <feGaussianBlur in="down" stdDeviation={titlePx * 0.008 * depth} result="downBlur" />
+          <feGaussianBlur in="down" stdDeviation={titlePx * depth * (0.001 + 0.007 * (1 - sharp))} result="downBlur" />
           <feComposite in="SourceAlpha" in2="downBlur" operator="out" result="topBand" />
-          <feFlood floodColor="#08243c" floodOpacity="0.72" result="dark" />
+          <feFlood floodColor="#08243c" floodOpacity={0.9 * (1 - white)} result="dark" />
           <feComposite in="dark" in2="topBand" operator="in" result="shade" />
 
           <feOffset in="SourceAlpha" dx="0" dy={titlePx * -0.008 * depth} result="up" />
-          <feGaussianBlur in="up" stdDeviation={titlePx * 0.005 * depth} result="upBlur" />
+          <feGaussianBlur in="up" stdDeviation={titlePx * depth * (0.001 + 0.004 * (1 - sharp))} result="upBlur" />
           <feComposite in="SourceAlpha" in2="upBlur" operator="out" result="bottomBand" />
           <feFlood floodColor="#ffffff" floodOpacity="0.95" result="light" />
           <feComposite in="light" in2="bottomBand" operator="in" result="sheen" />
@@ -976,6 +1002,30 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             />
             <span className="l-tuner-val">depth x{depth.toFixed(1)}</span>
           </div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={sharp}
+              aria-label="Inset sharpness"
+              onChange={(e) => setSharp(Number(e.target.value))}
+            />
+            <span className="l-tuner-val">sharp {sharp.toFixed(2)}</span>
+          </div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={white}
+              aria-label="How white the letter face stays"
+              onChange={(e) => setWhite(Number(e.target.value))}
+            />
+            <span className="l-tuner-val">white {white.toFixed(2)}</span>
+          </div>
 
           <div className="l-tuner-head">POEM TYPE</div>
           <div className="l-tuner-row">
@@ -1272,25 +1322,27 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    rather than as cut, and why it stays perfectly crisp. */
 .l-title[data-inset=edge]{
   text-shadow:
-    0 calc(-.009em * var(--inset,1)) 0 rgba(8,34,58,.62),
+    0 calc(-.009em * var(--inset,1)) 0 rgba(8,34,58,calc(.8 * (1 - var(--white,.3)))),
     0 calc(.009em * var(--inset,1)) 0 rgba(255,255,255,.66),
     0 calc(.018em * var(--inset,1)) calc(.06em * var(--inset,1)) rgba(8,34,58,.30)}
 
-/* B - the same rims, but the dark one is doubled and blurred so it falls off
-   into the surface the way the lip of a depression would, and the light one
-   stays hard because a lit edge is a specular, not a gradient. */
+/* B - the same rims, but the dark one is doubled and the second copy falls off
+   into the surface the way the lip of a depression would. Its blur is the one
+   length here that SHARP touches; the light rim stays hard at every setting,
+   because a lit edge is a specular and not a gradient. */
 .l-title[data-inset=groove]{
   text-shadow:
-    0 calc(-.009em * var(--inset,1)) calc(.009em * var(--inset,1)) rgba(6,28,50,.72),
-    0 calc(-.02em * var(--inset,1)) calc(.036em * var(--inset,1)) rgba(6,28,50,.34),
+    0 calc(-.009em * var(--inset,1)) calc(.009em * var(--inset,1) * (1 - var(--sharp,.55))) rgba(6,28,50,calc(.9 * (1 - var(--white,.3)))),
+    0 calc(-.02em * var(--inset,1)) calc(.036em * var(--inset,1) * (1 - var(--sharp,.55))) rgba(6,28,50,calc(.44 * (1 - var(--white,.3)))),
     0 calc(.009em * var(--inset,1)) 0 rgba(255,255,255,.76),
     0 calc(.027em * var(--inset,1)) calc(.09em * var(--inset,1)) rgba(6,28,50,.26)}
 
 /* C - the only one where the shading is genuinely inside the glyph. See the SVG
-   in the markup for how the two inner bands are built. text-shadow has to go, or
-   it would fight the filter; the ambient shadow comes back as a drop-shadow
-   chained after the filter, which sees the carved result rather than the raw
-   outline. */
+   in the markup for how the two inner bands are built, and INSET_DEPTH for what
+   the three knobs do to them. text-shadow has to go, or it would fight the
+   filter; the ambient shadow comes back as a drop-shadow chained after it, which
+   sees the carved result rather than the raw outline — and stays outside the
+   three knobs, since it is the only part that is not the cut itself. */
 .l-title[data-inset=carve]{
   text-shadow:none;
   filter:url(#l-carve)
