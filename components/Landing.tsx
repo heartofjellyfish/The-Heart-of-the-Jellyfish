@@ -783,6 +783,11 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                             (cur === n ? ' l-poem-playing' : '')
                           }
                           onClick={() => playFromPoem(n)}
+                          style={
+                            cur === n
+                              ? ({ ['--p' as string]: pct.toFixed(1) + '%' } as React.CSSProperties)
+                              : undefined
+                          }
                           aria-label={
                             (cur === n
                               ? 'Now playing, back to player — '
@@ -1133,12 +1138,34 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 /* No cursor to hover with — show them, or the poem hides that it is playable. */
 @media (hover:none){.l-poem-num{opacity:.38}}
 
-/* The line that is sounding, wherever you happen to be looking. The panel and
-   the bar are two windows onto one player, so they mark it the same way: lit in
-   the same blue, and the hanging number stays out — breathing — instead of
-   waiting for a hover. */
+/* The line that is sounding does not merely light up — it fills, left to right,
+   in step with the track. Someone reading along with a finger under the words.
+   The poem and the player stop being two things.
+
+   Mechanically: a two-stop gradient at 200% width, clipped to the glyphs, slid
+   by --p (the play percentage, handed down inline). Sliding background-position
+   is what makes it smooth — gradient colour stops cannot be transitioned, but
+   position can, so the ~0.7s progress updates arrive as continuous motion
+   instead of a stutter. The 48/52 split is a soft edge: ink spreading, not a
+   wipe. */
 .landing .l-poem-playing{opacity:1;color:#8fd6ea}
 .landing .l-poem-playing:hover{color:#b6e6f4}
+
+@supports ((-webkit-background-clip:text) or (background-clip:text)){
+  .landing .l-poem-playing{
+    background-image:linear-gradient(90deg,
+      #a8e6f7 48%, rgba(238,245,249,.34) 52%);
+    background-size:200% 100%;
+    background-position:calc(100% - var(--p,0%)) 0;
+    background-repeat:no-repeat;
+    -webkit-background-clip:text;background-clip:text;
+    -webkit-text-fill-color:transparent;
+    transition:background-position 1s linear,opacity .35s;
+  }
+  /* the number is a child, so it would inherit the transparent fill */
+  .landing .l-poem-playing .l-poem-num{-webkit-text-fill-color:currentColor}
+}
+
 .landing .l-poem-playing .l-poem-num{color:#8fd6ea;
   animation:l-breathe 2.8s ease-in-out infinite}
 @keyframes l-breathe{0%,100%{opacity:.32}50%{opacity:.95}}
