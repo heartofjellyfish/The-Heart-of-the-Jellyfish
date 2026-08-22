@@ -163,8 +163,14 @@ trade: the waveform downstairs is the precise instrument, this is the one you ca
 read. **If the fill and the pointer ever stop sharing a box, this breaks silently
 — it will still seek, just not where you pressed.**
 
-The number in the margin took over the transport (press to pause, and its breath
-holds while paused), because press-to-seek eats the click. Keyboard: the line is
+The number in the margin took over the transport, because press-to-seek eats the
+click. As first shipped that was a 10×17px pair of digits reading as metadata —
+a control nobody could find or hit — so it now grows an invisible ~30px hit box
+(a `::before`, not padding, which would shove a glyph positioned off its right
+edge) that reaches left into the empty margin and stops short of the first
+letter, since a press at the start of the line has to stay a seek to zero. And
+the digits cross-fade to `❚❚` / `▶` while the line is hovered, always on touch.
+Its breath also holds while paused. Keyboard: the line is
 `role="slider"`, arrows move 5s (Shift 30s), Home rewinds, Space holds. On touch
 `touch-action:pan-y` keeps a vertical swipe scrolling the panel, and the hairline
 stays hidden — a preview stranded at the last tap is worse than none.

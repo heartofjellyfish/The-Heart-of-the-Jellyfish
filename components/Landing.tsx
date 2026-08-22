@@ -2094,9 +2094,50 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .landing .l-poem-playing .l-poem-num{color:var(--lit);
   animation:l-breathe 2.8s ease-in-out infinite}
 @keyframes l-breathe{0%,100%{opacity:.32}50%{opacity:.95}}
-/* Held, not stopped. The number is the panel's transport, and the breath going
-   still is the only report it can make from the margin. */
+/* Held, not stopped. The breath going still is one of the two things the margin
+   reports; the glyph below is the other. */
 .landing .l-poem-playing[data-paused] .l-poem-num{animation:none;opacity:.85}
+
+/* ---- the number on the sounding line is the transport ----
+
+   Press-to-seek took the line's click, so pause moved out here — which is where
+   a player keeps its transport anyway, in the gutter to the left of the row. But
+   as shipped it was a 10x17px pair of digits that reads as metadata, so it was
+   a control nobody could find or hit. Two fixes, neither of which touches the
+   verse:
+
+   The hit area grows to ~30px without moving the glyph — an invisible ::before,
+   not padding, since the number is positioned off its right edge and padding
+   would shove it. It grows LEFT into the empty margin and stops 6px short of the
+   first letter: a press near the start of the line has to stay a seek to zero,
+   which is the one seek anyone makes by hand. */
+.landing .l-poem-playing .l-poem-num::before{content:'';position:absolute;
+  right:0;top:-4px;bottom:-4px;width:30px}
+/* And the digits become a play glyph while the line is under the cursor — the
+   number is still the number the rest of the time, which is what keeps the
+   margin looking like a margin. Crossfaded rather than swapped: colour on the
+   digits, opacity on the glyph, both .18s, so it reads as one thing turning
+   over. The glyph restates its colour because the digits' transparent is an
+   inherited value it would otherwise pick up. */
+.landing .l-poem-playing .l-poem-num{transition:opacity .3s,color .18s}
+.landing .l-poem-playing:hover .l-poem-num,
+.landing .l-poem-playing:focus-visible .l-poem-num{color:transparent}
+.landing .l-poem-playing .l-poem-num::after{position:absolute;right:0;top:50%;
+  transform:translateY(-50%);font-family:'Jost',sans-serif;font-weight:300;
+  /* Positive tracking, or the two heavy bars of U+275A merge into one block at
+     this size and the pause sign stops reading as a pause sign. */
+  font-size:.9em;letter-spacing:.16em;color:var(--lit);
+  opacity:0;transition:opacity .18s;content:'❚❚'}
+.landing .l-poem-playing[data-paused] .l-poem-num::after{content:'▶'}
+.landing .l-poem-playing:hover .l-poem-num::after,
+.landing .l-poem-playing:focus-visible .l-poem-num::after{opacity:1}
+/* No cursor to reveal it with, so on a touch screen the sounding line wears the
+   glyph the whole time. Losing that one number costs nothing — it is the line
+   you are listening to, and the poem still numbers the other nine. */
+@media (hover:none){
+  .landing .l-poem-playing .l-poem-num{color:transparent}
+  .landing .l-poem-playing .l-poem-num::after{opacity:1}
+}
 
 /* ---- the sounding line as its own scrub bar ----
 
