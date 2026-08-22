@@ -1125,8 +1125,9 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-poem-f-cormorant{--poem-family:'Cormorant Garamond',serif;--poem-style:italic;
   --poem-weight:500;--poem-size:clamp(17px,2.5vh,26px);--poem-lh:1.55}
 
-.l-poem-num{position:absolute;right:calc(100% + .7em);top:.34em;
-  font-family:'Jost',sans-serif;font-weight:300;font-size:10px;letter-spacing:.16em;
+.l-poem-num{position:absolute;right:calc(100% + .55em);top:.06em;
+  font-family:'Nothing You Could Do',cursive;font-weight:400;
+  font-size:.62em;letter-spacing:0;
   opacity:0;transition:opacity .3s}
 .l-poem-line:hover .l-poem-num{opacity:.5}
 /* No cursor to hover with — show them, or the poem hides that it is playable. */
