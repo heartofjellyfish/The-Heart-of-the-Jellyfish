@@ -141,6 +141,24 @@ const POEM_FONT: PoemFontKey = 'nothing';
  */
 const VIGNETTE = { strength: 0.5, inner: 0 };
 
+/**
+ * Candidates for the "this one is sounding" colour, every one of them sampled
+ * off the painting rather than invented. Drives --lit / --lit-bright /
+ * --lit-dim, which in turn drive the poem line, its number, the tracklist line,
+ * the waveform, the progress fill, the seek knob and the selection colour.
+ *
+ * Try them at `/?tune=1`. Once one is settled the rest can go.
+ */
+const LITS = [
+  { key: 'foam', label: 'A  Foam white', lit: '#eef6f8', bright: '#ffffff', dim: 'rgba(238,246,248,.26)' },
+  { key: 'sand', label: 'B  Sand', lit: '#d3bd93', bright: '#e8d6ae', dim: 'rgba(211,189,147,.26)' },
+  { key: 'shell', label: 'C  Shell', lit: '#e9e0cf', bright: '#f7f1e5', dim: 'rgba(233,224,207,.26)' },
+  { key: 'sea', label: 'D  Sea blue', lit: '#5ab0e0', bright: '#8ccdf0', dim: 'rgba(90,176,224,.26)' },
+] as const;
+
+type LitKey = (typeof LITS)[number]['key'];
+const LIT: LitKey = 'foam';
+
 /** Bars drawn in the waveform. 400 peaks per track downsample into this cleanly. */
 const WAVE_BARS = 160;
 
@@ -287,6 +305,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [font, setFont] = useState<PoemFontKey>(POEM_FONT);
   const [fontScale, setFontScale] = useState(1);
   const [vig, setVig] = useState(VIGNETTE);
+  const [lit, setLit] = useState<LitKey>(LIT);
   const [stripCut, setStripCut] = useState(false);
   /**
    * Which face the bottom bar is showing. Playback and the bar's view are
@@ -481,6 +500,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   );
 
 
+  const litVals = LITS.find((l) => l.key === lit) ?? LITS[0];
+
   const waveData = cur > 0 ? peaks?.[String(cur).padStart(2, '0')] ?? null : null;
 
   const nowTitle = cur
@@ -506,7 +527,16 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   /* ---------------------------------------------------------------- */
 
   return (
-    <div className="landing">
+    <div
+      className="landing"
+      style={
+        {
+          ['--lit' as string]: litVals.lit,
+          ['--lit-bright' as string]: litVals.bright,
+          ['--lit-dim' as string]: litVals.dim,
+        } as React.CSSProperties
+      }
+    >
       <style dangerouslySetInnerHTML={{ __html: LANDING_CSS }} />
 
       {/*
@@ -715,6 +745,21 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             <span className="l-tuner-val">inner {vig.inner}%</span>
           </div>
 
+          <div className="l-tuner-head">NOW PLAYING COLOUR</div>
+          <div className="l-tuner-row">
+            {LITS.map((l) => (
+              <button
+                key={l.key}
+                type="button"
+                className={'l-tuner-btn' + (l.key === lit ? ' l-tuner-on' : '')}
+                onClick={() => setLit(l.key)}
+              >
+                <span className="l-tuner-dot" style={{ background: l.lit }} />
+                {l.label}
+              </button>
+            ))}
+          </div>
+
           <div className="l-tuner-head">POEM TYPE</div>
           <div className="l-tuner-row">
             {POEM_FONTS.map((f) => (
@@ -864,12 +909,13 @@ const LANDING_CSS = `
 html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .landing{position:fixed;inset:0;overflow:hidden;color:#fff;
   font-family:'Cormorant Garamond',serif;
-  /* Sampled off the painting: the peak of the gold on the jellyfish's own bell.
-     Everything that means "this is the one sounding" uses it — the poem line, its
-     number, the tracklist line, the waveform, the progress. One knob. */
-  --lit:#e6cf82;
-  --lit-bright:#f2e0a4;
-  --lit-dim:rgba(230,207,130,.28)}
+  /* Fallbacks. The live values come from LITS via an inline style on this
+     element, so /?tune=1 can swap them without a rebuild. Everything that means
+     "this is the one sounding" reads them: the poem line, its number, the
+     tracklist line, the waveform, the progress, the seek knob, the selection. */
+  --lit:#eef6f8;
+  --lit-bright:#ffffff;
+  --lit-dim:rgba(238,246,248,.26)}
 .landing ::selection{background:rgba(230,207,130,.32)}
 /* Normalises the UA button font. Note it is (0,1,1) and beats any bare .l-*
    class, so every button rule below that sets a font has to be written as
@@ -1235,7 +1281,10 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   font-family:'Jost',sans-serif;font-weight:300;font-size:11px;letter-spacing:.12em}
 .l-tuner-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .l-tuner-btn{background:none;border:1px solid rgba(255,255,255,.28);color:#dfeaf1;
-  padding:6px 11px;border-radius:3px;cursor:pointer;font-size:11px;letter-spacing:.1em}
+  padding:6px 11px;border-radius:3px;cursor:pointer;font-size:11px;letter-spacing:.1em;
+  display:inline-flex;align-items:center;gap:7px}
+.l-tuner-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;
+  box-shadow:0 0 0 1px rgba(0,0,0,.25)}
 .l-tuner-on{background:var(--lit-dim);border-color:var(--lit);color:#fff}
 .l-tuner-val{opacity:.7;min-width:12ch}
 .l-tuner-head{font-size:9px;letter-spacing:.34em;opacity:.45;margin-top:4px}
