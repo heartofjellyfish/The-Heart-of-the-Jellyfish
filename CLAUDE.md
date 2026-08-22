@@ -196,9 +196,34 @@ linear would be .30 and .52) hides the onset: at 44% of the radius alpha is 0.02
 
 ### The title's ten textures
 
-`.l-title` carries a `data-tex` attribute; eight of the ten values fill the glyphs
-by clipping a background to them, and `none` / `press` keep a solid white fill.
-Pick one at `/?tune=1`, then set `TITLE_TEXTURE` and delete the losers.
+`.l-title` carries a `data-tex` attribute. All ten values share the letterpress
+edge Qi picked — a dark line above the glyph, a light one below, which is the
+direction that reads as *stamped into* a surface rather than raised off it.
+`press` is that edge alone; the other nine add a skin over it. Pick one at
+`/?tune=1`, then set `TITLE_TEXTURE` and delete the losers.
+
+**Every skin is feTurbulence, and that is the point.** The first batch was linen,
+laid paper, ruled caustics — all repeating gradients, all regular grids, and a
+regular grid at any strength reads as cloth or as a printing screen. Qi's brief
+was skin, tissue, fragility: those are irregular at several scales at once, which
+is what fractal noise is for. `capillary` and `craze` switch to
+`type='turbulence'`, which sums |noise| and therefore creases along ridges —
+threshold the creases and you get filaments instead of blotches.
+
+Each layer is one `feTurbulence` + one `feColorMatrix`, and the matrix always
+does the same two jobs: the RGB rows are constants (so the layer is a flat
+colour) and the alpha row is a ramp on the noise's red channel. Positive ramp →
+blotches. Steep negative ramp → only the darkest few percent survive, which is
+how a vein stays a hairline instead of a smear.
+
+**Tune these by measuring, not by squinting.** Draw the data-URI to a canvas and
+read mean alpha, coverage and max alpha off `getImageData`. Two of the first
+attempts were wrong in a way that is hard to see and obvious in numbers: `craze`
+covered 33% of the area, which is a mottle rather than a crack network, and
+`blush` covered 99%, which is a flat pink wash rather than a complexion. The
+non-obvious part is that `type='turbulence'` piles its output up near zero, so a
+threshold that *looks* aggressive (`-6R + 0.5`) still lets a third of the field
+through; `craze` needed `-30R + 0.78`.
 
 Two things about `background-clip:text` are worth carrying forward, because both
 produced bugs that looked like something else:
@@ -211,14 +236,23 @@ produced bugs that looked like something else:
   future change to `line-height`, or a face with deeper descenders, has to keep
   that padding ahead of the ink.
 - **`text-shadow` shows straight through a transparent text-fill**, turning each
-  letter into a blurred blob of its own shadow. The clipped variants therefore set
-  `text-shadow:none` and stand in a pair of `drop-shadow()` filters, which act on
-  the rendered result and stay behind the fill.
+  letter into a blurred blob of its own shadow. The nine clipped variants therefore
+  set `text-shadow:none` and stand in a chain of `drop-shadow()` filters, which act
+  on the rendered result and stay behind the fill. Order matters: dark-up, then
+  light-down (it takes the first result as *its* input, which is why its top edge
+  lands flush with the glyph instead of haloing above it), then the soft ambient.
+  `membrane` overrides the chain — its fill is only ~three-quarters opaque, so the
+  hard dark edge would show through and dirty the glyph.
 
 Note that the negative margins do **not** collapse: `.l-hero` is a flex column, so
 the h1's `-.2em` bottom margin *adds* to the countdown's `margin-top`. That is the
 intent — outer edges land exactly where they did before the padding existed — but
 it means the two numbers are coupled.
+
+`pulse` is `skin` plus a 1s (=60bpm) double-thump opacity keyframe, systole then
+the smaller diastole. A sine reads as a glow; two thumps read as a heartbeat.
+Amplitude is under 6% on purpose — at this type size anything you can *watch*
+happening is too much. Disabled under `prefers-reduced-motion`.
 
 ### Two traps worth remembering
 

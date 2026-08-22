@@ -150,31 +150,40 @@ const HERO_TYPE_SCALE = 1.15;
 
 /**
  * Ten treatments for the album title. Only the surface of the letters changes —
- * face, size and position are identical in all ten, so the choice is purely
- * about what the glyphs are made of.
+ * face, size and position are identical in all ten.
  *
- * Eight of them work by clipping a background to the glyphs. That mechanism is
- * also why .l-title carries padding; see the note over the CSS. 'none' and
- * 'press' opt out of it and keep a solid fill.
+ * All ten carry the letterpress edge Qi picked: a dark line above the glyph and
+ * a light one below, which is the direction that reads as stamped into a surface
+ * rather than raised off it. 'press' is that edge and nothing else; the other
+ * nine add a skin over it.
+ *
+ * Every one of those nine is built from feTurbulence rather than from repeating
+ * gradients, and that is the whole point. The first batch was woven, laid, ruled
+ * — all of them regular grids, and a regular grid at any strength reads as cloth
+ * or as a printing screen. Skin, muscle and cracked glaze are irregular at
+ * several scales at once, which is exactly what fractal noise is. Two of them
+ * ('capillary', 'craze') use type='turbulence' instead of 'fractalNoise',
+ * because turbulence sums the absolute value of the noise and so creases along
+ * ridges — threshold those ridges and you get filaments rather than blotches.
  *
  * Try them at /?tune=1, then set TITLE_TEXTURE to the winner and delete the
  * losers.
  */
 const TITLE_TEXTURES = [
-  { key: 'none', label: 'A  Plain' },
-  { key: 'linen', label: 'B  Linen' },
-  { key: 'laid', label: 'C  Laid paper' },
-  { key: 'grain', label: 'D  Grain' },
-  { key: 'salt', label: 'E  Sea salt' },
-  { key: 'caustic', label: 'F  Caustics' },
-  { key: 'wash', label: 'G  Sea wash' },
-  { key: 'mist', label: 'H  Dissolve' },
-  { key: 'pearl', label: 'I  Pearl' },
+  { key: 'skin', label: 'A  Skin' },
+  { key: 'pore', label: 'B  Pore' },
+  { key: 'blush', label: 'C  Blush' },
+  { key: 'capillary', label: 'D  Capillary' },
+  { key: 'craze', label: 'E  Crazing' },
+  { key: 'fibre', label: 'F  Fibre' },
+  { key: 'membrane', label: 'G  Membrane' },
+  { key: 'vellum', label: 'H  Vellum' },
+  { key: 'pulse', label: 'I  Pulse' },
   { key: 'press', label: 'J  Letterpress' },
 ] as const;
 
 type TexKey = (typeof TITLE_TEXTURES)[number]['key'];
-const TITLE_TEXTURE: TexKey = 'none';
+const TITLE_TEXTURE: TexKey = 'press';
 
 /**
  * Candidates for the "this one is sounding" colour, every one of them sampled
@@ -1168,75 +1177,132 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   padding:.2em 0;margin:-.2em 0}
 
 /* ---- title textures, /?tune=1 ----------------------------------------------
-   Everything below is one of ten fills for the same ten letters. All but 'none'
-   and 'press' clip a background to the glyphs, which forces one shared
-   adjustment: the hero's text-shadow has to become a drop-shadow filter.
-   text-shadow paints from the glyph outline and shows straight through a
-   transparent text-fill, which turns each letter into a blurred blob of its own
-   shadow; drop-shadow filters the rendered result instead, so it sees the fill
-   and stays behind it.
+   Nine skins over one letterpress edge. The edge is what Qi picked and it does
+   not change; only what fills the glyph does.
+
+   Two mechanics are shared by all nine, and both are forced:
+
+   1. background-clip:text needs a transparent text-fill, and text-shadow paints
+      from the glyph outline — it therefore shows straight through that fill and
+      turns each letter into a blurred blob of its own shadow. So the letterpress
+      edge cannot stay a text-shadow here; it becomes a chain of drop-shadow()
+      filters, which act on the rendered result and sit behind the fill. Order
+      matters: dark-up first, light-down second (it takes the first result as its
+      input, which is why its top edge lands flush with the glyph instead of
+      haloing above it), soft ambient last.
+
+   2. Everything is feTurbulence. Repeating gradients cannot do this — a regular
+      grid at any strength reads as cloth or as a printing screen, which is what
+      sank the first batch. Skin and muscle and cracked glaze are irregular at
+      several scales at once, which is what fractalNoise is for. 'capillary' and
+      'craze' switch to type='turbulence', which sums |noise| and so creases
+      along ridges: threshold the creases and you get filaments.
+
+   The feColorMatrix under each feTurbulence does the same two jobs every time —
+   the RGB rows are constants, so the layer is a flat colour, and the alpha row
+   is a ramp on the red channel of the noise. A positive ramp gives blotches; a
+   steep negative one keeps only the darkest few percent, which is how a vein or
+   a crack stays a hairline instead of a smear.
 
    Guarded on @supports, because without background-clip:text the transparent
    fill would leave the album's name invisible rather than merely untextured. */
 @supports ((-webkit-background-clip:text) or (background-clip:text)){
-  .l-title[data-tex]:not([data-tex=none]):not([data-tex=press]){
+  .l-title[data-tex]:not([data-tex=press]){
     -webkit-background-clip:text;background-clip:text;
     -webkit-text-fill-color:transparent;
     text-shadow:none;
-    filter:drop-shadow(0 1px 3px rgba(12,52,84,.34))
-           drop-shadow(0 2px 20px rgba(12,52,84,.32));
+    filter:drop-shadow(0 -1px 0 rgba(12,52,84,.5))
+           drop-shadow(0 1px 0 rgba(255,255,255,.45))
+           drop-shadow(0 2px 20px rgba(12,52,84,.34));
   }
 
-  /* B - warp and weft at a 3px pitch. Cloth. */
-  .l-title[data-tex=linen]{background-image:
-    repeating-linear-gradient(90deg,rgba(46,86,112,.17) 0 1px,transparent 1px 3px),
-    repeating-linear-gradient(0deg,rgba(46,86,112,.13) 0 1px,transparent 1px 3px),
-    linear-gradient(#fff,#fff)}
+  /* A - blotches of blood under a fine tooth, on warm ivory rather than white.
+     The colour shift is doing as much work as the grain: paper is neutral, skin
+     never is. */
+  .l-title[data-tex=skin]{background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.30 0 0 0 0 0.27 0.28 0 0 0 -0.075'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23p)'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.013' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.85 0 0 0 0 0.66 0 0 0 0 0.62 0.95 0 0 0 -0.30'/%3E%3C/filter%3E%3Crect width='640' height='420' filter='url(%23m)'/%3E%3C/svg%3E"),
+    linear-gradient(#fffcf9,#fdf3ee)}
 
-  /* C - the horizontal chain lines of laid paper, nothing crossing them. */
-  .l-title[data-tex=laid]{background-image:
-    repeating-linear-gradient(0deg,rgba(46,86,112,.16) 0 1px,transparent 1px 5px),
-    linear-gradient(#fff,#fff)}
+  /* B - the same tooth with the warmth taken out. Matte, close, no blood. */
+  .l-title[data-tex=pore]{background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='pc'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' seed='13' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.29 0 0 0 0 0.36 0 0 0 0 0.43 0.32 0 0 0 -0.08'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23pc)'/%3E%3C/svg%3E"),
+    linear-gradient(#ffffff,#fbfcfd)}
 
-  /* D - fractal noise, tinted to the painting's blue rather than to grey, so it
-     reads as tooth in the paper instead of as television static. */
-  .l-title[data-tex=grain]{background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.18 0 0 0 0 0.34 0 0 0 0 0.44 0 0 0 0.45 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23g)'/%3E%3C/svg%3E"),
-    linear-gradient(#fff,#fff)}
+  /* C - no grain at all, only uneven warmth. The letters have a complexion. */
+  .l-title[data-tex=blush]{background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Cfilter id='m2'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.011' numOctaves='4' seed='23' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.84 0 0 0 0 0.60 0 0 0 0 0.57 1.25 0 0 0 -0.38'/%3E%3C/filter%3E%3Crect width='640' height='420' filter='url(%23m2)'/%3E%3C/svg%3E"),
+    linear-gradient(#fffdfc,#fdf2ef)}
 
-  /* E - the same noise thresholded hard, so only the peaks survive: scattered
-     grains rather than an even tooth. The alpha row reads 1.6*R - 0.85, which
-     clamps most of the field away to nothing. */
-  .l-title[data-tex=salt]{background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.4' numOctaves='1' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.13 0 0 0 0 0.29 0 0 0 0 0.40 1.6 0 0 0 -0.85'/%3E%3C/filter%3E%3Crect width='150' height='150' filter='url(%23s)'/%3E%3C/svg%3E"),
-    linear-gradient(#fff,#fff)}
+  /* D - ridged noise cut at the bottom 9%, which leaves winding filaments a
+     pixel or two wide. Sparse on purpose: a whole net of them stops reading as
+     vessels and starts reading as marble. */
+  .l-title[data-tex=capillary]{background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420'%3E%3Cfilter id='v'%3E%3CfeTurbulence type='turbulence' baseFrequency='0.03' numOctaves='2' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.60 0 0 0 0 0.20 0 0 0 0 0.22 -5.4 0 0 0 0.52'/%3E%3C/filter%3E%3Crect width='420' height='420' filter='url(%23v)'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='pf'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2' seed='31' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.40 0 0 0 0 0.31 0 0 0 0 0.30 0.17 0 0 0 -0.05'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23pf)'/%3E%3C/svg%3E"),
+    linear-gradient(#fffdfc,#fff8f6)}
 
-  /* F - two shallow diagonals crossing, the way sunlight lands on a pool floor. */
-  .l-title[data-tex=caustic]{background-image:
-    repeating-linear-gradient(24deg,rgba(255,255,255,0) 0 5px,rgba(38,84,116,.14) 5px 7px,rgba(255,255,255,0) 7px 16px),
-    repeating-linear-gradient(-38deg,rgba(255,255,255,0) 0 9px,rgba(38,84,116,.10) 9px 11px,rgba(255,255,255,0) 11px 22px),
-    linear-gradient(#fff,#fff)}
+  /* E - the same trick at a higher frequency and a steeper cut, in the sea's
+     colour instead of blood: the crazing on a glaze that has aged. The most
+     brittle of the nine. */
+  .l-title[data-tex=craze]{background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='c'%3E%3CfeTurbulence type='turbulence' baseFrequency='0.075' numOctaves='1' seed='19' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.14 0 0 0 0 0.28 0 0 0 0 0.38 -30 0 0 0 0.78'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url(%23c)'/%3E%3C/svg%3E"),
+    linear-gradient(#ffffff,#fdfeff)}
 
-  /* G - no grain at all; the letters just take the sea's colour on the way down. */
-  .l-title[data-tex=wash]{background-image:
-    linear-gradient(180deg,#ffffff 0%,#eef5f9 48%,#cfe2ee 100%)}
+  /* F - noise stretched 65:1 across the axes becomes striation rather than
+     blotch, and the whole layer is rotated -12deg so the fibres run with the
+     italic instead of across it. Heart muscle. */
+  .l-title[data-tex=fibre]{background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='820' height='560'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.006 0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.26 0 0 0 0 0.28 0.66 0 0 0 -0.21'/%3E%3C/filter%3E%3Cg transform='rotate(-12 410 280)'%3E%3Crect x='-820' y='-560' width='2460' height='1680' filter='url(%23f)'/%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(#fffcfa,#fdf5f2)}
 
-  /* H - the fill loses opacity toward the bottom, so the second line thins out
-     into the water behind it. The only variant where the painting shows through
-     the glyphs themselves. */
-  .l-title[data-tex=mist]{background-image:
-    linear-gradient(180deg,#fff 0%,#fff 46%,rgba(255,255,255,.62) 78%,rgba(255,255,255,.2) 100%)}
+  /* G - the fragile one. The fill itself is only ~three-quarters opaque, so the
+     painting comes faintly through the letters. That weak fill cannot carry the
+     hard dark edge (it would show through and dirty the glyph), so this variant
+     softens the edge and leans on a deeper ambient shadow to hold the type off
+     the sky. A jellyfish bell. */
+  .l-title[data-tex=membrane]{background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='pf'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2' seed='31' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.40 0 0 0 0 0.31 0 0 0 0 0.30 0.17 0 0 0 -0.05'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23pf)'/%3E%3C/svg%3E"),
+    linear-gradient(rgba(255,255,255,.8),rgba(255,252,250,.66))}
+  .l-title[data-tex=membrane]{
+    filter:drop-shadow(0 -1px 0 rgba(12,52,84,.26))
+           drop-shadow(0 1px 0 rgba(255,255,255,.5))
+           drop-shadow(0 3px 24px rgba(12,52,84,.44))}
 
-  /* I - shell iridescence: six hues at a few percent saturation swept across the
-     block. Colour you only notice after you have read the words. */
-  .l-title[data-tex=pearl]{background-image:
-    linear-gradient(105deg,#ffffff 0%,#f2f7ff 16%,#ffeef5 32%,#eefaf5 48%,#fff7ea 64%,#eff1ff 82%,#ffffff 100%)}
+  /* H - thin and warm and slightly translucent, with a tooth too fine to
+     resolve as marks. Fragility from thinness rather than from damage. */
+  .l-title[data-tex=vellum]{background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='t'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.3' numOctaves='1' seed='41' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.34 0 0 0 0 0.28 0.24 0 0 0 -0.07'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23t)'/%3E%3C/svg%3E"),
+    linear-gradient(rgba(255,251,246,.92),rgba(255,246,239,.84))}
+
+  /* I - A, beating. 1s is 60bpm and the curve is a double thump, systole then
+     the smaller diastole, rather than a sine: a sine reads as a glow fading in
+     and out, two thumps read as a pulse. Amplitude is deliberately under 6% —
+     at the size this type is set, anything you can watch happening is too much.
+     The storyboard has the heartbeat driving the whole site from frame VI on;
+     this is the first place it shows up. */
+  .l-title[data-tex=pulse]{background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.30 0 0 0 0 0.27 0.28 0 0 0 -0.075'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23p)'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.013' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.85 0 0 0 0 0.66 0 0 0 0 0.62 0.95 0 0 0 -0.30'/%3E%3C/filter%3E%3Crect width='640' height='420' filter='url(%23m)'/%3E%3C/svg%3E"),
+    linear-gradient(#fffcf9,#fdf3ee);
+    animation:l-pulse 1s ease-in-out infinite}
 }
 
-/* J - the one treatment that is not a fill. Solid white letters with a dark edge
-   above and a light edge below, which is the direction that reads as stamped
-   into a surface rather than raised off it. Outside the @supports block because
-   it needs no clipping. */
+@keyframes l-pulse{
+  0%{opacity:1}
+  7%{opacity:.945}
+  15%{opacity:1}
+  25%{opacity:.972}
+  34%{opacity:1}
+  100%{opacity:1}
+}
+@media (prefers-reduced-motion:reduce){
+  .l-title[data-tex=pulse]{animation:none}
+}
+
+/* J - the edge on its own, and the only variant that is not a fill: solid white
+   letters, a dark line above and a light one below. No clipping, so it can stay
+   a text-shadow and live outside the @supports block. */
 .l-title[data-tex=press]{
   text-shadow:0 -1px 0 rgba(12,52,84,.55),0 1px 0 rgba(255,255,255,.5),
               0 2px 20px rgba(12,52,84,.34)}
