@@ -194,6 +194,32 @@ version looked like. Weighting the early stops far below linear (.04 and .14 whe
 linear would be .30 and .52) hides the onset: at 44% of the radius alpha is 0.02, at
 62% it is 0.07, and the darkness lands where it belongs, in the last fifth.
 
+### The title's ten textures
+
+`.l-title` carries a `data-tex` attribute; eight of the ten values fill the glyphs
+by clipping a background to them, and `none` / `press` keep a solid white fill.
+Pick one at `/?tune=1`, then set `TITLE_TEXTURE` and delete the losers.
+
+Two things about `background-clip:text` are worth carrying forward, because both
+produced bugs that looked like something else:
+
+- **The fill is painted only inside the element's own box.** At `line-height:1.04`
+  the h1's box is *smaller than the ink* — measured 9px of overshoot top and bottom
+  at a 106px font — so the descender of "Jellyfish" received no background and
+  vanished. It reads as the font being cropped; it is actually the background
+  stopping. The fix is `padding:.2em 0` with `margin:-.2em 0` to cancel it. Any
+  future change to `line-height`, or a face with deeper descenders, has to keep
+  that padding ahead of the ink.
+- **`text-shadow` shows straight through a transparent text-fill**, turning each
+  letter into a blurred blob of its own shadow. The clipped variants therefore set
+  `text-shadow:none` and stand in a pair of `drop-shadow()` filters, which act on
+  the rendered result and stay behind the fill.
+
+Note that the negative margins do **not** collapse: `.l-hero` is a flex column, so
+the h1's `-.2em` bottom margin *adds* to the countdown's `margin-top`. That is the
+intent — outer edges land exactly where they did before the padding existed — but
+it means the two numbers are coupled.
+
 ### Two traps worth remembering
 
 **Specificity.** `.landing button{font:inherit}` normalises the UA button font at

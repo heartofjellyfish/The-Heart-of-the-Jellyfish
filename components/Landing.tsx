@@ -149,6 +149,34 @@ const VIGNETTE = { strength: 0.14, inner: 0 };
 const HERO_TYPE_SCALE = 1.15;
 
 /**
+ * Ten treatments for the album title. Only the surface of the letters changes —
+ * face, size and position are identical in all ten, so the choice is purely
+ * about what the glyphs are made of.
+ *
+ * Eight of them work by clipping a background to the glyphs. That mechanism is
+ * also why .l-title carries padding; see the note over the CSS. 'none' and
+ * 'press' opt out of it and keep a solid fill.
+ *
+ * Try them at /?tune=1, then set TITLE_TEXTURE to the winner and delete the
+ * losers.
+ */
+const TITLE_TEXTURES = [
+  { key: 'none', label: 'A  Plain' },
+  { key: 'linen', label: 'B  Linen' },
+  { key: 'laid', label: 'C  Laid paper' },
+  { key: 'grain', label: 'D  Grain' },
+  { key: 'salt', label: 'E  Sea salt' },
+  { key: 'caustic', label: 'F  Caustics' },
+  { key: 'wash', label: 'G  Sea wash' },
+  { key: 'mist', label: 'H  Dissolve' },
+  { key: 'pearl', label: 'I  Pearl' },
+  { key: 'press', label: 'J  Letterpress' },
+] as const;
+
+type TexKey = (typeof TITLE_TEXTURES)[number]['key'];
+const TITLE_TEXTURE: TexKey = 'none';
+
+/**
  * Candidates for the "this one is sounding" colour, every one of them sampled
  * off the painting rather than invented. Drives --lit / --lit-bright /
  * --lit-dim, which in turn drive the poem line, its number, the tracklist line,
@@ -314,6 +342,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [vig, setVig] = useState(VIGNETTE);
   const [lit, setLit] = useState<LitKey>(LIT);
   const [typeScale, setTypeScale] = useState(HERO_TYPE_SCALE);
+  const [tex, setTex] = useState<TexKey>(TITLE_TEXTURE);
   const [stripCut, setStripCut] = useState(false);
   /**
    * Which face the bottom bar is showing. Playback and the bar's view are
@@ -614,7 +643,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             <Countdown releaseDate={releaseDate} />
           </div>
         )}
-        <h1 className="l-title">
+        <h1 className="l-title" data-tex={tex}>
           The Heart
           <br />
           of the Jellyfish
@@ -842,6 +871,20 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               >
                 <span className="l-tuner-dot" style={{ background: l.lit }} />
                 {l.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="l-tuner-head">TITLE TEXTURE</div>
+          <div className="l-tuner-row l-tuner-grid">
+            {TITLE_TEXTURES.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                className={'l-tuner-btn' + (t.key === tex ? ' l-tuner-on' : '')}
+                onClick={() => setTex(t.key)}
+              >
+                {t.label}
               </button>
             ))}
           </div>
@@ -1114,34 +1157,90 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-meta-eyebrow{margin-bottom:clamp(14px,2.2vh,26px)}
 .l-meta-under{margin-top:clamp(18px,2.8vh,34px);opacity:.95}
 .l-title{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
-  font-size:calc(clamp(42px,7.2vw,104px) * var(--type-scale,1));line-height:1.04;margin:0}
+  font-size:calc(clamp(42px,7.2vw,104px) * var(--type-scale,1));line-height:1.04;
+  /* background-clip:text paints the fill only inside the element's own box, and
+     at line-height 1.04 that box cuts through the ink: measured at 106px, the
+     glyphs overshoot it by 9px at the bottom and 9.5px at the top, so the
+     descender of "Jellyfish" got no fill at all and simply disappeared. Pad the
+     box out past the ink and pull the same amount back off the margin, so the
+     shape below it does not move. .l-hero is a flex column, so these negative
+     margins cannot collapse into the countdown's margin-top. */
+  padding:.2em 0;margin:-.2em 0}
 
-/* A woven grain in the title, so the letters read as cloth rather than as ink
-   floating over a painting. Two repeating gradients at a 3px pitch — warp and
-   weft — laid over flat white and clipped to the glyphs.
+/* ---- title textures, /?tune=1 ----------------------------------------------
+   Everything below is one of ten fills for the same ten letters. All but 'none'
+   and 'press' clip a background to the glyphs, which forces one shared
+   adjustment: the hero's text-shadow has to become a drop-shadow filter.
+   text-shadow paints from the glyph outline and shows straight through a
+   transparent text-fill, which turns each letter into a blurred blob of its own
+   shadow; drop-shadow filters the rendered result instead, so it sees the fill
+   and stays behind it.
 
-   The shadow has to change with it. text-shadow paints from the glyph outline
-   and shows straight through a transparent text-fill, which turns each letter
-   into a blurred blob of its own shadow; drop-shadow filters the rendered
-   result instead, so it sees the woven fill and stays behind it. Hence
-   text-shadow:none plus two drop-shadows standing in for the pair the hero
-   passes down.
-
-   Guarded, because without background-clip:text the transparent fill would make
-   the album's name invisible rather than merely untextured. */
+   Guarded on @supports, because without background-clip:text the transparent
+   fill would leave the album's name invisible rather than merely untextured. */
 @supports ((-webkit-background-clip:text) or (background-clip:text)){
-  .l-title{
-    background-image:
-      repeating-linear-gradient(90deg,rgba(46,86,112,.17) 0 1px,transparent 1px 3px),
-      repeating-linear-gradient(0deg,rgba(46,86,112,.13) 0 1px,transparent 1px 3px),
-      linear-gradient(#fff,#fff);
+  .l-title[data-tex]:not([data-tex=none]):not([data-tex=press]){
     -webkit-background-clip:text;background-clip:text;
     -webkit-text-fill-color:transparent;
     text-shadow:none;
     filter:drop-shadow(0 1px 3px rgba(12,52,84,.34))
            drop-shadow(0 2px 20px rgba(12,52,84,.32));
   }
+
+  /* B - warp and weft at a 3px pitch. Cloth. */
+  .l-title[data-tex=linen]{background-image:
+    repeating-linear-gradient(90deg,rgba(46,86,112,.17) 0 1px,transparent 1px 3px),
+    repeating-linear-gradient(0deg,rgba(46,86,112,.13) 0 1px,transparent 1px 3px),
+    linear-gradient(#fff,#fff)}
+
+  /* C - the horizontal chain lines of laid paper, nothing crossing them. */
+  .l-title[data-tex=laid]{background-image:
+    repeating-linear-gradient(0deg,rgba(46,86,112,.16) 0 1px,transparent 1px 5px),
+    linear-gradient(#fff,#fff)}
+
+  /* D - fractal noise, tinted to the painting's blue rather than to grey, so it
+     reads as tooth in the paper instead of as television static. */
+  .l-title[data-tex=grain]{background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.18 0 0 0 0 0.34 0 0 0 0 0.44 0 0 0 0.45 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23g)'/%3E%3C/svg%3E"),
+    linear-gradient(#fff,#fff)}
+
+  /* E - the same noise thresholded hard, so only the peaks survive: scattered
+     grains rather than an even tooth. The alpha row reads 1.6*R - 0.85, which
+     clamps most of the field away to nothing. */
+  .l-title[data-tex=salt]{background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.4' numOctaves='1' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.13 0 0 0 0 0.29 0 0 0 0 0.40 1.6 0 0 0 -0.85'/%3E%3C/filter%3E%3Crect width='150' height='150' filter='url(%23s)'/%3E%3C/svg%3E"),
+    linear-gradient(#fff,#fff)}
+
+  /* F - two shallow diagonals crossing, the way sunlight lands on a pool floor. */
+  .l-title[data-tex=caustic]{background-image:
+    repeating-linear-gradient(24deg,rgba(255,255,255,0) 0 5px,rgba(38,84,116,.14) 5px 7px,rgba(255,255,255,0) 7px 16px),
+    repeating-linear-gradient(-38deg,rgba(255,255,255,0) 0 9px,rgba(38,84,116,.10) 9px 11px,rgba(255,255,255,0) 11px 22px),
+    linear-gradient(#fff,#fff)}
+
+  /* G - no grain at all; the letters just take the sea's colour on the way down. */
+  .l-title[data-tex=wash]{background-image:
+    linear-gradient(180deg,#ffffff 0%,#eef5f9 48%,#cfe2ee 100%)}
+
+  /* H - the fill loses opacity toward the bottom, so the second line thins out
+     into the water behind it. The only variant where the painting shows through
+     the glyphs themselves. */
+  .l-title[data-tex=mist]{background-image:
+    linear-gradient(180deg,#fff 0%,#fff 46%,rgba(255,255,255,.62) 78%,rgba(255,255,255,.2) 100%)}
+
+  /* I - shell iridescence: six hues at a few percent saturation swept across the
+     block. Colour you only notice after you have read the words. */
+  .l-title[data-tex=pearl]{background-image:
+    linear-gradient(105deg,#ffffff 0%,#f2f7ff 16%,#ffeef5 32%,#eefaf5 48%,#fff7ea 64%,#eff1ff 82%,#ffffff 100%)}
 }
+
+/* J - the one treatment that is not a fill. Solid white letters with a dark edge
+   above and a light edge below, which is the direction that reads as stamped
+   into a surface rather than raised off it. Outside the @supports block because
+   it needs no clipping. */
+.l-title[data-tex=press]{
+  text-shadow:0 -1px 0 rgba(12,52,84,.55),0 1px 0 rgba(255,255,255,.5),
+              0 2px 20px rgba(12,52,84,.34)}
+
 .l-act-primary{display:flex;align-items:center;gap:clamp(14px,1.4vw,20px)}
 .l-play-row{display:flex;align-items:center;gap:clamp(14px,1.4vw,20px);margin-top:clamp(26px,4.2vh,52px)}
 /* The primary action. On hover the ring fills and the glyph inverts — the button
@@ -1441,7 +1540,8 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 }
 
 /* Dev-only, behind /?type=1 — never rendered for a visitor. */
-.l-tuner{position:absolute;right:18px;top:76px;z-index:40;max-width:230px;
+.l-tuner{position:absolute;right:18px;top:76px;z-index:40;max-width:248px;
+  max-height:calc(100vh - 108px);overflow-y:auto;scrollbar-width:thin;
   display:flex;flex-direction:column;gap:10px;align-items:flex-start;
   padding:14px 18px;border-radius:4px;
   background:rgba(6,26,44,.88);backdrop-filter:blur(8px);
@@ -1454,6 +1554,11 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   box-shadow:0 0 0 1px rgba(0,0,0,.25)}
 .l-tuner-on{background:var(--lit-dim);border-color:var(--lit);color:#fff}
 .l-tuner-val{opacity:.7;min-width:12ch}
+/* Ten texture buttons, two to a row, so the labels stay readable and the
+   panel does not run off the bottom of a laptop screen. */
+.l-tuner-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:100%}
+.l-tuner-grid .l-tuner-btn{padding:6px 8px;letter-spacing:.06em;
+  justify-content:flex-start;white-space:nowrap}
 .l-tuner-head{font-size:9px;letter-spacing:.34em;opacity:.45;margin-top:4px}
 .l-tuner input[type=range]{width:120px;accent-color:var(--lit)}
 
