@@ -47,18 +47,24 @@ in a panel that opens over it.
 `LANDING_CSS` string at the bottom. Layers, back to front: the painting (twice — see
 below), a scrim, the nav, the hero block, the bottom bar, and the panel.
 
-**The bottom bar has two states and one slot.** Idle it's the poem run together as
-one italic sentence — no numbers, no separators, each line still its own button;
-once a track is playing it becomes the player in place. That matters on a
-one-screen layout — a separate fixed player bar would have covered the tracklist it
-was launched from.
+**The bottom bar has two states and one slot.** Idle it's the ten titles, no
+numbers, each in its own slot spread across the bar; playing, it becomes the player
+in place. That matters on a one-screen layout — a separate fixed player bar would
+have covered the tracklist it was launched from.
 
-Whether that sentence is wider than the bar is **measured**, not guessed at a
-breakpoint: a `ResizeObserver` (plus `document.fonts.ready`, since a late webfont
-reflows text without resizing anything) toggles `.l-strip-cut`, which fades the
-right edge to say there is more to push. The width depends on the fluid type, on
-which font has loaded, and on what the POEM button leaves over — no media query
-knows all three.
+`barView` is separate state from `cur` on purpose: **leaving the player must not
+stop the music, and stopping the music must not strand you on a dead player.** The
+`←` returns to the list with playback running, the sounding line is lit rather than
+badged (the bar gains no chrome), and clicking that lit line goes back into the
+player instead of pausing. `✕` is the one that stops.
+
+Items are `flex:0 1 auto`, never `1 1 0` — equal thirds hand "Wake up!" the same
+width as "what belongs to the sea will always return to the sea." and truncate the
+long ones to nothing. Below 1180px the same markup becomes one scrolling sentence:
+`display:block` turns the buttons inline and the whitespace between them, ignored
+while it was a flex container, starts working as word space. Whether it overflows
+is measured by a `ResizeObserver` (plus `document.fonts.ready`, since a late webfont
+reflows text without resizing anything), not guessed at a breakpoint.
 
 It's a gradient scrim, not a solid bar. A solid one cut ~70px off the bottom of the
 painting, which on this canvas is the sand and the near water. 
@@ -156,10 +162,13 @@ and for the rest of the page. Rejected along the way: Caveat (reads as a marker 
 Petit Formal Script (a wedding invitation), La Belle Aurore, Shadows Into Light Two,
 The Girl Next Door, Sacramento.
 
-The poem's caption is deliberately **not** in the poem's hand. "The heart of the
-jellyfish." is also line 06 — in the same face the title would read as the poem's
-first line. Small technical sans keeps the registers apart: that is the label on the
-sleeve, this is the song.
+The poem's title is in the poem's own hand, at Qi's call after two rounds of my
+arguing otherwise. The risk it accepts is real: "The heart of the jellyfish." is
+also line 06, so title and line are nearly the same string in the same face. What
+separates them is the ranking, not the typeface — the title runs ~1.6x the line
+size with ~90px of air beneath it, and it is the only thing in the panel that is
+not a button. If it ever starts reading as the poem's first line, that ratio is the
+knob to turn.
 
 **`/?tune=1` opens a live tuner** (top right): vignette strength and spread, poem face
 and size. Dev affordance, renders for nobody else. `?type=1` still works.
@@ -191,12 +200,24 @@ version looked like. Weighting the early stops far below linear (.04 and .14 whe
 linear would be .30 and .52) hides the onset: at 44% of the radius alpha is 0.02, at
 62% it is 0.07, and the darkness lands where it belongs, in the last fifth.
 
-### A CSS trap worth remembering
+### Two traps worth remembering
 
-`.landing button{font:inherit}` normalises the UA button font, and its specificity is
-(0,1,1) — which beats any bare `.l-foo` class. Every button rule that sets a font has
-to be written `.landing .l-foo` to win. This silently swallowed a font change once;
-the symptom is a rule that looks right and computes to the inherited value.
+**Specificity.** `.landing button{font:inherit}` normalises the UA button font at
+(0,1,1), which beats any bare `.l-foo` class — so every button rule that sets a font
+must be `.landing .l-foo`. That prefixing then bites back inside media queries: a
+`@media` block containing bare `.l-strip-items` loses to a base `.landing
+.l-strip-items` no matter that it comes later, because specificity outranks source
+order. Both bugs looked identical from outside: a rule that reads correctly and
+computes to something else. **If a base rule is `.landing`-qualified, its media
+query override has to be too.**
+
+**Hydration.** The page is statically prerendered, so anything derived from the
+clock is baked at build time and wrong on arrival. React does not merely warn about
+mismatched text — it discards hydration and re-renders the tree. `suppressHydration
+Warning` does not save you either: it covers an element's own text, not its
+descendants, and the countdown's digits are three levels down. The fix is to render
+the *same placeholder on both passes* and fill in from `useEffect` — remove the
+mismatch rather than silence it.
 
 ### Demo audio
 

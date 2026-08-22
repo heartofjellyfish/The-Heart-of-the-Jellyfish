@@ -68,7 +68,12 @@ const FILES = [
  * the bar labels it "DEMO PENDING", and LISTEN NOW skips past it.
  */
 const AVAILABLE_DEMOS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-const FIRST_DEMO = AVAILABLE_DEMOS[0];
+
+/**
+ * What LISTEN NOW starts on. Not track 01 — this is the one to meet the album
+ * with, and it is a separate decision from the running order.
+ */
+const FEATURED_DEMO = 3;
 
 /**
  * The shore painting. Served as WebP; the PNG master is in `artwork/hero_oil.png`,
@@ -164,14 +169,22 @@ function secondsUntil(releaseDate: string) {
  * prefers-reduced-motion rule kills the animation without touching the count.
  */
 function Countdown({ releaseDate }: { releaseDate: string }) {
-  const [secs, setSecs] = useState(() => secondsUntil(releaseDate));
+  // Null until mounted. The page is statically prerendered, so any number baked
+  // into the HTML is wrong by the time anyone loads it — and React does not just
+  // warn about mismatched text, it throws hydration away and re-renders the tree
+  // on the client. suppressHydrationWarning does not help here either: it covers
+  // an element's own text, not its grandchildren, and the digits are three levels
+  // down. Rendering the same placeholder on both passes removes the mismatch
+  // instead of silencing it, and keeps the row's size so nothing jumps.
+  const [secs, setSecs] = useState<number | null>(null);
 
   useEffect(() => {
+    setSecs(secondsUntil(releaseDate));
     const iv = window.setInterval(() => setSecs(secondsUntil(releaseDate)), 1000);
     return () => window.clearInterval(iv);
   }, [releaseDate]);
 
-  if (secs <= 0) {
+  if (secs !== null && secs <= 0) {
     return (
       <div className="l-cd">
         <div className="l-cd-lead">ALBUM</div>
@@ -182,21 +195,29 @@ function Countdown({ releaseDate }: { releaseDate: string }) {
     );
   }
 
-  const units: [number, string][] = [
-    [Math.floor(secs / 86400), 'DAYS'],
-    [Math.floor(secs / 3600) % 24, 'HOURS'],
-    [Math.floor(secs / 60) % 60, 'MINUTES'],
-    [secs % 60, 'SECONDS'],
-  ];
+  const units: [number | null, string][] =
+    secs === null
+      ? [
+          [null, 'DAYS'],
+          [null, 'HOURS'],
+          [null, 'MINUTES'],
+          [null, 'SECONDS'],
+        ]
+      : [
+          [Math.floor(secs / 86400), 'DAYS'],
+          [Math.floor(secs / 3600) % 24, 'HOURS'],
+          [Math.floor(secs / 60) % 60, 'MINUTES'],
+          [secs % 60, 'SECONDS'],
+        ];
 
   return (
-    <div className="l-cd" suppressHydrationWarning>
+    <div className="l-cd">
       <div className="l-cd-lead">ALBUM RELEASE IN</div>
       <div className="l-cd-row">
         {units.map(([v, label]) => (
           <span className="l-cd-unit" key={label}>
-            <span className="l-cd-num" key={v}>
-              {v}
+            <span className="l-cd-num" key={v ?? 'wait'}>
+              {v ?? '–'}
             </span>
             <span className="l-cd-lbl">{label}</span>
           </span>
@@ -267,6 +288,12 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [fontScale, setFontScale] = useState(1);
   const [vig, setVig] = useState(VIGNETTE);
   const [stripCut, setStripCut] = useState(false);
+  /**
+   * Which face the bottom bar is showing. Playback and the bar's view are
+   * separate concerns: leaving the player must not stop the music, and stopping
+   * the music must not strand you on a dead player.
+   */
+  const [barView, setBarView] = useState<'list' | 'player'>('list');
 
   const stripRef = useRef<HTMLDivElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -352,6 +379,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       loadPeaks();
       const au = ensureAudio();
       if (curRef.current === n) {
+        setBarView('player');
         if (au.paused) {
           au.play().catch(() => {});
           setPlaying(true);
@@ -363,6 +391,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       }
       au.src = FILES[n - 1];
       curRef.current = n;
+      setBarView('player');
       pctRef.current = 0;
       setCur(n);
       setMissing(false);
@@ -437,6 +466,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     setCur(0);
     setPlaying(false);
     setPct(0);
+    setBarView('list');
   }, []);
 
   useEffect(
@@ -460,8 +490,16 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       TITLES[cur - 1]
     : '';
 
+  /**
+   * Audio outlives the view it was started from — the panel is a change of
+   * scenery, not a change of state. So clicking the line that is already
+   * sounding takes you to the player rather than toggling it; the bottom bar's
+   * lit line behaves the same way, and neither ever silences a track as a side
+   * effect of navigating.
+   */
   const playFromPoem = (n: number) => {
-    playTrack(n);
+    if (n === curRef.current) setBarView('player');
+    else playTrack(n);
     setPanel(null);
   };
 
@@ -533,15 +571,29 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           <button
             type="button"
             className="l-play"
-            aria-label={'Listen — ' + TITLES[FIRST_DEMO - 1]}
-            onClick={() => playTrack(FIRST_DEMO)}
+            aria-label={'Listen — ' + TITLES[FEATURED_DEMO - 1]}
+            onClick={() => playTrack(FEATURED_DEMO)}
           >
             <svg width="13" height="15" viewBox="0 0 13 15" fill="currentColor" aria-hidden>
               <path d="M0 0l13 7.5L0 15z" />
             </svg>
           </button>
-          <button type="button" className="l-play-label" onClick={() => playTrack(FIRST_DEMO)}>
+          <button type="button" className="l-play-label" onClick={() => playTrack(FEATURED_DEMO)}>
             LISTEN NOW
+          </button>
+          {/*
+            Second action, deliberately unequal to the first. The circle carries
+            the primary; this one is type alone with a rule that only appears
+            under the cursor, so the two read as "do this" and "or this" rather
+            than as a pair of equal buttons competing at the same weight.
+
+            Labelled TRACKLIST, not POEM. It opens onto a poem, and the format
+            says so at a glance — naming it beforehand spends the surprise for
+            nothing.
+          */}
+          <span className="l-act-rule" aria-hidden />
+          <button type="button" className="l-act-second" onClick={() => setPanel('poem')}>
+            TRACKLIST
           </button>
         </div>
 
@@ -554,8 +606,16 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
 
       {/* ---- the one bar at the bottom: tracklist, or the player ---- */}
       <div className="l-bar">
-        {cur > 0 ? (
+        {cur > 0 && barView === 'player' ? (
           <>
+            <button
+              type="button"
+              className="l-bar-back"
+              aria-label="Back to the tracklist"
+              onClick={() => setBarView('list')}
+            >
+              ←
+            </button>
             <button
               type="button"
               className="l-bar-toggle"
@@ -609,19 +669,22 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                   {i > 0 && ' '}
                   <button
                     type="button"
-                    className="l-strip-item"
-                    onClick={() => playTrack(i + 1)}
+                    className={'l-strip-item' + (cur === i + 1 ? ' l-strip-playing' : '')}
+                    onClick={() => (cur === i + 1 ? setBarView('player') : playTrack(i + 1))}
                     title={String(i + 1).padStart(2, '0') + ' — ' + TITLES[i]}
-                    aria-label={'Play ' + String(i + 1).padStart(2, '0') + ' — ' + TITLES[i]}
+                    aria-label={
+                      (cur === i + 1 ? 'Back to player — ' : 'Play ') +
+                      String(i + 1).padStart(2, '0') +
+                      ' — ' +
+                      TITLES[i]
+                    }
                   >
                     {line}
                   </button>
                 </React.Fragment>
               ))}
             </div>
-            <button type="button" className="l-strip-all" onClick={() => setPanel('poem')}>
-              POEM
-            </button>
+
           </>
         )}
       </div>
@@ -704,7 +767,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
 
           {panel === 'poem' ? (
             <div className="l-poem">
-              <div className="l-poem-head">THE HEART OF THE JELLYFISH</div>
+              <div className="l-poem-head">The Heart of the Jellyfish</div>
               <div
                 className={'l-poem-body l-poem-f-' + font}
                 style={{ ['--poem-scale' as string]: fontScale } as React.CSSProperties}
@@ -717,9 +780,19 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                         <button
                           key={n}
                           type="button"
-                          className={'l-poem-line' + (has ? '' : ' l-poem-soon')}
+                          className={
+                            'l-poem-line' +
+                            (has ? '' : ' l-poem-soon') +
+                            (cur === n ? ' l-poem-playing' : '')
+                          }
                           onClick={() => playFromPoem(n)}
-                          aria-label={(has ? 'Play demo — ' : 'No demo yet — ') + TITLES[n - 1]}
+                          aria-label={
+                            (cur === n
+                              ? 'Now playing, back to player — '
+                              : has
+                                ? 'Play demo — '
+                                : 'No demo yet — ') + TITLES[n - 1]
+                          }
                         >
                           <span className="l-poem-num" aria-hidden>
                             {String(n).padStart(2, '0')}
@@ -878,16 +951,41 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-meta-under{margin-top:clamp(18px,2.8vh,34px);opacity:.95}
 .l-title{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
   font-size:clamp(42px,7.2vw,104px);line-height:1.04;margin:0}
-.l-play-row{display:flex;align-items:center;gap:20px;margin-top:clamp(26px,4.2vh,52px)}
-.l-play{width:clamp(58px,4.6vw,76px);height:clamp(58px,4.6vw,76px);border-radius:50%;
+.l-play-row{display:flex;align-items:center;gap:clamp(14px,1.4vw,20px);margin-top:clamp(26px,4.2vh,52px)}
+/* The primary action. On hover the ring fills and the glyph inverts — the button
+   stops being an outline and becomes a thing you have already half-pressed. The
+   ::after is a second ring that expands and fades, so the state change reads as
+   motion rather than as a colour swap. */
+.landing .l-play{position:relative;
+  width:clamp(58px,4.6vw,76px);height:clamp(58px,4.6vw,76px);border-radius:50%;
   border:1px solid rgba(255,255,255,.8);background:transparent;color:#fff;cursor:pointer;
   flex-shrink:0;display:flex;align-items:center;justify-content:center;padding-left:4px;
-  transition:background .45s,border-color .45s}
-.l-play:hover{background:rgba(255,255,255,.16);border-color:#fff}
+  transition:background .4s cubic-bezier(.2,.8,.2,1),color .4s,
+             border-color .4s,transform .4s cubic-bezier(.2,.8,.2,1)}
+.landing .l-play::after{content:'';position:absolute;inset:-1px;border-radius:50%;
+  border:1px solid rgba(255,255,255,.75);opacity:0;transform:scale(1);
+  transition:opacity .5s,transform .5s cubic-bezier(.2,.8,.2,1);pointer-events:none}
+.landing .l-play svg{transition:transform .4s cubic-bezier(.2,.8,.2,1)}
+
+.l-play-row:hover .l-play,
+.landing .l-play:focus-visible{background:#fff;color:#0d3550;border-color:#fff;
+  transform:scale(1.06)}
+.l-play-row:hover .l-play::after,
+.landing .l-play:focus-visible::after{opacity:0;transform:scale(1.42)}
+.l-play-row:hover .l-play svg{transform:scale(1.12)}
 .landing .l-play-label{border:none;background:none;padding:0;color:inherit;cursor:pointer;
   font-family:'Jost',sans-serif;font-weight:300;font-size:12px;letter-spacing:.34em;
   opacity:.92;transition:opacity .4s}
 .l-play-label:hover{opacity:1}
+
+.l-act-rule{width:1px;align-self:stretch;margin:0 clamp(4px,.7vw,14px);
+  background:currentColor;opacity:.28}
+.landing .l-act-second{background:none;border:none;padding:2px 0;color:inherit;
+  cursor:pointer;font-family:'Jost',sans-serif;font-weight:300;font-size:12px;
+  letter-spacing:.34em;opacity:.7;
+  border-bottom:1px solid transparent;
+  transition:opacity .4s,border-color .4s}
+.landing .l-act-second:hover{opacity:1;border-bottom-color:currentColor}
 
 
 /* ---- the bar: tracklist, or the player ---- */
@@ -896,27 +994,49 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    type legible while the art runs all the way to the edge of the screen. */
 .l-bar{position:absolute;left:0;right:0;bottom:0;z-index:20;
   height:clamp(76px,11vh,104px);display:flex;align-items:center;
-  gap:clamp(12px,1.2vw,22px);padding:0 clamp(18px,1.8vw,32px);
+  gap:clamp(12px,1.2vw,22px);padding:0 clamp(20px,2.2vw,44px);
   background:linear-gradient(0deg,rgba(9,36,58,.86),rgba(9,36,58,.52) 62%,transparent);
   color:#f2f6f8;overflow-x:auto;scrollbar-width:none;
   text-shadow:0 1px 8px rgba(6,26,44,.55)}
 .l-bar::-webkit-scrollbar{display:none}
-.landing .l-strip-all{font-family:'Jost',sans-serif;font-weight:300;font-size:10px;
-  letter-spacing:.3em;flex-shrink:0;background:none;border:none;padding:0;color:inherit;
-  cursor:pointer;opacity:.7;transition:opacity .35s;white-space:nowrap}
-.l-strip-all:hover{opacity:1}
-
-/* One continuous line of verse, not a list. The numbers are gone; each title is
-   an inline button, separated by an ordinary space, so it reads as a sentence and
-   only reveals itself as ten controls under the cursor. */
-.l-strip-items{flex:1;min-width:0;white-space:nowrap;
-  overflow-x:auto;scrollbar-width:none;
+.landing 
+/* Ten titles, each in its own slot, spread across the bar — no numbers, no
+   separators. flex:0 1 auto (not 1 1 0) sizes each to its own text and shrinks
+   them proportionally, so "Wake up!" never claims the same width as "what
+   belongs to the sea will always return to the sea." Dropping the numbers freed
+   roughly 155px, and all of it went into the gaps. */
+.l-strip-items{flex:1;min-width:0;
+  display:flex;align-items:baseline;justify-content:space-between;
+  gap:clamp(10px,1.15vw,28px);
   font-family:'Cormorant Garamond',serif;font-style:italic;
-  font-size:clamp(11px,.8vw,15.5px)}
-.l-strip-items::-webkit-scrollbar{display:none}
-.l-strip-item{display:inline;background:none;border:none;padding:0;color:inherit;
-  cursor:pointer;opacity:.88;transition:opacity .3s,color .3s}
+  font-size:clamp(10.5px,.88vw,16.5px)}
+.l-strip-item{flex:0 1 auto;min-width:0;
+  background:none;border:none;padding:0;color:inherit;cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  opacity:.88;transition:opacity .3s,color .3s}
 .l-strip-item:hover{opacity:1;color:#fff}
+/* The line that is sounding. Lit rather than badged — the bar gains no chrome,
+   and clicking it is the way back into the player. */
+.landing .l-strip-playing{opacity:1;color:#8fd6ea}
+.landing .l-strip-playing:hover{color:#b6e6f4}
+
+.landing .l-bar-back{background:none;border:none;padding:0 2px;color:inherit;
+  cursor:pointer;font-size:15px;opacity:.6;flex-shrink:0;transition:opacity .3s}
+.landing .l-bar-back:hover{opacity:1}
+
+/* Too narrow for ten slots, and ten ellipsised half-words read worse than
+   anything. Below this the same markup becomes one scrolling sentence: the flex
+   container turns into a line of inline buttons, and the whitespace between them
+   — ignored while it was a flex container — starts doing its job as word space. */
+@media (max-width:1180px){
+  /* .landing-qualified, because the base rules are too — a bare .l-strip-items
+     here loses on specificity no matter that it comes later. Same trap as
+     .landing button{font:inherit}; see the note further down. */
+  .landing .l-strip-items{display:block;white-space:nowrap;overflow-x:auto;
+    scrollbar-width:none;font-size:clamp(11px,1.05vw,14px)}
+  .landing .l-strip-items::-webkit-scrollbar{display:none}
+  .landing .l-strip-item{display:inline;overflow:visible}
+}
 
 .l-bar-toggle{width:38px;height:38px;border-radius:50%;border:1px solid rgba(242,246,248,.6);
   background:transparent;color:inherit;font-size:12px;cursor:pointer;flex-shrink:0;
@@ -964,12 +1084,17 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   margin:auto;max-width:min(880px,94vw);
   /* room for the numbers to hang outside the text column */
   padding-left:3.2em}
-/* A caption, not a headline. It is deliberately NOT set in the poem's hand: the
-   words "The heart of the jellyfish." are also line 06, and in the same face the
-   title would read as the poem's first line. Small technical sans keeps the two
-   registers apart — this is the label on the sleeve, that is the song. */
-.l-poem-head{font-family:'Jost',sans-serif;font-weight:300;font-size:9.5px;
-  letter-spacing:.46em;opacity:.4;margin-bottom:clamp(34px,7vh,74px)}
+/* The poem's own hand, at Qi's call.
+   
+   The risk this accepts: "The heart of the jellyfish." is also line 06, so in the
+   same face the title and that line are nearly the same string. What keeps them
+   apart is not the typeface but the ranking — the title runs about 1.6x the
+   line size with ~90px of air under it, and it is the only thing in the panel
+   that is not a button. If it ever starts reading as the poem's first line, that
+   ratio is the knob, not the font. */
+.l-poem-head{font-family:'Nothing You Could Do',cursive;font-weight:400;
+  font-size:clamp(24px,3.4vh,38px);letter-spacing:.01em;line-height:1.2;
+  opacity:.72;margin-bottom:clamp(46px,9.5vh,98px)}
 .l-poem-body{display:flex;flex-direction:column;
   gap:clamp(18px,3.2vh,38px)}          /* the space between stanzas */
 .l-poem-stanza{display:flex;flex-direction:column;gap:clamp(1px,.35vh,5px)}
@@ -999,6 +1124,16 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 /* No cursor to hover with — show them, or the poem hides that it is playable. */
 @media (hover:none){.l-poem-num{opacity:.38}}
 
+/* The line that is sounding, wherever you happen to be looking. The panel and
+   the bar are two windows onto one player, so they mark it the same way: lit in
+   the same blue, and the hanging number stays out — breathing — instead of
+   waiting for a hover. */
+.landing .l-poem-playing{opacity:1;color:#8fd6ea}
+.landing .l-poem-playing:hover{color:#b6e6f4}
+.landing .l-poem-playing .l-poem-num{color:#8fd6ea;
+  animation:l-breathe 2.8s ease-in-out infinite}
+@keyframes l-breathe{0%,100%{opacity:.32}50%{opacity:.95}}
+
 
 .l-sub{display:flex;flex-direction:column;align-items:center;text-align:center;
   gap:20px;margin:auto;max-width:min(560px,92vw)}
@@ -1020,9 +1155,8 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-sub-link{color:inherit;border-bottom:1px solid currentColor;text-decoration:none}
 
 /* ---- narrow ---- */
-/* Applied only when the sentence really is wider than the bar — see the
-   ResizeObserver in the component. It scrolls rather than truncating, and the
-   fade is the reason to push it. */
+/* Only when the row really is wider than the bar — see the ResizeObserver in the
+   component. It scrolls rather than truncating, and the fade says so. */
 .l-strip-cut{
   -webkit-mask-image:linear-gradient(90deg,#000 86%,transparent);
   mask-image:linear-gradient(90deg,#000 86%,transparent);
