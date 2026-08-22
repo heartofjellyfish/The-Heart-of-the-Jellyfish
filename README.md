@@ -88,10 +88,13 @@ How to normalize (matters if you re-export a track):
   +1.7 dBTP.
 - **Match the target per track; don't re-normalize the set.** A new export at a different level
   will stick out again. Bring it to -12 before dropping it in.
-- Pre-normalization copies live at `public/audio/_original_backup/` (in this repo, so they ship
-  to Vercel too — 38 MB of dead weight worth deleting once the mixes settle) and outside the
-  repo at `/Users/qliu/Qi Land/audio-originals/`. **Always normalize from those originals, not
-  from the current files** — re-limiting already-limited audio compounds the damage.
+- **Sources live outside this repo**, at `/Users/qliu/Qi Land/audio-originals/`:
+  `web-demos-pre-loudness-2026-08-22/` holds the ten as they arrived, and
+  `track-10-replacements/` holds later drop-ins. **Always normalize from those, never from the
+  files in `public/audio/`** — relimiting already-limited audio compounds the damage.
+  (A duplicate set used to sit at `public/audio/_original_backup/`, which meant Vercel served
+  38 MB of unused audio publicly on every deploy. Removed 2026-08-22; still recoverable with
+  `git show 171a039:public/audio/_original_backup/<file>` if the outside copies are ever lost.)
 
 These are 128 kbps web demos re-encoded to 160 kbps, not masters. At -12 the limiter is working
 hard on lossy source material, which is the real argument for redoing this from WAV/AIFF masters
