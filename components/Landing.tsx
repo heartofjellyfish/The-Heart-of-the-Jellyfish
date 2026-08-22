@@ -510,16 +510,13 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       <style dangerouslySetInnerHTML={{ __html: LANDING_CSS }} />
 
       {/*
-        Two copies of the same (cached) file. The blurred one fills whatever the
-        viewport's aspect ratio happens to be; the sharp one sits on top. On a
-        wide screen the sharp layer covers everything and the blur is never seen.
-        Narrower than 13:10, the sharp layer switches to `contain` so neither the
-        jellyfish nor the figure gets cropped out, and the blur becomes its
-        surround. Positioning is in CSS, not inline — the media query has to be
+        One layer, cover at every aspect ratio — only the crop moves. There used
+        to be a blurred copy underneath holding the letterbox on narrow screens;
+        at the blur radius that kept it from competing, the oil texture was gone
+        and it read as flat colour, which is the one thing the background must
+        never be. Positioning is in CSS, not inline — the media query has to be
         able to override it, and inline styles outrank stylesheet rules.
       */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img className="l-bg-blur" src={HERO_IMAGE} alt="" aria-hidden />
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         className="l-bg"
@@ -869,9 +866,8 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .landing button{font:inherit}
 
 /* ---- background ---- */
-.l-bg,.l-bg-blur{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.l-bg{object-position:center 45%}
-.l-bg-blur{filter:blur(34px) saturate(1.06);transform:scale(1.14)}
+.l-bg{position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;object-position:center 45%}
 .l-scrim{position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(180deg,rgba(24,74,112,.28),rgba(24,74,112,.05) 30%,transparent 55%)}
 
@@ -895,13 +891,25 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
     rgba(5,22,38,calc(var(--vig-strength,.38) * .60)) calc(var(--vig-inner,42%) + var(--vig-span) * .86),
     rgba(5,22,38,var(--vig-strength,.38)) 100%)}
 
-/* Narrower than 13:10 a cover crop pushes either the jellyfish or the figure out
-   of frame, so show the painting whole and let the blur surround it. The top edge
-   meets the blur as a change in sharpness rather than a colour seam, because the
-   blur behind it is the same sky. The bar is a scrim now, so the painting can run
-   under it to the bottom of the screen instead of stopping short. */
+/* Narrower than 13:10 the painting is 16:9 against a portrait window, so a cover
+   crop shows only a slice of it — and both subjects cannot survive that, since
+   the jellyfish sits at the far left and the figure at the far right. Follow the
+   jellyfish: it is the album's title and it reads at any size, while the shore
+   break behind it gives the crop somewhere to go. Vertically 42% keeps sky over
+   the type and water under it.
+
+   Cropping is the whole point. The alternative was letterboxing the full
+   painting over a blurred copy of itself, and the blur that made the backdrop
+   recede also erased the brushwork — texture everywhere beats composition
+   intact. */
 @media (max-aspect-ratio: 13/10){
-  .l-bg{object-fit:contain;object-position:center bottom}
+  /* 12%, not 22%: at 22 the right edge landed on the figure's head and clipped a
+     corner of it, which reads as a smudge rather than a person. Better to leave
+     him out of frame entirely than to show a piece of him. */
+  .l-bg{object-position:12% 45%}
+}
+@media (max-aspect-ratio: 1/1){
+  .l-bg{object-position:17% 42%}
 }
 
 /* ---- nav ---- */
@@ -1161,10 +1169,15 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   -webkit-mask-image:linear-gradient(90deg,#000 86%,transparent);
   mask-image:linear-gradient(90deg,#000 86%,transparent);
 }
+/* At 375px the countdown reached within 5px of the edge — a 360px phone would
+   have overflowed. All four units have to stay on one line, so the type gives. */
 @media (max-width:560px){
   .l-nav{letter-spacing:.2em;font-size:11px}
-  .l-cd-row{gap:14px}
   .l-cd-lead{letter-spacing:.3em}
+  .l-cd-row{gap:11px}
+  .l-cd-unit{gap:.32em}
+  .l-cd-num{font-size:19px}
+  .l-cd-lbl{font-size:8.5px;letter-spacing:.18em}
 }
 
 /* Dev-only, behind /?type=1 — never rendered for a visitor. */

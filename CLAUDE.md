@@ -80,37 +80,31 @@ is the current weak point: on a 1440-wide retina screen the browser paints it at
 device pixels, a 1.7× upscale, and it reads soft. Quality isn't the lever — it's encoded
 at q92 — resolution is. A replacement wants to be ~3840×2160 for the same crop.
 
-#### It is rendered twice
+#### One layer, cover everywhere — only the crop moves
 
 ```
-.l-bg-blur   object-fit: cover  + blur(34px) scale(1.14)
-.l-bg        object-fit: cover           (wide)
-             object-fit: contain         (narrower than 13:10)
+wide  (≥13:10)   object-position: center 45%
+mid   (<13:10)   object-position: 12% 45%
+tall  (<1:1)     object-position: 17% 42%
 ```
 
-Same file, so the second one is a cache hit. On a wide screen the sharp layer covers
-everything and the blur is never seen. Narrower than 13:10 — phones, portrait tablets —
-a cover crop would push the jellyfish off one edge or the figure off the other, since
-the composition puts them at opposite extremes. So the sharp layer switches to `contain`
-and the blur becomes its surround.
+There used to be a second, blurred copy underneath, letterboxing the whole painting
+on narrow screens so neither subject was cropped. It went, and the reason is worth
+keeping: at the blur radius that stopped the backdrop competing, the oil texture was
+gone and it read as flat colour — which for a painting-led page is the one thing the
+background must never be. **Texture everywhere beats composition intact.**
 
-**Two traps in that `contain` rule, both already paid for:**
+Cropping a 16:9 painting into a portrait window shows about a quarter of its width,
+and the two subjects sit at opposite extremes — jellyfish far left, figure far right
+— so only one survives. Follow the jellyfish: it is the album's title and it reads at
+any size, and the shore break behind it gives the crop somewhere to go.
 
-- The box has to be shortened so the painting lands *on* the bar rather than behind it,
-  and it must be an explicit `height: calc(100% - <bar>)`. Setting `bottom` alone does
-  nothing, because the base rule's `height: 100%` over-constrains it. And `height: auto`
-  is worse than useless: on an absolutely positioned **replaced** element, `auto` height
-  resolves from the intrinsic ratio and drops the bottom offset entirely, which parks
-  the painting at the top of the frame.
-- A `mask-image` on the sharp layer cannot feather the letterbox seam. The mask applies
-  to the element box, not to the `contain`ed content inside it, so the gradient lands in
-  empty space. The edge is fine unmasked — the blur behind it is the same sky.
+The mid tier is 12% rather than 22% because at 22 the right edge landed *on* the
+figure's head and clipped a corner of it, which reads as a smudge rather than as a
+person. Leaving him out entirely is better than showing a piece of him. If the crop
+ever needs retuning, that is the failure mode to watch for.
 
-Positioning for both layers lives in CSS rather than inline, because a media query has
-to be able to override it and inline styles outrank stylesheet rules. That's the same
-reason every `:hover` state keeps its resting value in a class.
-
-### The poem is canon
+### The poem is canon### The poem is canon
 
 The ten titles read as one poem, and the punctuation is the poem:
 
