@@ -83,6 +83,42 @@ const FEATURED_DEMO = 3;
 const HERO_IMAGE = '/images/hero.webp';
 
 /**
+ * The painting is a friend's work, and this page is built on top of it — the
+ * whole screen is his canvas with the album set over it. So it gets a credit.
+ *
+ * The form is a gallery wall label, not a byline, and that choice is the whole
+ * design: a label doesn't sell the painter, it identifies the work, which is
+ * what a room does when it takes a picture seriously. It also happens to be the
+ * one piece of chrome that *adds* to the atmosphere instead of spending it.
+ *
+ * `work` / `medium` follow Sho Peng's own convention on pengsho.com, where every
+ * series is titled "Name, Year" — the credit speaks in the painter's house style
+ * rather than in the site's. Leave `work` empty and the label drops that line and
+ * credits the painter alone; nothing false ships while the title is unknown.
+ */
+const ARTIST = {
+  name: 'Sho Peng',
+  url: 'https://pengsho.com',
+  work: '',
+  medium: 'oil on canvas',
+} as const;
+
+/**
+ * Two ways to carry it, one edit to switch — like META_PLACEMENT, this is a
+ * look-at-it decision rather than a reasoned one.
+ *
+ * `plate`     the wall label, top-left, in the nav slot the countdown vacated.
+ *             Balances PRE-SAVE, so the nav finally reads as a pair.
+ * `signature` the painter's hand in the sand at the lower right, where a canvas
+ *             is signed. Quieter still — it reads as part of the picture rather
+ *             than as part of the site — at the cost of asserting a mark the
+ *             physical painting doesn't carry (the master in artwork/ is unsigned).
+ * `off`       no credit on the page. CREDITS.md still carries it.
+ */
+type CreditPlacement = 'plate' | 'signature' | 'off';
+const CREDIT_PLACEMENT: CreditPlacement = 'plate';
+
+/**
  * Where the poem breaks. Four stanzas, uneven on purpose — the movements are not
  * the same length. Indices are track numbers, so this reads the same as the sleeve.
  */
@@ -523,6 +559,42 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       TITLES[cur - 1]
     : '';
 
+  /**
+   * The painting's credit. One element, two costumes — see CREDIT_PLACEMENT.
+   *
+   * At rest the label says what the picture is; on hover it says where to find
+   * the painter. That swap is the point: nothing on the resting page reads as
+   * promotion, and the door is there for anyone who leans in. Both strings sit
+   * in the same grid cell so the cell is sized by the wider of the two and the
+   * exchange costs no layout.
+   */
+  const credit =
+    CREDIT_PLACEMENT === 'off' ? null : (
+      <a
+        className={'l-credit l-credit-' + CREDIT_PLACEMENT}
+        href={ARTIST.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={'Painting by ' + ARTIST.name + ' — opens ' + ARTIST.url + ' in a new tab'}
+      >
+        {CREDIT_PLACEMENT === 'signature' ? (
+          ARTIST.name
+        ) : (
+          <>
+            {ARTIST.work && <span className="l-credit-work">{ARTIST.work}</span>}
+            <span className="l-credit-line">
+              <span className="l-credit-rest">
+                {ARTIST.medium} · {ARTIST.name}
+              </span>
+              <span className="l-credit-hover" aria-hidden>
+                {ARTIST.url.replace(/^https?:\/\//, '')}
+              </span>
+            </span>
+          </>
+        )}
+      </a>
+    );
+
   /* ---------------------------------------------------------------- */
 
   return (
@@ -563,6 +635,10 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         }
       />
 
+      {/* Above the vignette, below every piece of type — it belongs to the
+          picture, so it takes the picture's light. */}
+      {CREDIT_PLACEMENT === 'signature' && credit}
+
       <nav className="l-nav">
         <div className="l-nav-left">
           {META_PLACEMENT === 'topLeft' && (
@@ -570,6 +646,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               <Countdown releaseDate={releaseDate} />
             </div>
           )}
+          {CREDIT_PLACEMENT === 'plate' && credit}
         </div>
         <button type="button" className="l-nav-item" onClick={() => setPanel('subscribe')}>
           PRE-SAVE
@@ -608,7 +685,21 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               </svg>
             </button>
             <button type="button" className="l-play-label" onClick={() => playTrack(FEATURED_DEMO)}>
-              LISTEN NOW
+              {/*
+                Per letter, so the motion is a transform and never a reflow.
+                Opening the letter-spacing would have been the obvious move and
+                is the wrong one — it widens the button, which shoves the rule
+                and TRACKLIST sideways every time the cursor arrives.
+              */}
+              {Array.from('LISTEN NOW').map((ch, i) => (
+                <span
+                  key={i}
+                  className="l-ll"
+                  style={{ ['--i' as string]: i } as React.CSSProperties}
+                >
+                  {ch === ' ' ? '\u00A0' : ch}
+                </span>
+              ))}
             </button>
           </span>
           {/*
@@ -986,6 +1077,65 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   text-shadow:0 1px 2px rgba(10,42,70,.5)}
 .l-nav-item:hover{opacity:1}
 
+/* ---- the painting's credit ---- */
+/* Comes in last and slowest of anything on the page: 2.6s on a 1.9s delay,
+   against the hero's 1.6s. The label goes on the wall after the work is hung,
+   and by the time it arrives the eye has already been given to the painting —
+   which is the only order in which a credit can be quiet. */
+.landing .l-credit{color:inherit;text-decoration:none;display:block;
+  animation:l-credit-in 2.6s cubic-bezier(.2,.7,.2,1) 1.9s both}
+@keyframes l-credit-in{from{opacity:0}to{opacity:1}}
+
+/* -- plate: the wall label -- */
+.l-credit-plate{line-height:1.55;
+  text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4)}
+/* Cormorant italic, because the work's own title is the one thing here that is
+   type rather than caption — same face the album sets its name in. */
+.l-credit-work{display:block;font-family:'Cormorant Garamond',serif;font-style:italic;
+  font-weight:500;font-size:13.5px;letter-spacing:.012em;opacity:.7;
+  transition:opacity .55s}
+/* Both strings share one grid cell, so the cell is as wide as the wider of them
+   and the hover swap moves nothing beside it. */
+.l-credit-line{display:grid;font-size:9.5px;font-weight:400;letter-spacing:.3em}
+.l-credit-rest,.l-credit-hover{grid-area:1/1;white-space:nowrap;
+  text-transform:uppercase;transition:opacity .55s cubic-bezier(.2,.7,.2,1)}
+.l-credit-rest{opacity:.5}
+.l-credit-hover{opacity:0;
+  text-decoration:underline;text-underline-offset:4px;
+  text-decoration-thickness:.5px;text-decoration-color:rgba(255,255,255,.55)}
+.landing .l-credit-plate:hover .l-credit-rest,
+.landing .l-credit-plate:focus-visible .l-credit-rest{opacity:0}
+.landing .l-credit-plate:hover .l-credit-hover,
+.landing .l-credit-plate:focus-visible .l-credit-hover{opacity:.92}
+.landing .l-credit-plate:hover .l-credit-work,
+.landing .l-credit-plate:focus-visible .l-credit-work{opacity:.95}
+/* Under ~560px the plate and PRE-SAVE fight for one line. The caption goes, the
+   title stays: on a phone the work's name is worth more than its medium. */
+@media (max-width:560px){
+  .l-credit-work{font-size:12px}
+  .l-credit-line{font-size:8.5px;letter-spacing:.22em}
+}
+
+/* -- signature: the painter's hand, in the sand -- */
+/* z-index 5 — over the vignette, under nav/hero/bar, so it darkens with the
+   corners like paint and never sits on top of type. multiply, because a
+   signature is pigment absorbed into the ground, not ink laid over it. */
+.landing .l-credit-signature{position:absolute;z-index:5;
+  right:clamp(26px,4.5vw,88px);bottom:clamp(116px,16vh,158px);
+  font-family:'Nothing You Could Do',cursive;
+  font-size:clamp(15px,1.5vw,22px);line-height:1;
+  color:#4a3a26;opacity:.44;mix-blend-mode:multiply;
+  transform:rotate(-3deg);transform-origin:right bottom;
+  transition:opacity .6s cubic-bezier(.2,.7,.2,1)}
+.landing .l-credit-signature:hover,
+.landing .l-credit-signature:focus-visible{opacity:.74}
+/* Narrow crops swing the sand out of frame; over water the dark hand vanishes,
+   so it lightens and stops multiplying. */
+@media (max-aspect-ratio: 13/10){
+  .landing .l-credit-signature{color:#e8eef2;mix-blend-mode:normal;opacity:.5;
+    text-shadow:0 1px 4px rgba(10,42,70,.5)}
+}
+
 /* ---- hero ---- */
 .l-hero{position:absolute;z-index:10;
   left:clamp(24px,3vw,52px);top:clamp(96px,17vh,190px);
@@ -1057,7 +1207,13 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   font-family:'Jost',sans-serif;font-weight:400;font-size:12px;letter-spacing:.32em;
   opacity:1;transition:opacity .4s;
   text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4)}
-.l-play-label:hover{opacity:.82}
+/* A wave through the word: each letter lifts on its own delay and settles in the
+   same order on the way out. 26ms apart is enough to read as a ripple and short
+   enough that the whole word has moved before the eye finishes crossing it. */
+.l-ll{display:inline-block;
+  transition:transform .34s cubic-bezier(.2,.85,.25,1);
+  transition-delay:calc(var(--i,0) * 26ms)}
+.l-act-primary:hover .l-ll{transform:translateY(-3px)}
 
 .l-act-rule{width:1px;align-self:stretch;margin:0 clamp(4px,.7vw,14px);
   background:currentColor;opacity:.28}

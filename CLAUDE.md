@@ -104,6 +104,42 @@ figure's head and clipped a corner of it, which reads as a smudge rather than as
 person. Leaving him out entirely is better than showing a piece of him. If the crop
 ever needs retuning, that is the failure mode to watch for.
 
+#### Crediting the painter
+
+The canvas is **Sho Peng**'s (pengsho.com), used with permission, and the whole front
+page is built on top of it — so the credit lives on the page, not only in CREDITS.md.
+
+The form is a **gallery wall label, not a byline**, and that is the design. A label
+identifies the work rather than selling the painter, which is both the honest reading
+and the only one that adds to the atmosphere instead of spending it. `work` / `medium`
+follow Sho Peng's own convention on his site, where every series is titled "Name, Year"
+— the credit speaks in the painter's house style, not the site's.
+
+**At rest it says what the picture is; on hover it says where to find the painter.**
+That swap is the whole promotion: nothing on the resting page reads as an ad, and the
+door is there for anyone who leans in. Both strings share one CSS grid cell, so the cell
+is sized by the wider of the two and the exchange costs no layout.
+
+It comes in **last and slowest** of anything on the page — 2.6s on a 1.9s delay, against
+the hero's 1.6s. The label goes on the wall after the work is hung, and by then the eye
+has already been given to the painting. That order is what makes a credit quiet.
+
+`CREDIT_PLACEMENT` switches it, in the manner of `META_PLACEMENT` — a look-at-it decision:
+
+- `plate` (current) — top-left, in the nav slot the countdown vacated. Balances PRE-SAVE,
+  so the nav finally reads as a pair, and it survives every crop.
+- `signature` — the painter's hand in the sand at the lower right, in the poem's own
+  face, `mix-blend-mode:multiply` at `z-index:5` so it darkens with the vignette like
+  pigment rather than sitting on the picture like ink. Quieter still, at the cost of
+  asserting a mark the physical painting doesn't carry (the master in `artwork/` is
+  unsigned — checked). Narrow crops swing the sand out of frame, so under 13:10 it
+  goes light and stops multiplying.
+- `off` — nothing on the page; CREDITS.md still carries it.
+
+**Open question:** `ARTIST.work` is empty and `medium` is a guess ("oil on canvas", from
+the master's filename). Ask Qi for the painting's real title, year, and medium — with a
+title the label gains its Cormorant-italic first line and reads properly as a plate.
+
 ### The poem is canon### The poem is canon
 
 The ten titles read as one poem, and the punctuation is the poem:
