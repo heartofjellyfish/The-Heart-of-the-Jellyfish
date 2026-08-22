@@ -279,6 +279,33 @@ resolving in some engines.
 One consequence of the padding on `.l-title` (see below) is that the filter
 region is measured from a box that already contains the ink.
 
+### The beat on "Heart"
+
+The word pulses once a second, in step with the countdown's seconds digit. It is
+the depth slider being pulled up and let go: a dark rim swells out above the word
+and softens as it grows, the lit rim swells below it, and both decay back over the
+rest of the second. Fast attack, slow release — a symmetric swell reads as
+breathing rather than as a beat.
+
+**One timer, not two.** The clock used to live inside `Countdown`; it now lives in
+`Landing` and is passed down. The beat span is keyed on that same `secs`, so React
+remounts it on the tick and the CSS animation restarts from 0%. Two intervals
+started a few milliseconds apart would visibly separate inside a minute; sharing
+the state makes them simultaneous by construction, with nothing to keep in sync.
+
+**Why the relief moved off the h1 and onto per-word spans.** Any shadow painted by
+a descendant of a filtered element is fed back into that filter's `SourceAlpha`.
+Had the beat stayed inside the h1's filter, the carve would have been computed
+from the glyph *plus its own swelling halo* and smeared once a second. So each
+word now carries its own `.l-t` with the relief, and the beat is a `drop-shadow`
+on a wrapper *outside* that — which is also the right reading: the swell is the
+cut deepening, not the letter changing.
+
+Nothing about the relief itself changed — the construction reads the alpha of
+whatever glyphs it is handed, and the spans do not overlap. It also has more room
+than before: an inline span's box is the font's content area (144px at a 119px
+font) and fully contains the ink, where the h1's `line-height:1.04` box did not.
+
 ### The title's box is smaller than its ink
 
 At `line-height:1.04` the h1's box cuts through the glyphs — measured 9px of

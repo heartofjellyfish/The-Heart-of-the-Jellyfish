@@ -272,22 +272,21 @@ function secondsUntil(releaseDate: string) {
  * and the animation fires per unit rather than on the whole row. The global
  * prefers-reduced-motion rule kills the animation without touching the count.
  */
-function Countdown({ releaseDate }: { releaseDate: string }) {
-  // Null until mounted. The page is statically prerendered, so any number baked
-  // into the HTML is wrong by the time anyone loads it — and React does not just
-  // warn about mismatched text, it throws hydration away and re-renders the tree
-  // on the client. suppressHydrationWarning does not help here either: it covers
-  // an element's own text, not its grandchildren, and the digits are three levels
-  // down. Rendering the same placeholder on both passes removes the mismatch
-  // instead of silencing it, and keeps the row's size so nothing jumps.
-  const [secs, setSecs] = useState<number | null>(null);
-
-  useEffect(() => {
-    setSecs(secondsUntil(releaseDate));
-    const iv = window.setInterval(() => setSecs(secondsUntil(releaseDate)), 1000);
-    return () => window.clearInterval(iv);
-  }, [releaseDate]);
-
+/**
+ * The clock is owned by Landing and handed down, rather than kept here where it
+ * used to live. The title's beat has to land on the same instant as the seconds
+ * digit, and two intervals started a few milliseconds apart would separate
+ * visibly inside a minute. One timer is the only way they stay together.
+ *
+ * secs is null until mounted. The page is statically prerendered, so any number
+ * baked into the HTML is wrong by the time anyone loads it — and React does not
+ * merely warn about mismatched text, it throws hydration away and re-renders the
+ * tree. suppressHydrationWarning does not help either: it covers an element's own
+ * text, not its grandchildren, and the digits are three levels down. Rendering
+ * the same placeholder on both passes removes the mismatch instead of silencing
+ * it, and keeps the row's size so nothing jumps.
+ */
+function Countdown({ secs }: { secs: number | null }) {
   if (secs !== null && secs <= 0) {
     return (
       <div className="l-cd">
@@ -516,6 +515,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    * renders identically on both hydration passes; the effect corrects it.
    */
   const [titlePx, setTitlePx] = useState(96);
+  /** One clock for the countdown and the title's beat. See Countdown. */
+  const [secs, setSecs] = useState<number | null>(null);
   const [stripCut, setStripCut] = useState(false);
   /**
    * Which face the bottom bar is showing. Playback and the bar's view are
@@ -537,6 +538,12 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     const q = new URLSearchParams(window.location.search);
     setTuner(q.get('tune') === '1' || q.get('type') === '1');
   }, []);
+
+  useEffect(() => {
+    setSecs(secondsUntil(releaseDate));
+    const iv = window.setInterval(() => setSecs(secondsUntil(releaseDate)), 1000);
+    return () => window.clearInterval(iv);
+  }, [releaseDate]);
 
   useEffect(() => {
     const el = titleRef.current;
@@ -844,7 +851,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         <div className="l-nav-left">
           {META_PLACEMENT === 'topLeft' && (
             <div className="l-meta">
-              <Countdown releaseDate={releaseDate} />
+              <Countdown secs={secs} />
             </div>
           )}
         </div>
@@ -856,17 +863,36 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       <div className="l-hero">
         {META_PLACEMENT === 'eyebrow' && (
           <div className="l-meta l-meta-eyebrow">
-            <Countdown releaseDate={releaseDate} />
+            <Countdown secs={secs} />
           </div>
         )}
         <h1 className="l-title" data-inset={inset} data-lift={lift} ref={titleRef}>
-          The Heart
+          {/*
+            The relief moved off the h1 and onto these spans, and it had to. The
+            beat is a shadow that swells around one word, and any shadow painted
+            by a descendant of a filtered element is fed back into that filter's
+            SourceAlpha — the carve would then be computed from the glyph plus its
+            own halo and smear. Per-word filters put the beat outside the carve
+            instead of inside it. Nothing about the relief itself changes: the
+            construction reads the alpha of whatever glyphs it is given, and the
+            spans do not overlap.
+          */}
+          <span className="l-t">The </span>
+          {/*
+            Keyed on the second, so React remounts it on each tick and the CSS
+            animation restarts from zero. Same value the digit is drawn from, so
+            the swell and the number land together by construction rather than by
+            two timers happening to agree.
+          */}
+          <span className="l-t-beat" key={secs ?? 'wait'}>
+            <span className="l-t">Heart</span>
+          </span>
           <br />
-          of the Jellyfish
+          <span className="l-t">of the Jellyfish</span>
         </h1>
         {META_PLACEMENT === 'underTitle' && (
           <div className="l-meta l-meta-under">
-            <Countdown releaseDate={releaseDate} />
+            <Countdown secs={secs} />
           </div>
         )}
 
@@ -943,7 +969,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
 
         {META_PLACEMENT === 'underPlay' && (
           <div className="l-meta l-meta-under">
-            <Countdown releaseDate={releaseDate} />
+            <Countdown secs={secs} />
           </div>
         )}
       </div>
@@ -1455,7 +1481,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-title{--dir:1;--cast:1}
 .l-title[data-lift=out]{--dir:-1;--cast:1.9}
 
-.l-title[data-inset=edge]{
+.l-title[data-inset=edge] .l-t{
   text-shadow:
     0 calc(-.009em * var(--inset,1) * var(--dir)) 0 rgba(8,34,58,calc(.8 * (1 - var(--white,.3)))),
     0 calc(.009em * var(--inset,1) * var(--dir)) 0 rgba(255,255,255,.66),
@@ -1465,7 +1491,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    into the surface the way the lip of a depression would. Its blur is the one
    length here that SHARP touches; the light rim stays hard at every setting,
    because a lit edge is a specular and not a gradient. */
-.l-title[data-inset=groove]{
+.l-title[data-inset=groove] .l-t{
   text-shadow:
     0 calc(-.009em * var(--inset,1) * var(--dir)) calc(.009em * var(--inset,1) * (1 - var(--sharp,.55))) rgba(6,28,50,calc(.9 * (1 - var(--white,.3)))),
     0 calc(-.02em * var(--inset,1) * var(--dir)) calc(.036em * var(--inset,1) * (1 - var(--sharp,.55))) rgba(6,28,50,calc(.44 * (1 - var(--white,.3)))),
@@ -1478,7 +1504,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    filter; the ambient shadow comes back as a drop-shadow chained after it, which
    sees the carved result rather than the raw outline — and stays outside the
    three knobs, since it is the only part that is not the relief itself. */
-.l-title[data-inset=carve]{
+.l-title[data-inset=carve] .l-t{
   text-shadow:none;
   filter:url(#l-carve)
          drop-shadow(0 calc(.018em * var(--inset,1) * var(--cast)) calc(.08em * var(--inset,1)) rgba(8,34,58,.34))}
@@ -1488,7 +1514,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    have those two: text-shadow paints behind the glyph, so it has no way to reach
    the inner walls. Running both pairs at once is the only version of this that
    describes an actual groove rather than half of one. */
-.l-title[data-inset=cut]{
+.l-title[data-inset=cut] .l-t{
   text-shadow:none;
   filter:url(#l-cut)
          drop-shadow(0 calc(.018em * var(--inset,1) * var(--cast)) calc(.08em * var(--inset,1)) rgba(8,34,58,.34))}
@@ -1499,6 +1525,34 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    em — they are SVG attributes — which is why titlePx exists. */
 
 .l-defs{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
+
+/* The beat on "Heart".
+
+   It is the depth slider being pulled up and let go: a dark rim that swells out
+   above the word and softens as it grows, and the lit rim below swelling with it.
+   Both are drop-shadows on a wrapper *outside* the carve, so the swell reads as
+   the cut deepening rather than as the glyph itself changing.
+
+   Fast attack, slow release, because that is the shape of a beat — a symmetric
+   swell reads as breathing. The dark rim is offset by --dir like every other
+   shadow in the relief, so the beat follows the letters if they are ever turned
+   inside out.
+
+   Timing is not in this file. The span is keyed on the countdown's seconds, so
+   React remounts it on the tick and the animation restarts from 0% — there is no
+   second timer to drift. */
+.l-t-beat{animation:l-beat 1s both}
+@keyframes l-beat{
+  0%{filter:drop-shadow(0 0 0 rgba(6,28,50,0)) drop-shadow(0 0 0 rgba(255,255,255,0));
+     animation-timing-function:cubic-bezier(.15,.85,.25,1)}
+  11%{filter:drop-shadow(0 calc(-.034em * var(--dir,1)) .055em rgba(6,28,50,.62))
+             drop-shadow(0 calc(.021em * var(--dir,1)) .006em rgba(255,255,255,.72));
+      animation-timing-function:cubic-bezier(.4,0,.55,1)}
+  100%{filter:drop-shadow(0 0 0 rgba(6,28,50,0)) drop-shadow(0 0 0 rgba(255,255,255,0))}
+}
+@media (prefers-reduced-motion:reduce){
+  .l-t-beat{animation:none}
+}
 
 .l-act-primary{display:flex;align-items:center;gap:clamp(14px,1.4vw,20px)}
 .l-play-row{display:flex;align-items:center;gap:clamp(14px,1.4vw,20px);margin-top:clamp(26px,4.2vh,52px)}
