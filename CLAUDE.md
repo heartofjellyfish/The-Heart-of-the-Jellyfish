@@ -310,8 +310,19 @@ region is measured from a box that already contains the ink.
 The word pulses once a second, in step with the countdown's seconds digit. It is
 the depth slider being pulled up and let go: a dark rim swells out above the word
 and softens as it grows, the lit rim swells below it, and both decay back over the
-rest of the second. Fast attack, slow release — a symmetric swell reads as
-breathing rather than as a beat.
+rest of the second. Fast attack, slow release — two-tenths in and eight-tenths out
+reads as a beat, where a symmetric swell reads as breathing. That asymmetry does
+more work than the amplitude does.
+
+**`--amp` scales all of it** — every length and every alpha in the keyframes — so
+the beat retunes from `/?tune=1` without changing shape. It exists because the
+first version was too loud: Qi scored it 6/10 and asked for subtler, then picked
+this mechanic out of six offered (the others were a double thump, a swinging
+light, a dark pressure wave, a pale one, and a band travelling through the fill —
+none shipped). 0.55 is a little over half the original, and the gap is deliberate
+rather than drift; he checked it against production before confirming. At 119px
+the peak at 110ms is the dark rim at −2.23px offset / 3.61px blur / .34 alpha,
+against the first version's −4.05 / 6.56 / .62.
 
 **One timer, not two.** The clock used to live inside `Countdown`; it now lives in
 `Landing` and is passed down. The beat span is keyed on that same `secs`, so React

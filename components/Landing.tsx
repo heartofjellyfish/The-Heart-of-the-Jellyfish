@@ -228,6 +228,24 @@ const INSET_SHARP = 0.85;
 const INSET_WHITE = 0.5;
 
 /**
+ * How hard "Heart" beats, once a second, in step with the countdown's seconds.
+ *
+ * Qi chose the mechanic out of six — the cut deepening and letting go, against a
+ * double thump, a swinging light, a dark pressure wave, a pale one, and a band
+ * travelling through the fill. The five that lost never shipped. What survived
+ * from that round is this number, because "subtler" turned out to be the whole
+ * note: it scales every length and every alpha in the keyframes at once, so the
+ * beat retunes from /?tune=1 without changing its shape.
+ *
+ * 0.55 is a little over half the strength the beat first shipped at, and the gap
+ * is deliberate rather than drift — Qi caught it against production and confirmed
+ * the quieter number. At 119px the peak lands at -2.23px offset / 3.61px blur /
+ * .34 alpha, where the first version reached -4.05 / 6.56 / .62. Same curve, half
+ * the reach.
+ */
+const BEAT_AMP = 0.55;
+
+/**
  * Candidates for the "this one is sounding" colour, every one of them sampled
  * off the painting rather than invented. Drives --lit / --lit-bright /
  * --lit-dim, which in turn drive the poem line, its number, the tracklist line,
@@ -512,6 +530,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [depth, setDepth] = useState(INSET_DEPTH);
   const [sharp, setSharp] = useState(INSET_SHARP);
   const [white, setWhite] = useState(INSET_WHITE);
+  const [amp, setAmp] = useState(BEAT_AMP);
   /** +1 cuts the letters in, -1 stands them off. See LIFTS. */
   const dir = lift === 'in' ? 1 : -1;
   /**
@@ -951,6 +970,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           ['--inset' as string]: depth,
           ['--sharp' as string]: sharp,
           ['--white' as string]: white,
+          ['--amp' as string]: amp,
         } as React.CSSProperties
       }
     >
@@ -1336,6 +1356,20 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               onChange={(e) => setWhite(Number(e.target.value))}
             />
             <span className="l-tuner-val">white {white.toFixed(2)}</span>
+          </div>
+
+          <div className="l-tuner-head">HEART BEAT</div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0}
+              max={1.5}
+              step={0.05}
+              value={amp}
+              aria-label="Beat amplitude"
+              onChange={(e) => setAmp(Number(e.target.value))}
+            />
+            <span className="l-tuner-val">amp {amp.toFixed(2)}</span>
           </div>
 
           <div className="l-tuner-head">POEM TYPE</div>
@@ -1733,8 +1767,8 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 @keyframes l-beat{
   0%{filter:drop-shadow(0 0 0 rgba(6,28,50,0)) drop-shadow(0 0 0 rgba(255,255,255,0));
      animation-timing-function:cubic-bezier(.15,.85,.25,1)}
-  11%{filter:drop-shadow(0 calc(-.034em * var(--dir,1)) .055em rgba(6,28,50,.62))
-             drop-shadow(0 calc(.021em * var(--dir,1)) .006em rgba(255,255,255,.72));
+  11%{filter:drop-shadow(0 calc(-.034em * var(--dir,1) * var(--amp,1)) calc(.055em * var(--amp,1)) rgba(6,28,50,calc(.62 * var(--amp,1))))
+             drop-shadow(0 calc(.021em * var(--dir,1) * var(--amp,1)) .006em rgba(255,255,255,calc(.72 * var(--amp,1))));
       animation-timing-function:cubic-bezier(.4,0,.55,1)}
   100%{filter:drop-shadow(0 0 0 rgba(6,28,50,0)) drop-shadow(0 0 0 rgba(255,255,255,0))}
 }
