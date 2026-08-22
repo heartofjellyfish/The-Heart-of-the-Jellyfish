@@ -183,6 +183,27 @@ type InsetKey = (typeof INSET_STYLES)[number]['key'];
 const INSET: InsetKey = 'carve';
 
 /**
+ * Which way the letters go: cut into the surface, or standing off it.
+ *
+ * It costs one sign. Light comes from above in both cases, so the only thing
+ * that distinguishes a groove from a ridge is which of its two walls faces the
+ * light — and every wall in all three styles is placed by a y offset. Flip every
+ * one of those offsets and the shadowed wall moves from the top of each letter to
+ * the bottom, the lit wall moves the other way, and the same construction reads
+ * as raised. No second filter, no swapped colours.
+ *
+ * What does not flip is the cast shadow underneath. The sun did not move; a
+ * ridge just throws a longer one than a dent does, hence --cast.
+ */
+const LIFTS = [
+  { key: 'in', label: 'In' },
+  { key: 'out', label: 'Out' },
+] as const;
+
+type LiftKey = (typeof LIFTS)[number]['key'];
+const LIFT: LiftKey = 'in';
+
+/**
  * Three knobs, because the three things Qi asked for pull against each other and
  * one slider cannot separate them.
  *
@@ -372,9 +393,12 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [lit, setLit] = useState<LitKey>(LIT);
   const [typeScale, setTypeScale] = useState(HERO_TYPE_SCALE);
   const [inset, setInset] = useState<InsetKey>(INSET);
+  const [lift, setLift] = useState<LiftKey>(LIFT);
   const [depth, setDepth] = useState(INSET_DEPTH);
   const [sharp, setSharp] = useState(INSET_SHARP);
   const [white, setWhite] = useState(INSET_WHITE);
+  /** +1 cuts the letters in, -1 stands them off. See LIFTS. */
+  const dir = lift === 'in' ? 1 : -1;
   /**
    * The title's rendered font size, in px. The carve filter's offsets are SVG
    * attributes, which cannot read em or var(), so the one thing that must scale
@@ -681,13 +705,13 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           height="150%"
           colorInterpolationFilters="sRGB"
         >
-          <feOffset in="SourceAlpha" dx="0" dy={titlePx * 0.011 * depth} result="down" />
+          <feOffset in="SourceAlpha" dx="0" dy={titlePx * 0.011 * depth * dir} result="down" />
           <feGaussianBlur in="down" stdDeviation={titlePx * depth * (0.001 + 0.007 * (1 - sharp))} result="downBlur" />
           <feComposite in="SourceAlpha" in2="downBlur" operator="out" result="topBand" />
           <feFlood floodColor="#08243c" floodOpacity={0.9 * (1 - white)} result="dark" />
           <feComposite in="dark" in2="topBand" operator="in" result="shade" />
 
-          <feOffset in="SourceAlpha" dx="0" dy={titlePx * -0.008 * depth} result="up" />
+          <feOffset in="SourceAlpha" dx="0" dy={titlePx * -0.008 * depth * dir} result="up" />
           <feGaussianBlur in="up" stdDeviation={titlePx * depth * (0.001 + 0.004 * (1 - sharp))} result="upBlur" />
           <feComposite in="SourceAlpha" in2="upBlur" operator="out" result="bottomBand" />
           <feFlood floodColor="#ffffff" floodOpacity="0.95" result="light" />
@@ -745,7 +769,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             <Countdown releaseDate={releaseDate} />
           </div>
         )}
-        <h1 className="l-title" data-inset={inset} ref={titleRef}>
+        <h1 className="l-title" data-inset={inset} data-lift={lift} ref={titleRef}>
           The Heart
           <br />
           of the Jellyfish
@@ -977,7 +1001,19 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             ))}
           </div>
 
-          <div className="l-tuner-head">TITLE INSET</div>
+          <div className="l-tuner-head">TITLE RELIEF</div>
+          <div className="l-tuner-row">
+            {LIFTS.map((l) => (
+              <button
+                key={l.key}
+                type="button"
+                className={'l-tuner-btn' + (l.key === lift ? ' l-tuner-on' : '')}
+                onClick={() => setLift(l.key)}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
           <div className="l-tuner-row">
             {INSET_STYLES.map((t) => (
               <button
@@ -1320,11 +1356,20 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    underneath. text-shadow paints behind the glyph, so both rims sit just outside
    the letter rather than inside it — which is why this reads as lit from above
    rather than as cut, and why it stays perfectly crisp. */
+/* --dir is the whole of "in" versus "out". Every y offset below is multiplied by
+   it, so flipping it moves the shadowed wall from the top of each letter to the
+   bottom and the lit wall the other way — a ridge instead of a groove, out of the
+   same four shadows. The ambient underneath is the one thing it does not touch:
+   the light is still overhead either way, so the cast shadow still falls below.
+   A ridge does throw a longer one than a dent, which is what --cast is for. */
+.l-title{--dir:1;--cast:1}
+.l-title[data-lift=out]{--dir:-1;--cast:1.9}
+
 .l-title[data-inset=edge]{
   text-shadow:
-    0 calc(-.009em * var(--inset,1)) 0 rgba(8,34,58,calc(.8 * (1 - var(--white,.3)))),
-    0 calc(.009em * var(--inset,1)) 0 rgba(255,255,255,.66),
-    0 calc(.018em * var(--inset,1)) calc(.06em * var(--inset,1)) rgba(8,34,58,.30)}
+    0 calc(-.009em * var(--inset,1) * var(--dir)) 0 rgba(8,34,58,calc(.8 * (1 - var(--white,.3)))),
+    0 calc(.009em * var(--inset,1) * var(--dir)) 0 rgba(255,255,255,.66),
+    0 calc(.018em * var(--inset,1) * var(--cast)) calc(.06em * var(--inset,1)) rgba(8,34,58,.30)}
 
 /* B - the same rims, but the dark one is doubled and the second copy falls off
    into the surface the way the lip of a depression would. Its blur is the one
@@ -1332,21 +1377,21 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    because a lit edge is a specular and not a gradient. */
 .l-title[data-inset=groove]{
   text-shadow:
-    0 calc(-.009em * var(--inset,1)) calc(.009em * var(--inset,1) * (1 - var(--sharp,.55))) rgba(6,28,50,calc(.9 * (1 - var(--white,.3)))),
-    0 calc(-.02em * var(--inset,1)) calc(.036em * var(--inset,1) * (1 - var(--sharp,.55))) rgba(6,28,50,calc(.44 * (1 - var(--white,.3)))),
-    0 calc(.009em * var(--inset,1)) 0 rgba(255,255,255,.76),
-    0 calc(.027em * var(--inset,1)) calc(.09em * var(--inset,1)) rgba(6,28,50,.26)}
+    0 calc(-.009em * var(--inset,1) * var(--dir)) calc(.009em * var(--inset,1) * (1 - var(--sharp,.55))) rgba(6,28,50,calc(.9 * (1 - var(--white,.3)))),
+    0 calc(-.02em * var(--inset,1) * var(--dir)) calc(.036em * var(--inset,1) * (1 - var(--sharp,.55))) rgba(6,28,50,calc(.44 * (1 - var(--white,.3)))),
+    0 calc(.009em * var(--inset,1) * var(--dir)) 0 rgba(255,255,255,.76),
+    0 calc(.027em * var(--inset,1) * var(--cast)) calc(.09em * var(--inset,1)) rgba(6,28,50,.26)}
 
 /* C - the only one where the shading is genuinely inside the glyph. See the SVG
    in the markup for how the two inner bands are built, and INSET_DEPTH for what
    the three knobs do to them. text-shadow has to go, or it would fight the
    filter; the ambient shadow comes back as a drop-shadow chained after it, which
    sees the carved result rather than the raw outline — and stays outside the
-   three knobs, since it is the only part that is not the cut itself. */
+   three knobs, since it is the only part that is not the relief itself. */
 .l-title[data-inset=carve]{
   text-shadow:none;
   filter:url(#l-carve)
-         drop-shadow(0 calc(.018em * var(--inset,1)) calc(.08em * var(--inset,1)) rgba(8,34,58,.34))}
+         drop-shadow(0 calc(.018em * var(--inset,1) * var(--cast)) calc(.08em * var(--inset,1)) rgba(8,34,58,.34))}
 
 /* Every length above is in em, not px. A rim is only read as an edge relative to
    the stroke it sits on, and the stroke scales with the type: the same 2px that

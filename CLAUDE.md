@@ -194,10 +194,20 @@ version looked like. Weighting the early stops far below linear (.04 and .14 whe
 linear would be .30 and .52) hides the onset: at 44% of the radius alpha is 0.02, at
 62% it is 0.07, and the darkness lands where it belongs, in the last fifth.
 
-### How deep the title sits
+### How the title sits in the surface
 
-`.l-title` carries a `data-inset` attribute with three values, and `--inset` on
-`.landing` scales all three. Pick at `/?tune=1`, then set `INSET` / `INSET_DEPTH`.
+`.l-title` carries `data-lift` (in / out) and `data-inset` (three styles), and
+three CSS vars scale them. Pick at `/?tune=1`, then set `LIFT` / `INSET` /
+`INSET_DEPTH` / `INSET_SHARP` / `INSET_WHITE`.
+
+**In versus out costs exactly one sign.** The light is overhead in both cases, so
+the only thing separating a groove from a ridge is which of its two walls faces
+it — and every wall, in all three styles, is placed by a y offset. `--dir`
+multiplies all of them; flip it and the shadowed wall moves from the top of each
+letter to the bottom while the lit wall moves the other way. No second filter, no
+swapped colours. The one thing `--dir` must *not* touch is the cast shadow
+underneath: the sun did not move. A ridge does throw a longer shadow than a dent,
+which is what `--cast` is for.
 
 Qi rejected nine noise textures inside the letters and asked instead for the
 letterpress edge to be *stronger*. Two things were wrong with what he was looking
