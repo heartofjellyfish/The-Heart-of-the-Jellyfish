@@ -500,6 +500,18 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   );
 
 
+  /**
+   * Playing from the poem leaves the poem open — someone may still be reading,
+   * and the line they just started now lights and fills in front of them, which
+   * is better feedback than being thrown back to the bar. Clicking the line that
+   * is already sounding toggles it, the ordinary meaning of clicking the item
+   * you are already playing.
+   *
+   * Audio outlives the view it was started from either way: navigating never
+   * silences a track as a side effect.
+   */
+  const playFromPoem = (n: number) => playTrack(n);
+
   const litVals = LITS.find((l) => l.key === lit) ?? LITS[0];
 
   const waveData = cur > 0 ? peaks?.[String(cur).padStart(2, '0')] ?? null : null;
@@ -510,19 +522,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       ' — ' +
       TITLES[cur - 1]
     : '';
-
-  /**
-   * Audio outlives the view it was started from — the panel is a change of
-   * scenery, not a change of state. So clicking the line that is already
-   * sounding takes you to the player rather than toggling it; the bottom bar's
-   * lit line behaves the same way, and neither ever silences a track as a side
-   * effect of navigating.
-   */
-  const playFromPoem = (n: number) => {
-    if (n === curRef.current) setBarView('player');
-    else playTrack(n);
-    setPanel(null);
-  };
 
   /* ---------------------------------------------------------------- */
 
@@ -595,19 +594,23 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         )}
 
         <div className="l-play-row">
-          <button
-            type="button"
-            className="l-play"
-            aria-label={'Listen — ' + TITLES[FEATURED_DEMO - 1]}
-            onClick={() => playTrack(FEATURED_DEMO)}
-          >
-            <svg width="13" height="15" viewBox="0 0 13 15" fill="currentColor" aria-hidden>
-              <path d="M0 0l13 7.5L0 15z" />
-            </svg>
-          </button>
-          <button type="button" className="l-play-label" onClick={() => playTrack(FEATURED_DEMO)}>
-            LISTEN NOW
-          </button>
+          {/* The circle and its label are one action, so they share a hover — but
+              only with each other. */}
+          <span className="l-act-primary">
+            <button
+              type="button"
+              className="l-play"
+              aria-label={'Listen — ' + TITLES[FEATURED_DEMO - 1]}
+              onClick={() => playTrack(FEATURED_DEMO)}
+            >
+              <svg width="13" height="15" viewBox="0 0 13 15" fill="currentColor" aria-hidden>
+                <path d="M0 0l13 7.5L0 15z" />
+              </svg>
+            </button>
+            <button type="button" className="l-play-label" onClick={() => playTrack(FEATURED_DEMO)}>
+              LISTEN NOW
+            </button>
+          </span>
           {/*
             Second action, deliberately unequal to the first. The circle carries
             the primary; this one is type alone with a rule that only appears
@@ -620,6 +623,9 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           */}
           <span className="l-act-rule" aria-hidden />
           <button type="button" className="l-act-second" onClick={() => setPanel('poem')}>
+            <svg width="12" height="10" viewBox="0 0 12 10" aria-hidden>
+              <path d="M0 .5h12M0 5h12M0 9.5h8" stroke="currentColor" strokeWidth="1" fill="none" />
+            </svg>
             TRACKLIST
           </button>
         </div>
@@ -835,7 +841,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                           }
                           aria-label={
                             (cur === n
-                              ? 'Now playing, back to player — '
+                              ? 'Pause — '
                               : has
                                 ? 'Play demo — '
                                 : 'No demo yet — ') + TITLES[n - 1]
@@ -1024,6 +1030,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-meta-under{margin-top:clamp(18px,2.8vh,34px);opacity:.95}
 .l-title{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
   font-size:clamp(42px,7.2vw,104px);line-height:1.04;margin:0}
+.l-act-primary{display:flex;align-items:center;gap:clamp(14px,1.4vw,20px)}
 .l-play-row{display:flex;align-items:center;gap:clamp(14px,1.4vw,20px);margin-top:clamp(26px,4.2vh,52px)}
 /* The primary action. On hover the ring fills and the glyph inverts — the button
    stops being an outline and becomes a thing you have already half-pressed. The
@@ -1040,12 +1047,12 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   transition:opacity .5s,transform .5s cubic-bezier(.2,.8,.2,1);pointer-events:none}
 .landing .l-play svg{transition:transform .4s cubic-bezier(.2,.8,.2,1)}
 
-.l-play-row:hover .l-play,
+.l-act-primary:hover .l-play,
 .landing .l-play:focus-visible{background:#fff;color:#0d3550;border-color:#fff;
   transform:scale(1.06)}
-.l-play-row:hover .l-play::after,
+.l-act-primary:hover .l-play::after,
 .landing .l-play:focus-visible::after{opacity:0;transform:scale(1.42)}
-.l-play-row:hover .l-play svg{transform:scale(1.12)}
+.l-act-primary:hover .l-play svg{transform:scale(1.12)}
 .landing .l-play-label{border:none;background:none;padding:0;color:inherit;cursor:pointer;
   font-family:'Jost',sans-serif;font-weight:400;font-size:12px;letter-spacing:.32em;
   opacity:1;transition:opacity .4s;
@@ -1058,8 +1065,11 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   cursor:pointer;font-family:'Jost',sans-serif;font-weight:400;font-size:12px;
   letter-spacing:.32em;opacity:.84;
   text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4);
+  display:inline-flex;align-items:center;gap:9px;
   border-bottom:1px solid transparent;
   transition:opacity .4s,border-color .4s}
+.landing .l-act-second svg{opacity:.8;transition:opacity .4s}
+.landing .l-act-second:hover svg{opacity:1}
 .landing .l-act-second:hover{opacity:1;border-bottom-color:currentColor}
 
 
