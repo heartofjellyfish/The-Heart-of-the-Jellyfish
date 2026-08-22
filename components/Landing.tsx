@@ -269,6 +269,16 @@ const WAVE_BARS = 160;
 
 type Panel = 'poem' | 'subscribe' | null;
 
+/* Mirrors the check in app/api/subscribe/route.ts. Duplicated on purpose: the
+   server must not trust the client, and the client should not need a round trip
+   to say "that isn't an email". */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/* idle -> sending -> done, or -> error. The old code had only a `sent` boolean, so
+   a failed signup still showed the thank-you line and the address was lost with
+   the visitor believing they were on the list. */
+type SubState = 'idle' | 'sending' | 'done' | 'error';
+
 /** m:ss, for the scrub readout. Nothing on this page runs to an hour. */
 function clock(secs: number) {
   const s = Math.max(0, Math.floor(secs));
@@ -516,7 +526,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [playing, setPlaying] = useState(false);
   const [pct, setPct] = useState(0);
   const [missing, setMissing] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [subState, setSubState] = useState<SubState>('idle');
+  const [subErr, setSubErr] = useState<'email' | 'server'>('server');
   const [peaks, setPeaks] = useState<Record<string, number[]> | null>(null);
   /** `/?tune=1` (or `?type=1`) opens the tuner. Dev affordance; renders for nobody else. */
   const [tuner, setTuner] = useState(false);
@@ -1499,16 +1510,41 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               <p className="l-sub-copy">
                 Leave your email — you&apos;ll be the first to know when it surfaces.
               </p>
-              {sent ? (
+              {subState === 'done' ? (
                 <div className="l-sub-thanks">
                   Heartbeat received, expect receiving mine too ;)
                 </div>
               ) : (
                 <form
                   className="l-sub-form"
-                  onSubmit={(e) => {
+                  onSubmit={async (e) => {
                     e.preventDefault();
-                    if (emailRef.current?.value.trim()) setSent(true);
+                    const email = emailRef.current?.value.trim() ?? '';
+                    if (!EMAIL_RE.test(email)) {
+                      setSubErr('email');
+                      setSubState('error');
+                      emailRef.current?.focus();
+                      return;
+                    }
+                    setSubState('sending');
+                    try {
+                      const res = await fetch('/api/subscribe', {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({ email, source: 'qi.land' }),
+                      });
+                      if (!res.ok) {
+                        // 400 is the address itself; anything else (503 no key, 502
+                        // upstream, 500) is ours to own -- don't blame the visitor.
+                        setSubErr(res.status === 400 ? 'email' : 'server');
+                        setSubState('error');
+                        return;
+                      }
+                      setSubState('done');
+                    } catch {
+                      setSubErr('server'); // never reached /api/subscribe at all
+                      setSubState('error');
+                    }
                   }}
                 >
                   <input
@@ -1517,11 +1553,22 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                     placeholder="Email address"
                     aria-label="Email address"
                     className="l-sub-input"
+                    disabled={subState === 'sending'}
+                    onChange={() => {
+                      if (subState === 'error') setSubState('idle');
+                    }}
                   />
-                  <button type="submit" className="l-sub-btn">
-                    SIGN UP
+                  <button type="submit" className="l-sub-btn" disabled={subState === 'sending'}>
+                    {subState === 'sending' ? '\u2026' : 'SIGN UP'}
                   </button>
                 </form>
+              )}
+              {subState === 'error' && (
+                <p className="l-sub-err" role="alert">
+                  {subErr === 'email'
+                    ? 'That address doesn\u2019t look right \u2014 mind checking it?'
+                    : 'The tide didn\u2019t carry it \u2014 try again in a moment.'}
+                </p>
               )}
               <div className="l-sub-foot">
                 QI — 12 · 20 · 2026 ·{' '}
@@ -2193,6 +2240,8 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   letter-spacing:.4em;cursor:pointer;transition:background .4s,color .4s}
 .l-sub-btn:hover{background:#fff;color:#0b2438}
 .l-sub-thanks{font-size:16px;font-style:italic;font-family:'Cormorant Garamond',serif}
+.l-sub-err{margin:0;font-size:13px;font-style:italic;
+  font-family:'Cormorant Garamond',serif;color:#ffd9c9;opacity:.9}
 .l-sub-foot{font-family:'Jost',sans-serif;font-weight:300;font-size:10px;
   letter-spacing:.34em;opacity:.55;line-height:2.4;margin-top:clamp(18px,4vh,40px)}
 .l-sub-link{color:inherit;border-bottom:1px solid currentColor;text-decoration:none}
