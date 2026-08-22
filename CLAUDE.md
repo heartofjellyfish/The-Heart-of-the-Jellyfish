@@ -143,6 +143,32 @@ song should still show a shape.
 The bar looks 2px tall but its hit area is the full 26px, and it seeks on click, drag,
 and arrow keys (Shift for 30s).
 
+### The sounding line is the other seek bar
+
+*(added 2026-08-22)*
+
+In the poem panel the line that is playing fills left to right in step with the
+track. Since 2026-08-22 it is also **pressed to seek** — press anywhere along the
+words to land there, drag to sweep, and a hairline with a `m:ss` clock follows the
+pointer to say where you would land. The panel sits above the bottom bar, so
+without this there was no way to move through a track while reading the poem.
+
+What makes it honest is **which box** it measures. The row is a fixed column width
+— the longest line sets it — so a fill measured on the row finishes `Wake up!`
+(69px of ink) at 17% of the track and then sits dead for three minutes. Both the
+fill and the seek now read off `.l-poem-ink`, an inline-block that hugs its own
+text, so every line ends its fill on its last glyph exactly as the track ends. The
+price is that a short line is a coarse bar — seconds per pixel. That is the right
+trade: the waveform downstairs is the precise instrument, this is the one you can
+read. **If the fill and the pointer ever stop sharing a box, this breaks silently
+— it will still seek, just not where you pressed.**
+
+The number in the margin took over the transport (press to pause, and its breath
+holds while paused), because press-to-seek eats the click. Keyboard: the line is
+`role="slider"`, arrows move 5s (Shift 30s), Home rewinds, Space holds. On touch
+`touch-action:pan-y` keeps a vertical swipe scrolling the panel, and the hairline
+stays hidden — a preview stranded at the last tap is worse than none.
+
 ### The poem's type
 
 `POEM_FONTS` holds the candidate faces, each setting CSS variables rather than a

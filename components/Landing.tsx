@@ -251,6 +251,12 @@ const WAVE_BARS = 160;
 
 type Panel = 'poem' | 'subscribe' | null;
 
+/** m:ss, for the scrub readout. Nothing on this page runs to an hour. */
+function clock(secs: number) {
+  const s = Math.max(0, Math.floor(secs));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
 function secondsUntil(releaseDate: string) {
   const target = new Date(releaseDate + 'T00:00:00').getTime();
   return Math.max(0, Math.ceil((target - Date.now()) / 1000));
@@ -687,16 +693,30 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const seekRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
 
-  const seekToClientX = useCallback((clientX: number) => {
-    const el = seekRef.current;
+  /**
+   * The one place playback position is set by hand. Two surfaces seek now — the
+   * bar's waveform and the sounding poem line — and they must land on the same
+   * number from the same fraction, so the geometry stays with each surface and
+   * only the fraction comes here.
+   */
+  const seekToFraction = useCallback((f: number) => {
     const au = audioRef.current;
-    if (!el || !au || !au.duration || !isFinite(au.duration)) return;
-    const r = el.getBoundingClientRect();
-    const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
-    au.currentTime = f * au.duration;
-    pctRef.current = f * 100;
-    setPct(f * 100);
+    if (!au || !au.duration || !isFinite(au.duration)) return;
+    const c = Math.min(1, Math.max(0, f));
+    au.currentTime = c * au.duration;
+    pctRef.current = c * 100;
+    setPct(c * 100);
   }, []);
+
+  const seekToClientX = useCallback(
+    (clientX: number) => {
+      const el = seekRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      seekToFraction((clientX - r.left) / r.width);
+    },
+    [seekToFraction],
+  );
 
   const onSeekDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -733,6 +753,145 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     e.preventDefault();
   }, []);
 
+  /* --- scrubbing the poem line ------------------------------------ */
+  /*
+   * The sounding line already reads as a progress bar — it fills left to right
+   * in step with the track — so it is treated as one: press anywhere along the
+   * words to land there, drag to sweep. Where you press is where the edge of the
+   * ink ends up, because the pointer and the fill are read off the same box.
+   *
+   * That box is the WORDS, not the row (.l-poem-ink, an inline-block that hugs
+   * its text), and moving it there is what makes the feature honest. The row is
+   * a uniform 412px because the longest line sets the column width, so a fill
+   * measured on the row finishes "Wake up!" — 69px of ink — at 17% of the track
+   * and then sits dead for three minutes. Measured on the ink, every line ends
+   * its fill on its last glyph exactly when the track ends, whatever its length.
+   * The cost is that a short line is a short scrub bar: seconds per pixel, not
+   * tenths. That is the right trade here — the bar downstairs is the precise
+   * instrument, this one is the one you can read.
+   *
+   * The number in the margin keeps the transport. Press-to-seek has to take the
+   * click, and the panel covers the bar's play button while it is open, so pause
+   * would otherwise have nowhere to live. It is the right size for a transport
+   * anyway: metadata in the gutter, not a control laid over the verse.
+   */
+  const poemInkRef = useRef<HTMLSpanElement | null>(null);
+  const poemTimeRef = useRef<HTMLSpanElement | null>(null);
+  const scrubbingRef = useRef(false);
+
+  /**
+   * A callback ref, so that the line losing the track also loses the hairline it
+   * was left holding. The attributes are set by hand and React does not know
+   * they exist — without this, coming back to a track later shows a stale
+   * hairline at wherever the pointer last was, until the next move wipes it.
+   */
+  const attachInk = useCallback((el: HTMLSpanElement | null) => {
+    const prev = poemInkRef.current;
+    if (prev && prev !== el) {
+      prev.removeAttribute('data-scrub');
+      prev.removeAttribute('data-scrubbing');
+    }
+    poemInkRef.current = el;
+  }, []);
+
+  /** Paint the hairline and its clock imperatively — a pointermove is not worth
+   *  a render of the whole landing, and React owns neither of these values. */
+  const paintScrub = useCallback((f: number) => {
+    const ink = poemInkRef.current;
+    if (!ink) return;
+    ink.style.setProperty('--h', (f * 100).toFixed(2) + '%');
+    ink.dataset.scrub = '';
+    const t = poemTimeRef.current;
+    const au = audioRef.current;
+    if (t) t.textContent = au?.duration ? clock(f * au.duration) : '';
+  }, []);
+
+  /**
+   * Null when the pointer is off the words — past the end of a short line, or
+   * out in the margin. Nothing happens there rather than the press clamping to
+   * 0 or 1, which is the difference between an empty press and losing your place.
+   */
+  const inkFraction = (clientX: number) => {
+    const ink = poemInkRef.current;
+    if (!ink) return null;
+    const r = ink.getBoundingClientRect();
+    if (!r.width || clientX < r.left - 4 || clientX > r.right + 4) return null;
+    return Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+  };
+
+  const onLineDown = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      // The number hangs outside the line's box, in the left margin. Caught here
+      // and handed the transport: it is the only control left in the panel once
+      // the line itself means position.
+      if ((e.target as HTMLElement).closest('.l-poem-num')) {
+        playTrackRef.current(curRef.current);
+        return;
+      }
+      const f = inkFraction(e.clientX);
+      if (f === null) return;
+      scrubbingRef.current = true;
+      poemInkRef.current?.setAttribute('data-scrubbing', '');
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {}
+      paintScrub(f);
+      seekToFraction(f);
+    },
+    [paintScrub, seekToFraction],
+  );
+
+  const onLineMove = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      const f = inkFraction(e.clientX);
+      if (f === null) {
+        if (!scrubbingRef.current) poemInkRef.current?.removeAttribute('data-scrub');
+        return;
+      }
+      paintScrub(f);
+      if (scrubbingRef.current) seekToFraction(f);
+    },
+    [paintScrub, seekToFraction],
+  );
+
+  const onLineUp = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    scrubbingRef.current = false;
+    poemInkRef.current?.removeAttribute('data-scrubbing');
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+  }, []);
+
+  const onLineLeave = useCallback(() => {
+    if (scrubbingRef.current) return; // capture keeps the drag alive off the line
+    poemInkRef.current?.removeAttribute('data-scrub');
+  }, []);
+
+  /**
+   * The line is focusable, and it now means position rather than "play me", so
+   * it takes the keys a slider takes. Space holds the music where the number
+   * would, since a keyboard cannot press a span in the margin.
+   */
+  const onLineKey = useCallback(
+    (e: React.KeyboardEvent<HTMLButtonElement>) => {
+      const au = audioRef.current;
+      if (!au) return;
+      if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        playTrackRef.current(curRef.current);
+        return;
+      }
+      if (!au.duration || !isFinite(au.duration)) return;
+      const step = e.shiftKey ? 30 : 5;
+      if (e.key === 'ArrowRight') seekToFraction((au.currentTime + step) / au.duration);
+      else if (e.key === 'ArrowLeft') seekToFraction((au.currentTime - step) / au.duration);
+      else if (e.key === 'Home') seekToFraction(0);
+      else return;
+      e.preventDefault();
+    },
+    [seekToFraction],
+  );
+
   const stop = useCallback(() => {
     audioRef.current?.pause();
     curRef.current = 0;
@@ -758,9 +917,9 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   /**
    * Playing from the poem leaves the poem open — someone may still be reading,
    * and the line they just started now lights and fills in front of them, which
-   * is better feedback than being thrown back to the bar. Clicking the line that
-   * is already sounding toggles it, the ordinary meaning of clicking the item
-   * you are already playing.
+   * is better feedback than being thrown back to the bar. The line that is
+   * already sounding does not come through here at all — it has become the
+   * track's own scrub bar; see the scrubbing block above.
    *
    * Audio outlives the view it was started from either way: navigating never
    * silences a track as a side effect.
@@ -1237,6 +1396,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                   <div className="l-poem-stanza" key={si}>
                     {stanza.map((n) => {
                       const has = AVAILABLE_DEMOS.includes(n);
+                      const on = cur === n;
                       return (
                         <button
                           key={n}
@@ -1244,26 +1404,54 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                           className={
                             'l-poem-line' +
                             (has ? '' : ' l-poem-soon') +
-                            (cur === n ? ' l-poem-playing' : '')
+                            (on ? ' l-poem-playing' : '')
                           }
-                          onClick={() => playFromPoem(n)}
+                          /* Sounding: the line is the track's length, so it is
+                             pressed rather than clicked, and there is nothing
+                             left for a click to mean. Silent: unchanged. */
+                          onClick={on ? undefined : () => playFromPoem(n)}
+                          onPointerDown={on ? onLineDown : undefined}
+                          onPointerMove={on ? onLineMove : undefined}
+                          onPointerUp={on ? onLineUp : undefined}
+                          /* Both of these, or a drag that ends somewhere the
+                             page never hears about leaves the line stuck mid-
+                             scrub, with the fill frozen under a hairline. */
+                          onPointerCancel={on ? onLineUp : undefined}
+                          onLostPointerCapture={on ? onLineUp : undefined}
+                          onPointerLeave={on ? onLineLeave : undefined}
+                          onKeyDown={on ? onLineKey : undefined}
+                          role={on ? 'slider' : undefined}
+                          aria-valuemin={on ? 0 : undefined}
+                          aria-valuemax={on ? 100 : undefined}
+                          aria-valuenow={on ? Math.round(pct) : undefined}
+                          data-paused={on && !playing ? '' : undefined}
                           style={
-                            cur === n
+                            on
                               ? ({ ['--p' as string]: pct.toFixed(1) + '%' } as React.CSSProperties)
                               : undefined
                           }
                           aria-label={
-                            (cur === n
-                              ? 'Pause — '
+                            (on
+                              ? 'Seek — '
                               : has
                                 ? 'Play demo — '
                                 : 'No demo yet — ') + TITLES[n - 1]
                           }
                         >
-                          <span className="l-poem-num" aria-hidden>
+                          <span
+                            className="l-poem-num"
+                            aria-hidden
+                            title={on ? (playing ? 'Pause' : 'Play') : undefined}
+                          >
                             {String(n).padStart(2, '0')}
                           </span>
-                          {POEM[n - 1]}
+                          {/* The words are their own box — see .l-poem-ink. The
+                              button stays full width so a silent line is easy
+                              to hit; the ink is what fills and what seeks. */}
+                          <span className="l-poem-ink" ref={on ? attachInk : undefined}>
+                            {POEM[n - 1]}
+                            {on && <span className="l-poem-time" ref={poemTimeRef} aria-hidden />}
+                          </span>
                         </button>
                       );
                     })}
@@ -1822,8 +2010,15 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .landing .l-poem-playing{opacity:1;color:var(--lit)}
 .landing .l-poem-playing:hover{color:var(--lit-bright)}
 
+/* The words, boxed. The row is a uniform column width — the longest line sets it
+   — so anything measured on the row is measured against a length the reader
+   cannot see. The ink box hugs its own text, which is the length they CAN see,
+   and both the fill and the seek are read off it. vertical-align keeps a line
+   that wraps from pushing its own row down by a descender. */
+.l-poem-ink{position:relative;display:inline-block;max-width:100%;vertical-align:top}
+
 @supports ((-webkit-background-clip:text) or (background-clip:text)){
-  .landing .l-poem-playing{
+  .landing .l-poem-playing .l-poem-ink{
     background-image:linear-gradient(90deg,
       var(--lit-bright) 48%, rgba(238,245,249,.34) 52%);
     background-size:200% 100%;
@@ -1854,18 +2049,58 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
     filter:drop-shadow(0 1px 2px rgba(2,14,26,.7))
            drop-shadow(0 0 6px color-mix(in srgb,var(--lit) 45%,transparent));
   }
-  /* Hover is one pseudo-class heavier than .l-poem-playing, so the line's hover
-     shadow outranks the none above it and comes back the moment the cursor is
-     over the line that is sounding — which is exactly when someone is looking at
-     it. Restated at equal weight rather than fought with !important. */
-  .landing .l-poem-playing:hover{text-shadow:none}
-  /* the number is a child, so it would inherit the transparent fill */
-  .landing .l-poem-playing .l-poem-num{-webkit-text-fill-color:currentColor}
+  /* The specificity fight this used to have with .l-poem-line:hover is gone now
+     that the gradient sits one level down: a text-shadow on the row is an
+     INHERITED value on the ink, and any rule that matches the ink directly beats
+     inheritance outright, hover or not. The number stopped needing its
+     text-fill patch for the same reason — it is a child of the row, and the row
+     no longer paints its fill transparent. */
 }
 
 .landing .l-poem-playing .l-poem-num{color:var(--lit);
   animation:l-breathe 2.8s ease-in-out infinite}
 @keyframes l-breathe{0%,100%{opacity:.32}50%{opacity:.95}}
+/* Held, not stopped. The number is the panel's transport, and the breath going
+   still is the only report it can make from the margin. */
+.landing .l-poem-playing[data-paused] .l-poem-num{animation:none;opacity:.85}
+
+/* ---- the sounding line as its own scrub bar ----
+
+   The words are the length of the track — they are what the fill crosses — so
+   they are pressed rather than clicked, and a hairline follows the pointer to
+   say where the ink would end up if you let go. Hover is the whole affordance:
+   nothing is added to the verse until someone reaches for it.
+
+   pan-y and not none: the panel scrolls on a short screen, and a thumb starting
+   its swipe on the line that happens to be playing must still be able to move
+   the poem. Horizontal intent is what arrives here. */
+/* A drag across the words is a scrub, so it must not also be a text selection —
+   the highlight lands on top of the fill, and on a phone it summons the copy
+   bubble over the poem. Only the sounding line gives it up. */
+.landing .l-poem-playing{touch-action:pan-y;-webkit-user-select:none;user-select:none}
+/* No transition while a drag is live — the fill's 1s glide is there to smooth
+   the once-a-second progress tick, and under the pointer it reads as lag. */
+.landing .l-poem-playing .l-poem-ink[data-scrubbing]{transition:opacity .35s}
+.landing .l-poem-playing .l-poem-ink::after{content:'';position:absolute;
+  left:var(--h,0);top:-.06em;bottom:-.06em;width:1px;background:var(--lit-bright);
+  opacity:0;transition:opacity .22s;pointer-events:none}
+.landing .l-poem-playing .l-poem-ink[data-scrub]::after{opacity:.6}
+/* The clock rides above the hairline, in the leading of the line above, where
+   there is already air. Its fill has to be restated: the parent's is
+   transparent, and that inherits. */
+.l-poem-time{position:absolute;left:var(--h,0);bottom:calc(100% - .18em);
+  transform:translateX(-50%);font-family:'Jost',sans-serif;font-weight:300;
+  font-size:9px;letter-spacing:.14em;color:var(--lit-bright);
+  -webkit-text-fill-color:var(--lit-bright);
+  text-shadow:0 1px 2px rgba(2,14,26,.8);
+  opacity:0;transition:opacity .22s;pointer-events:none;white-space:nowrap}
+.landing .l-poem-ink[data-scrub] .l-poem-time{opacity:.8}
+/* No pointer to hover with, so there is no preview to give — the tap is the
+   seek. A hairline stranded at the last touch is worse than none. */
+@media (hover:none){
+  .landing .l-poem-ink[data-scrub]:not([data-scrubbing])::after,
+  .landing .l-poem-ink[data-scrub]:not([data-scrubbing]) .l-poem-time{opacity:0}
+}
 
 
 .l-sub{display:flex;flex-direction:column;align-items:center;text-align:center;
