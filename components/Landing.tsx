@@ -863,8 +863,14 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
 const LANDING_CSS = `
 html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .landing{position:fixed;inset:0;overflow:hidden;color:#fff;
-  font-family:'Cormorant Garamond',serif}
-.landing ::selection{background:rgba(143,215,235,.35)}
+  font-family:'Cormorant Garamond',serif;
+  /* Sampled off the painting: the peak of the gold on the jellyfish's own bell.
+     Everything that means "this is the one sounding" uses it — the poem line, its
+     number, the tracklist line, the waveform, the progress. One knob. */
+  --lit:#e6cf82;
+  --lit-bright:#f2e0a4;
+  --lit-dim:rgba(230,207,130,.28)}
+.landing ::selection{background:rgba(230,207,130,.32)}
 /* Normalises the UA button font. Note it is (0,1,1) and beats any bare .l-*
    class, so every button rule below that sets a font has to be written as
    ".landing .l-foo" to win. That is why those selectors look over-qualified. */
@@ -1030,8 +1036,8 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-strip-item:hover{opacity:1;color:#fff}
 /* The line that is sounding. Lit rather than badged — the bar gains no chrome,
    and clicking it is the way back into the player. */
-.landing .l-strip-playing{opacity:1;color:#8fd6ea}
-.landing .l-strip-playing:hover{color:#b6e6f4}
+.landing .l-strip-playing{opacity:1;color:var(--lit)}
+.landing .l-strip-playing:hover{color:var(--lit-bright)}
 
 .landing .l-bar-back{background:none;border:none;padding:0 2px;color:inherit;
   cursor:pointer;font-size:15px;opacity:.6;flex-shrink:0;transition:opacity .3s}
@@ -1055,23 +1061,26 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   background:transparent;color:inherit;font-size:12px;cursor:pointer;flex-shrink:0;
   transition:background .35s}
 .l-bar-toggle:hover{background:rgba(242,246,248,.18)}
+/* The title yields first. Track 08's name is 53 characters and was squeezing the
+   waveform down to its 60px floor; the waveform is the thing you aim at, the
+   title is a label you can read the end of somewhere else. */
 .l-bar-title{font-family:'Jost',sans-serif;font-weight:300;font-size:12px;letter-spacing:.2em;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:1}
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;min-width:0}
 /* Looks like a 2px hairline, but the hit area is the full bar height so it can
    actually be grabbed. The visible line is the ::before. */
-.l-bar-track{flex:1;min-width:60px;height:26px;display:flex;align-items:center;
+.l-bar-track{flex:1 0 34%;min-width:130px;height:26px;display:flex;align-items:center;
   cursor:pointer;position:relative;touch-action:none;outline:none}
 .l-bar-line{position:absolute;left:0;right:0;height:2px;
   background:rgba(242,246,248,.28);border-radius:1px}
-.l-bar-fill{position:relative;height:2px;background:#8fd6ea;border-radius:1px}
+.l-bar-fill{position:relative;height:2px;background:var(--lit);border-radius:1px}
 
 /* The waveform fills the same hit area the hairline did, so seeking is
    identical either way. */
 .l-wave{position:absolute;inset:0;width:100%;height:100%;display:block}
 .l-wave-dim rect{fill:rgba(242,246,248,.30)}
-.l-wave-lit rect{fill:#8fd6ea}
+.l-wave-lit rect{fill:var(--lit)}
 .l-bar-knob{position:absolute;right:0;top:50%;width:9px;height:9px;border-radius:50%;
-  background:#8fd6ea;transform:translate(50%,-50%) scale(0);
+  background:var(--lit);transform:translate(50%,-50%) scale(0);
   transition:transform .2s}
 .l-bar-track:hover .l-bar-knob,
 .l-bar-track:focus-visible .l-bar-knob{transform:translate(50%,-50%) scale(1)}
@@ -1148,13 +1157,13 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    position can, so the ~0.7s progress updates arrive as continuous motion
    instead of a stutter. The 48/52 split is a soft edge: ink spreading, not a
    wipe. */
-.landing .l-poem-playing{opacity:1;color:#8fd6ea}
-.landing .l-poem-playing:hover{color:#b6e6f4}
+.landing .l-poem-playing{opacity:1;color:var(--lit)}
+.landing .l-poem-playing:hover{color:var(--lit-bright)}
 
 @supports ((-webkit-background-clip:text) or (background-clip:text)){
   .landing .l-poem-playing{
     background-image:linear-gradient(90deg,
-      #a8e6f7 48%, rgba(238,245,249,.34) 52%);
+      var(--lit-bright) 48%, rgba(238,245,249,.34) 52%);
     background-size:200% 100%;
     background-position:calc(100% - var(--p,0%)) 0;
     background-repeat:no-repeat;
@@ -1166,7 +1175,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   .landing .l-poem-playing .l-poem-num{-webkit-text-fill-color:currentColor}
 }
 
-.landing .l-poem-playing .l-poem-num{color:#8fd6ea;
+.landing .l-poem-playing .l-poem-num{color:var(--lit);
   animation:l-breathe 2.8s ease-in-out infinite}
 @keyframes l-breathe{0%,100%{opacity:.32}50%{opacity:.95}}
 
@@ -1217,10 +1226,10 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-tuner-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .l-tuner-btn{background:none;border:1px solid rgba(255,255,255,.28);color:#dfeaf1;
   padding:6px 11px;border-radius:3px;cursor:pointer;font-size:11px;letter-spacing:.1em}
-.l-tuner-on{background:rgba(143,214,234,.22);border-color:#8fd6ea;color:#fff}
+.l-tuner-on{background:var(--lit-dim);border-color:var(--lit);color:#fff}
 .l-tuner-val{opacity:.7;min-width:12ch}
 .l-tuner-head{font-size:9px;letter-spacing:.34em;opacity:.45;margin-top:4px}
-.l-tuner input[type=range]{width:120px;accent-color:#8fd6ea}
+.l-tuner input[type=range]{width:120px;accent-color:var(--lit)}
 
 @media (prefers-reduced-motion: reduce){
   .landing *{animation:none !important}
