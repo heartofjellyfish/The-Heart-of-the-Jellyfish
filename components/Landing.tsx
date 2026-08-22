@@ -1102,9 +1102,18 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    against the hero's 1.6s. The label goes on the wall after the work is hung,
    and by the time it arrives the eye has already been given to the painting —
    which is the only order in which a credit can be quiet. */
+/* Fill mode is "backwards", and the keyframes deliberately have no end frame.
+   A forwards fill keeps applying after the animation ends, and an
+   animation-applied value outranks every normal declaration in the cascade,
+   :hover included — with an explicit end frame of opacity 1 and fill "both",
+   this element was pinned at 1 forever: the resting opacity below never took,
+   and the hover state was dead code that computed correctly and changed
+   nothing. "backwards" fills only during the delay and releases at the end, and
+   an implicit end frame interpolates toward the element's own value — so each
+   variant lands on its own resting opacity with no pop, and hover works. */
 .landing .l-credit{color:inherit;text-decoration:none;display:block;
-  animation:l-credit-in 2.6s cubic-bezier(.2,.7,.2,1) 1.9s both}
-@keyframes l-credit-in{from{opacity:0}to{opacity:1}}
+  animation:l-credit-in 2.6s cubic-bezier(.2,.7,.2,1) 1.9s backwards}
+@keyframes l-credit-in{from{opacity:0}}
 
 /* -- plate: the wall label -- */
 .l-credit-plate{line-height:1.55;
@@ -1144,16 +1153,33 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   right:clamp(30px,5.2vw,104px);bottom:clamp(132px,19vh,196px);
   font-family:'Nothing You Could Do',cursive;
   font-size:clamp(20px,2.15vw,34px);line-height:1;
-  color:#3a2a16;opacity:.72;mix-blend-mode:multiply;
+  color:#3a2a16;opacity:.82;mix-blend-mode:multiply;
   transform:rotate(-3deg);transform-origin:right bottom;
   transition:opacity .6s cubic-bezier(.2,.7,.2,1)}
+/* The one affordance, and it stays inside the picture: a signature's own
+   underline swash, drawn left-to-right on hover. A pointer cursor alone never
+   tells anyone a painted name is a door, and the alternatives — a tooltip, a
+   box, an icon — are all site chrome landing on the canvas. This is a second
+   stroke of the same pen. */
+.landing .l-credit-signature::after{content:'';position:absolute;
+  left:2%;right:6%;bottom:-.16em;height:1px;background:currentColor;
+  transform:scaleX(0);transform-origin:left center;opacity:.75;
+  transition:transform .55s cubic-bezier(.2,.7,.2,1)}
 .landing .l-credit-signature:hover,
-.landing .l-credit-signature:focus-visible{opacity:.95}
-/* Narrow crops swing the sand out of frame; over water the dark hand vanishes,
-   so it lightens and stops multiplying. */
+.landing .l-credit-signature:focus-visible{opacity:1}
+.landing .l-credit-signature:hover::after,
+.landing .l-credit-signature:focus-visible::after{transform:scaleX(1)}
+/* Narrow crops swing the sand out of frame entirely and the picture becomes the
+   jellyfish alone — so both halves of the desktop placement stop being true. The
+   dark hand vanishes over water, so it lightens and stops multiplying; and the
+   lower *right* is now the jellyfish and its tentacles, so the name crosses the
+   one subject the crop was chosen to keep. It moves to the lower left, which the
+   tentacles trail away from and which prints have always been free to sign. */
 @media (max-aspect-ratio: 13/10){
-  .landing .l-credit-signature{color:#e8eef2;mix-blend-mode:normal;opacity:.5;
-    text-shadow:0 1px 4px rgba(10,42,70,.5)}
+  .landing .l-credit-signature{color:#e8eef2;mix-blend-mode:normal;opacity:.62;
+    text-shadow:0 1px 4px rgba(10,42,70,.5);
+    right:auto;left:clamp(24px,5vw,60px);bottom:clamp(120px,15vh,172px);
+    transform-origin:left bottom}
 }
 
 /* ---- hero ---- */
@@ -1248,19 +1274,32 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .landing .l-act-second:hover svg{opacity:1}
 .landing .l-act-second:hover{border-bottom-color:currentColor}
 
-/* 40ms a letter — slower than LISTEN NOW's 26ms ripple on purpose. A ripple is a
-   wave and wants to be continuous; typing is discrete and wants you to hear each
-   key. The two actions move differently because they are different actions. */
+/* Struck, not faded. The first version cross-faded each letter .74 -> 1 on a
+   stagger and was invisible: a 26% opacity step on 12px white type over a pale
+   sky is below the threshold at which anyone notices a sequence. Motion is not.
+
+   So each letter is knocked down 2px and springs back, and animation-fill-mode
+   set to both does the real work — during its delay a letter holds the 0% keyframe,
+   which is the dimmed state, so the word darkens the instant the cursor lands
+   and then re-types itself left to right. 50ms a letter against LISTEN NOW's
+   26ms: a ripple is a wave and wants to be continuous, typing is discrete and
+   wants you to hear each key. */
 .l-type{display:inline-block;white-space:nowrap}
-.l-tl{display:inline-block;opacity:.74;
-  transition:opacity .09s linear;transition-delay:calc(var(--i,0) * 40ms)}
-.landing .l-act-second:hover .l-tl{opacity:1}
+.l-tl{display:inline-block}
+.landing .l-act-second:hover .l-tl{
+  animation:l-strike .32s cubic-bezier(.22,.9,.3,1) both;
+  animation-delay:calc(var(--i,0) * 50ms)}
+@keyframes l-strike{
+  0%{transform:none;opacity:.42}
+  40%{transform:translateY(2px);opacity:1}
+  100%{transform:none;opacity:1}
+}
 
 /* Arrives once the sweep has crossed all nine letters, then blinks. */
 .l-caret{display:inline-block;width:1px;height:.9em;margin-left:-.18em;
   background:currentColor;opacity:0;vertical-align:-.06em}
 .landing .l-act-second:hover .l-caret{
-  animation:l-blink .9s steps(1) infinite;animation-delay:360ms}
+  animation:l-blink .9s steps(1) infinite;animation-delay:720ms}
 @keyframes l-blink{0%,49%{opacity:1}50%,100%{opacity:0}}
 
 
