@@ -930,7 +930,8 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   font-family:'Jost',sans-serif;font-weight:300;font-size:11.5px;letter-spacing:.3em}
 .l-nav-left{display:flex;gap:clamp(20px,2.6vw,42px);align-items:baseline}
 .l-nav-item{color:inherit;text-decoration:none;white-space:nowrap;
-  background:none;border:none;padding:0;cursor:pointer;opacity:.88;transition:opacity .4s}
+  background:none;border:none;padding:0;cursor:pointer;opacity:.95;transition:opacity .4s;
+  text-shadow:0 1px 2px rgba(10,42,70,.5)}
 .l-nav-item:hover{opacity:1}
 
 /* ---- hero ---- */
@@ -945,18 +946,25 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-meta{white-space:nowrap}
 
 .l-cd{display:flex;flex-direction:column;gap:clamp(7px,1.1vh,13px)}
-.l-cd-lead{font-family:'Jost',sans-serif;font-weight:300;font-size:9.5px;
-  letter-spacing:.46em;opacity:.72}
+/* The numbers are 21-40px Cormorant and read fine; the labels were 9px Jost at
+   .62 opacity over a pale sky, which is nowhere near enough. The hero's shared
+   text-shadow is tuned for large glyphs — small letterspaced caps need a tight
+   dark one of their own, and the weight up from 300 to 400. */
+.l-cd-lead{font-family:'Jost',sans-serif;font-weight:400;font-size:10px;
+  letter-spacing:.42em;opacity:.92;
+  text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4)}
 .l-cd-row{display:flex;align-items:flex-end;gap:clamp(14px,1.8vw,32px)}
 .l-cd-unit{display:flex;align-items:baseline;gap:.42em}
 /* Tabular figures, or the row twitches sideways every time a digit changes width. */
 .l-cd-num{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
+  text-shadow:0 1px 3px rgba(10,42,70,.45);
   font-size:clamp(21px,2.7vw,40px);line-height:1;
   font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1;
   display:inline-block;
   animation:l-tick .5s cubic-bezier(.16,.9,.24,1) both}
-.l-cd-lbl{font-family:'Jost',sans-serif;font-weight:300;font-size:9px;
-  letter-spacing:.34em;opacity:.62}
+.l-cd-lbl{font-family:'Jost',sans-serif;font-weight:400;font-size:10px;
+  letter-spacing:.26em;opacity:.9;
+  text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4)}
 .l-cd-out{animation:none;letter-spacing:.1em}
 
 /* Fires per unit, because each unit's node is keyed by its own value — the
@@ -993,15 +1001,17 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .landing .l-play:focus-visible::after{opacity:0;transform:scale(1.42)}
 .l-play-row:hover .l-play svg{transform:scale(1.12)}
 .landing .l-play-label{border:none;background:none;padding:0;color:inherit;cursor:pointer;
-  font-family:'Jost',sans-serif;font-weight:300;font-size:12px;letter-spacing:.34em;
-  opacity:.92;transition:opacity .4s}
-.l-play-label:hover{opacity:1}
+  font-family:'Jost',sans-serif;font-weight:400;font-size:12px;letter-spacing:.32em;
+  opacity:1;transition:opacity .4s;
+  text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4)}
+.l-play-label:hover{opacity:.82}
 
 .l-act-rule{width:1px;align-self:stretch;margin:0 clamp(4px,.7vw,14px);
   background:currentColor;opacity:.28}
 .landing .l-act-second{background:none;border:none;padding:2px 0;color:inherit;
-  cursor:pointer;font-family:'Jost',sans-serif;font-weight:300;font-size:12px;
-  letter-spacing:.34em;opacity:.7;
+  cursor:pointer;font-family:'Jost',sans-serif;font-weight:400;font-size:12px;
+  letter-spacing:.32em;opacity:.84;
+  text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4);
   border-bottom:1px solid transparent;
   transition:opacity .4s,border-color .4s}
 .landing .l-act-second:hover{opacity:1;border-bottom-color:currentColor}
@@ -1214,7 +1224,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   .l-cd-row{gap:11px}
   .l-cd-unit{gap:.32em}
   .l-cd-num{font-size:19px}
-  .l-cd-lbl{font-size:8.5px;letter-spacing:.18em}
+  .l-cd-lbl{font-size:9px;letter-spacing:.14em}
 }
 
 /* Dev-only, behind /?type=1 — never rendered for a visitor. */
