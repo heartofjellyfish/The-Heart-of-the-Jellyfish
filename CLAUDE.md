@@ -347,11 +347,32 @@ own wall.
   quirk worth leaving to the platform. The handler checks `isComposing`, because
   an IME's Enter commits the candidate and swallowing it would send 拼音.
 
-**The Chinese sits under the title, not vertically in the right margin.** A
-hanging 深海留言 to match 水母之心 was built and taken out for one reason: the
-poem never reaches its own margin, so nothing crosses it — but every line in
-this water crosses the full width, so the mark spent half its life with a
-stranger's sentence running through it. It read as a glitch, not as ceremony.
+**This screen has no title, and that is the design rather than an omission.**
+
+It carried one — a line in the poem's hand with a Chinese line under it — and
+every candidate for it read as *writing*: an abstract noun and a soft verb, the
+shape a sentence takes when it is reaching for significance instead of saying
+something. (Qi's word for the first attempt, *Leave a light / 留一盏灯*, was
+「太 ai 了」, and he was right: it would fit any product on earth.)
+
+The reason none of them could work is one screen up. **The poem is the writing
+on this site.** A second piece of verse set eighty pixels above a text input is
+competing with ten lines it cannot beat, and losing that competition makes both
+worse. So the whole of what this screen has to say is in the **placeholder** —
+one line, in the box, at the moment someone is deciding whether to type — and
+everything else on screen belongs to the visitors.
+
+A hanging 深海留言 in the right margin, to match 水母之心, was built and cut
+before that: the poem never reaches its own margin so nothing crosses it, but
+every riser here crosses the full width, and the mark spent half its life with a
+stranger's sentence running through it. Glitch, not ceremony.
+
+**The consequence worth keeping: the site says nothing here in Chinese, and the
+screen is bilingual anyway, because the people in the water are.** That is a
+better version of the album's voice than a caption — it is not performed, it is
+just what is there. The one exception is the empty state, `还没有人说话`, which
+exists because an empty sea with an input in it reads as broken or as still
+loading. It goes the moment there is anything to see.
 
 **On a phone the riser gets most of the width, and its starting offset is
 scaled to match.** 30vw of a phone is 112px, and a 140-character message in that

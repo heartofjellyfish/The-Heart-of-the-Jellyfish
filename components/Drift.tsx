@@ -365,20 +365,25 @@ export function Drift({ active }: { active: boolean }) {
       aria-label="Messages in the deep"
     >
       {/*
-        The Chinese sits under the title here rather than vertically in the
-        right margin the way 水母之心 does on screen two. That mark was built and
-        taken out for one reason: the poem never reaches its own margin, so
-        nothing crosses it — but every line in this water crosses the whole
-        width, so a hanging title spends half its life with a stranger's
-        sentence running through it. It read as a glitch, not as ceremony.
-      */}
-      <div className="l-three-head">
-        <span className="l-three-title">Leave a light</span>
-        <span className="l-three-sub">
-          {loaded && messages.length === 0 ? '还没有人说话 · be the first' : '留一盏灯'}
-        </span>
-      </div>
+        No title, and that is the design rather than an omission.
 
+        This screen carried one — a line in the poem's hand with a Chinese line
+        under it — and every candidate for it read as writing: an abstract noun
+        and a soft verb, the shape a sentence takes when it is reaching for
+        significance rather than saying something. The reason none of them could
+        work is one screen up. **The poem is the writing on this site**, and a
+        second piece of verse set eighty pixels above a text input is competing
+        with ten lines it cannot beat.
+
+        So the whole of what this screen has to say is in the placeholder, which
+        is one line, in the box, at the moment someone is deciding whether to
+        type. Everything else on screen belongs to the visitors.
+
+        It also means the site says nothing here in Chinese — and the screen is
+        still bilingual, because the people in the water are. That is a better
+        version of the album's voice than a caption would have been: it is not
+        performed, it is just what is there.
+      */}
       {/*
         The water. `aria-live` is off on purpose: a region that announces every
         arriving message would read a stranger's sentence over whatever the
@@ -386,6 +391,12 @@ export function Drift({ active }: { active: boolean }) {
         reader can walk it — and under prefers-reduced-motion the CSS turns it
         into exactly that, a still column that can be read at all.
       */}
+      {loaded && messages.length === 0 && (
+        /* An empty sea with an input in it reads as broken, or as still
+           loading. One line, and it is the only place the site speaks here. */
+        <p className="l-drift-none">还没有人说话</p>
+      )}
+
       <ul className="l-drift" aria-live="off">
         {drawn.map(({ m, s, isFresh }) => (
           <li
@@ -437,7 +448,7 @@ export function Drift({ active }: { active: boolean }) {
           type="text"
           value={text}
           maxLength={MAX_TEXT}
-          placeholder="say something to the deep…"
+          placeholder="say something to the water…"
           aria-label="Your message"
           autoComplete="off"
           enterKeyHint="send"
@@ -494,9 +505,9 @@ export const DRIFT_CSS = `
 .l-three{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
   height:100%;overflow:hidden;position:relative;
   /* Used only by the reduced-motion column, which is the one presentation here
-     that is laid out rather than travelling. */
-  --water-top:21dvh;--water-h:53dvh;
-  padding-top:clamp(58px,9vh,96px)}
+     that is laid out rather than travelling. It starts higher than it used to:
+     the title it was clearing is gone. */
+  --water-top:13dvh;--water-h:62dvh}
 
 /* The floor gets darker than the poem. Screen two is water with light still
    reaching it; this is under that, and the type has to be the brightest thing
@@ -507,15 +518,14 @@ export const DRIFT_CSS = `
     linear-gradient(180deg,rgba(2,12,26,.66),rgba(1,8,18,.9))}
 .l-three>*{position:relative;z-index:1}
 
-.l-three-head{position:relative;z-index:3;
-  display:flex;flex-direction:column;align-items:center;gap:.55em;text-align:center;
-  pointer-events:none}
-.l-three-title{font-family:'Nothing You Could Do',cursive;
-  font-size:clamp(24px,3.6vh,38px);color:rgba(233,245,252,.93);
-  letter-spacing:.005em;text-shadow:0 0 26px rgba(120,190,235,.28)}
-.l-three-sub{font-family:'Cormorant Garamond',Georgia,serif;
-  font-size:clamp(12px,1.7vh,15px);letter-spacing:.3em;
-  color:rgba(196,222,240,.46)}
+/* The empty state, and the only thing the site itself says on this screen.
+   Sits where the risers will be, so the screen does not change shape when the
+   first one arrives. */
+.l-drift-none{position:absolute;left:0;right:0;top:42%;z-index:2;
+  margin:0;text-align:center;pointer-events:none;
+  font-family:'Cormorant Garamond',Georgia,serif;
+  font-size:clamp(13px,1.8vh,16px);letter-spacing:.3em;
+  color:rgba(196,222,240,.34)}
 
 /* ---- the water ---- */
 .l-drift{position:absolute;left:0;right:0;top:0;bottom:0;margin:0;padding:0;
@@ -640,11 +650,14 @@ export const DRIFT_CSS = `
 .landing[data-three] .l-down.l-down-two{pointer-events:none}
 
 
-/* The head arrives with the screen, like the poem's does. */
+/* The composer arrives with the screen, the way the poem's lines do.
+   Note what it is NOT centred with: l-in ends on transform:none with
+   fill-mode both, so a translateX(-50%) here would survive exactly until the
+   entrance finished. See .l-say. */
 @media (prefers-reduced-motion:no-preference){
-  .l-three-head,.l-say{opacity:0}
-  .l-three.is-in .l-three-head{animation:l-in .9s cubic-bezier(.2,.7,.2,1) both}
-  .l-three.is-in .l-say{animation:l-in .9s cubic-bezier(.2,.7,.2,1) .25s both}}
+  .l-say,.l-drift-none{opacity:0}
+  .l-three.is-in .l-say{animation:l-in .9s cubic-bezier(.2,.7,.2,1) .25s both}
+  .l-three.is-in .l-drift-none{animation:l-in 1.2s cubic-bezier(.2,.7,.2,1) .5s both}}
 
 /* Asked for less motion, and given a guestbook instead of a current: the same
    messages, newest first, holding still. The drift is the presentation, not the
