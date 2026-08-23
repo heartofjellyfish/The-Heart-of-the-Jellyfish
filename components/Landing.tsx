@@ -596,6 +596,57 @@ function CarveFilter({
   );
 }
 
+/**
+ * The jellyfish off the hero painting, redrawn as vector: a low translucent
+ * bell, the ochre spots, a few tentacles adrift. It stands where the ";)" used
+ * to, so the "heart" in the line reads as this creature's rather than the
+ * greeting card's -- and being ours, it needs no emoji font, so it is the same
+ * animal on every phone and every desktop instead of a tofu box on the ones
+ * whose font predates Emoji 14. Decoration, hence aria-hidden.
+ *
+ * The bell pulses on the album's own rhythm -- see .l-jelly-bell.
+ */
+function JellyMark() {
+  return (
+    <svg viewBox="0 0 64 74" aria-hidden focusable="false">
+      <defs>
+        <linearGradient id="l-jelly-bell-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity=".97" />
+          <stop offset="55%" stopColor="#eaf3f9" stopOpacity=".9" />
+          <stop offset="100%" stopColor="#c3dcec" stopOpacity=".72" />
+        </linearGradient>
+      </defs>
+      {/* Behind the bell, so the skirt covers where they attach. */}
+      <g stroke="#e7f2f8" strokeLinecap="round" fill="none">
+        <path d="M22 39 C19 50 25 56 21 68" strokeWidth="1.8" opacity=".55" />
+        <path d="M33 40 C31 52 38 58 33 72" strokeWidth="2" opacity=".6" />
+        <path d="M44 39 C43 50 48 55 44 66" strokeWidth="1.7" opacity=".5" />
+        <path d="M27 39 C26 48 30 53 27 61" strokeWidth="1.2" opacity=".35" />
+        <path d="M38 39 C38 47 41 51 39 58" strokeWidth="1.1" opacity=".32" />
+      </g>
+      <g className="l-jelly-bell">
+        <path
+          d="M4 34 C4 8 60 8 60 34 C57 41 52 41 49 35 C46 41 41 41 38 35 C35 41 30 41 27 35 C24 41 19 41 16 35 C13 41 8 41 4 34Z"
+          fill="url(#l-jelly-bell-fill)"
+        />
+        {/* The lit rim the oil painting gives it, kept inside the dome edge. */}
+        <path d="M13 26 C14 20 21 17 30 17.5" stroke="#fff" strokeWidth="1.5"
+          strokeLinecap="round" fill="none" opacity=".7" />
+        <g fill="#dfa63e" opacity=".95">
+          <circle cx="18" cy="25" r="2" />
+          <circle cx="28" cy="20" r="2.2" />
+          <circle cx="39" cy="23" r="1.9" />
+          <circle cx="48" cy="27" r="1.8" />
+          <circle cx="22" cy="32" r="1.7" />
+          <circle cx="33" cy="30" r="2" />
+          <circle cx="44" cy="32" r="1.6" />
+          <circle cx="53" cy="30" r="1.3" />
+        </g>
+      </g>
+    </svg>
+  );
+}
+
 export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }) {
   const [panel, setPanel] = useState<Panel>(null);
   const [cur, setCur] = useState(0);
@@ -1781,12 +1832,14 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           </button>
 
           <div className="l-sub">
-            <h2 className="l-sub-title">Follow thy heart ;)</h2>
-            <p className="l-sub-copy">
-              Leave your email — you&apos;ll be the first to know when it surfaces.
-            </p>
+            <h2 className="l-sub-title">
+              follow thy heart{' '}
+              <span className="l-sub-wink">
+                <JellyMark />
+              </span>
+            </h2>
             {subState === 'done' ? (
-              <div className="l-sub-thanks">Heartbeat received, expect receiving mine too ;)</div>
+              <div className="l-sub-thanks">You\u2019re on the list.</div>
             ) : (
               <form
                 className="l-sub-form"
@@ -1820,10 +1873,14 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                   }
                 }}
               >
+                {/* The ask, the field and the verb are one sentence on one line --
+                    the copy is the label, so there is nothing to read twice. It
+                    wraps at the two gaps, never inside a clause. */}
+                <span className="l-sub-say">receive a heartbeat at</span>
                 <input
                   ref={emailRef}
                   type="email"
-                  placeholder="Email address"
+                  placeholder="email address"
                   aria-label="Email address"
                   className="l-sub-input"
                   disabled={subState === 'sending'}
@@ -1831,8 +1888,18 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                     if (subState === 'error') setSubState('idle');
                   }}
                 />
-                <button type="submit" className="l-sub-btn" disabled={subState === 'sending'}>
-                  {subState === 'sending' ? '\u2026' : 'SIGN UP'}
+                <span className="l-sub-say">when the album is out,</span>
+                {/* The full stop is the sentence's, not the button's -- it sits
+                    outside the rule so the underlined word stays the word, and it
+                    goes away while the ellipsis is spinning. */}
+                <button type="submit" className="l-sub-go" disabled={subState === 'sending'}>
+                  {subState === 'sending' ? (
+                    <span className="l-sub-go-ink">{'\u2026'}</span>
+                  ) : (
+                    <>
+                      <span className="l-sub-go-ink">yes</span>.
+                    </>
+                  )}
                 </button>
               </form>
             )}
@@ -1843,12 +1910,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                   : 'The tide didn\u2019t carry it \u2014 try again in a moment.'}
               </p>
             )}
-            <div className="l-sub-foot">
-              QI — 12 · 20 · 2026 ·{' '}
-              <a href="https://qi.land" className="l-sub-link">
-                QI.LAND
-              </a>
-            </div>
           </div>
         </div>
       )}
@@ -2519,26 +2580,51 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 }
 
 
+/* Wide enough that the sentence the form lives in holds one line on a laptop;
+   under that it wraps at the flex gaps, which sit between clauses. */
 .l-sub{display:flex;flex-direction:column;align-items:center;text-align:center;
-  gap:20px;margin:auto;max-width:min(560px,92vw)}
+  gap:20px;margin:auto;max-width:min(780px,92vw)}
 .l-sub-title{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
   font-size:clamp(28px,4vw,46px);margin:0}
-.l-sub-copy{margin:0;font-size:14px;line-height:2;opacity:.88}
-.l-sub-form{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:4px}
-.l-sub-input{width:min(320px,74vw);padding:13px 4px;border:none;
+/* Sized off the title's em so it stays a mark in the line, not an image beside
+   it. The box is fixed rather than intrinsic -- an SVG with no width collapses
+   differently across browsers. */
+.l-sub-wink{display:inline-block;width:.57em;height:.66em;vertical-align:-.02em;
+  margin-left:.16em}
+.l-sub-wink svg{display:block;width:100%;height:100%;overflow:visible}
+/* One beat: the quick squeeze up, the slow drift back down -- a bell swimming,
+   which is also the heartbeat the whole site keeps time to. */
+.l-jelly-bell{transform-origin:32px 36px;animation:l-jelly-pulse 3.6s ease-in-out infinite}
+@keyframes l-jelly-pulse{
+  0%,100%{transform:scale(1,1)}
+  16%{transform:scale(.94,1.09)}
+  38%{transform:scale(1.03,.96)}
+}
+@media (prefers-reduced-motion:reduce){.l-jelly-bell{animation:none}}
+.l-sub-form{display:flex;align-items:baseline;justify-content:center;
+  flex-wrap:wrap;gap:4px 10px;margin-top:4px;font-size:clamp(15px,1.7vw,19px)}
+.l-sub-say{opacity:.85;white-space:nowrap}
+.l-sub-input{width:min(240px,58vw);padding:0 4px 5px;border:none;
   border-bottom:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;
-  font-size:15px;font-family:inherit;outline:none;text-align:center}
-.l-sub-input::placeholder{color:rgba(255,255,255,.45)}
-.landing .l-sub-btn{padding:13px 28px;border:1px solid rgba(255,255,255,.7);background:transparent;
-  color:#fff;font-family:'Jost',sans-serif;font-weight:300;font-size:11px;
-  letter-spacing:.4em;cursor:pointer;transition:background .4s,color .4s}
-.l-sub-btn:hover{background:#fff;color:#0b2438}
+  font-size:inherit;font-family:inherit;outline:none;text-align:center;
+  transition:border-color .3s}
+.l-sub-input:focus{border-bottom-color:rgba(255,255,255,.95)}
+.l-sub-input::placeholder{color:rgba(255,255,255,.4)}
+/* .landing-qualified for the same reason .landing button{font:inherit} is: a
+   bare .l-sub-go would lose to it on specificity however late it comes. */
+.landing .l-sub-go{position:relative;padding:0 1px;border:none;
+  background:transparent;color:#fff;font-family:inherit;font-size:inherit;
+  font-style:italic;cursor:pointer;opacity:.85;transition:opacity .3s}
+.l-sub-go-ink{border-bottom:1px solid rgba(255,255,255,.55);transition:border-color .3s}
+/* A two-letter word is a thumb-sized target only if something invisible says so.
+   Absolute, so the sentence keeps its own metrics. */
+.l-sub-go::after{content:'';position:absolute;left:-16px;right:-16px;top:-14px;bottom:-14px}
+.l-sub-go:hover{opacity:1}
+.l-sub-go:hover .l-sub-go-ink{border-bottom-color:#fff}
+.l-sub-go:disabled{cursor:default;opacity:.45}
 .l-sub-thanks{font-size:16px;font-style:italic;font-family:'Cormorant Garamond',serif}
 .l-sub-err{margin:0;font-size:13px;font-style:italic;
   font-family:'Cormorant Garamond',serif;color:#ffd9c9;opacity:.9}
-.l-sub-foot{font-family:'Jost',sans-serif;font-weight:300;font-size:10px;
-  letter-spacing:.34em;opacity:.55;line-height:2.4;margin-top:clamp(18px,4vh,40px)}
-.l-sub-link{color:inherit;border-bottom:1px solid currentColor;text-decoration:none}
 
 /* ---- narrow ---- */
 /* All four countdown units have to stay on one line, so on a phone the type
