@@ -49,7 +49,7 @@ nav, the player — is a sibling of that scroller, fixed to the window.
 
 [components/Landing.tsx](components/Landing.tsx) is the whole thing — markup plus a
 `LANDING_CSS` string at the bottom. Layers, back to front: the stage (painting,
-scrim, vignette, and the three water layers over them), the scroller with its two
+scrim, vignette, and the four water layers over them), the scroller with its two
 screens, the nav, the player, and the panel.
 
 ### The descent is one number
@@ -168,6 +168,59 @@ The 3D question that came with it has a standing answer: **no.** This page exist
 425 kB), and 300 kB of R3F for ambient anything is that trade run backwards. The
 house rule already covers it — real models for creatures, procedural for light and
 atmosphere.
+
+### The sky in the deep (2026-08-23)
+
+*(the third attempt at putting something small on that layer, and the first Qi
+asked for — the brief was the starfield in the `Here` project, "他那个就不俗气")*
+
+Screen two now has **stars that twinkle and, rarely, one that falls**. Read it
+against the section above rather than as a reversal of it: what was rejected
+there was a repeating tile of motes, and what was rejected after that was six
+glimmers that animated `transform`. Neither objection is to "small things." Both
+are to *how* they were built.
+
+So the two standing rules from that history are what this is built on, and they
+are the ones to keep if it is ever touched:
+
+- **No tile.** Every star is placed once, with its own size, its own trough and
+  peak, its own 4.5–11s period and its own phase. There is no shared period for
+  the eye to find, which is the only thing that ever made the motes read as a
+  pattern.
+- **Opacity only, and no render surfaces.** A star fades and does nothing else,
+  so each is a 2px quad the compositor promotes for the length of its animation
+  and drops after. Nothing on the layer is masked, filtered, or given
+  `will-change`. **A soft mask over the middle was built and taken out**: a mask
+  forces the whole viewport-sized subtree into one render surface and re-rasters
+  it every frame — the exact cost the glimmers were removed for, bought back for
+  a nicety.
+
+With masking off the table, **the poem's space is kept clear by placement.** A
+candidate position inside an ellipse on the middle of the frame (±30% of the
+width, ±44% of the height) is rejected outright; just outside it, it is kept only
+sometimes; past ~1.7× it is always kept. The field thins toward the verse instead
+of stopping at an edge, and it costs one `Math.random()` per rejected candidate at
+mount and nothing after. A star inside a letterform is not atmosphere, it is a
+typo — and unlike a fall, it sits there being one for as long as the reader stays.
+
+**The falls are the exception that crosses the verse.** One thin line, ~2.4–5.2s,
+peaking around a third of white and blurred half a pixel, so it reads as
+something passing *behind* the poem. That restraint is the whole difference
+between this and 小儿科: a bright streak through handwriting reads as a scratch on
+the print. They are also rare on purpose — one 8–18s after arriving so the screen
+shows what it does, then 24–96s apart with a quarter of the gaps deliberately
+long. **An effect you might miss is the one worth having seen.** They are armed
+only while `atTwo`, and never under `prefers-reduced-motion`.
+
+The layer is gated on `--s` like everything else on the stage, but later than the
+water: nothing until ~42% down, full by ~95%. The light going is what you notice
+first; the stars are what is there once it has gone. Under reduced motion the
+global `animation: none` would freeze every star at its trough — a field of
+near-invisible dots reading as dirt on the screen — so there is one extra rule
+holding each at its own peak instead. A still sky, not a dead one.
+
+Whether they are stars seen up through the surface or something alive at that
+depth is left open, and should stay open. Both readings are the record.
 
 ### Snap, and the one thing that can trap a reader
 

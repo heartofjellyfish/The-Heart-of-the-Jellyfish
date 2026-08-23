@@ -762,6 +762,222 @@ function useDpr() {
   return dpr;
 }
 
+/**
+ * The deep, read as a sky.
+ *
+ * Screen two is dark enough to be night, and the album's whole conceit is that
+ * down and up are the same direction — so the far dark gets points of light in
+ * it and, rarely, one of them falls. Whether a reader takes them for stars seen
+ * up through the surface or for something alive at that depth is left open.
+ * Both readings are the record.
+ *
+ * This is the third attempt at putting something small on this layer, and the
+ * two that were cut are the reason it is built the way it is. See "Light, not
+ * particles" in CLAUDE.md for the full history; the two rules it left behind:
+ *
+ *   1. NO TILE. A repeating field of specks always resolves into its own grid,
+ *      because the eye reads particulate one item at a time and finds the seam.
+ *      Every star here is placed once, at its own position, with its own period
+ *      (4.5-11s) and its own phase — so there is no shared period to find.
+ *   2. NOTHING ON THIS LAYER MAY ANIMATE ANYTHING BUT OPACITY. The glimmers
+ *      that were cut animated `transform` inside a full-viewport box stacked
+ *      over a blurred image, which invalidated the whole stack every frame.
+ *      A star only fades, so each one is a 2px composited quad the compositor
+ *      can run on its own. Nothing here is masked, filtered, or moved, and
+ *      nothing here should become so — including "just a soft mask over the
+ *      middle", which was tried: a mask forces the whole viewport-sized subtree
+ *      into one render surface and hands back exactly the cost we removed.
+ *
+ * With masking off the table, the poem's own space is kept clear by PLACEMENT
+ * instead: a candidate near the middle of the frame is rejected, and one just
+ * outside it is kept only sometimes, so the field thins out toward the verse
+ * rather than stopping at an edge. A star inside a letterform is not atmosphere,
+ * it is a typo — and unlike a fall, it sits there being a typo for as long as
+ * the reader stays.
+ *
+ * The falls are the exception that gets to cross the verse: one thin line, for
+ * three seconds, at a third of full white and blurred half a pixel. That reads
+ * as something passing behind the poem. Anything brighter reads as a scratch on
+ * the print, which is the whole difference between this and the version Qi
+ * called 小儿科.
+ *
+ * Generated in an effect, not in render: there is no server-side version of a
+ * random field, and Math.random() during render is a hydration mismatch.
+ */
+type Star = {
+  x: number; // %
+  y: number; // %
+  r: number; // px
+  lo: number; // trough opacity
+  hi: number; // peak opacity
+  dur: number; // s
+  delay: number; // s
+};
+
+type Fall = {
+  id: number;
+  top: number; // %
+  left: number; // %
+  angle: number; // deg
+  ms: number;
+  len: number; // px of trail
+  /** Travel along the rotated axis, in vmax so the streak clears the frame in
+   *  either orientation. A fall that dies mid-screen reads as a glitch. */
+  travel: number;
+  peak: number;
+};
+
+/** Enough to read as a field, few enough that every one is its own layer. */
+const STAR_COUNT = 96;
+
+function rnd(a: number, b: number) {
+  return a + Math.random() * (b - a);
+}
+
+/**
+ * How willing we are to put a star at (x, y), as the poem's box falls away.
+ * The box is an ellipse on the middle of the frame — 30% of the width and 44%
+ * of the height out from centre, which is the verse plus its own air at every
+ * size the column is set at. Inside 0.92 of it, never; outside 1.67, always;
+ * between the two the odds ramp, which is what makes the hole have a soft edge
+ * without anything having to draw one.
+ */
+function starOdds(x: number, y: number) {
+  const nx = (x - 50) / 30;
+  const ny = (y - 50) / 44;
+  const d = Math.sqrt(nx * nx + ny * ny);
+  return Math.min(1, Math.max(0, (d - 0.92) / 0.75));
+}
+
+function makeStars(): Star[] {
+  const out: Star[] = [];
+  // Bounded rather than "until we have enough": the odds above can in principle
+  // refuse for a long time, and a background layer is not worth a spin.
+  for (let i = 0; i < STAR_COUNT * 30 && out.length < STAR_COUNT; i++) {
+    const x = rnd(0, 100);
+    const y = rnd(0, 100);
+    if (Math.random() > starOdds(x, y)) continue;
+    out.push({
+      x,
+      y,
+      r: rnd(0.8, 2.2),
+      /* Trough and peak are both per-star, so brightness varies across the
+         field as well as over time. A field where every star swings through the
+         same range twinkles in unison however you stagger the phase. */
+      lo: rnd(0.03, 0.1),
+      hi: rnd(0.2, 0.58),
+      dur: rnd(4.5, 11),
+      delay: rnd(0, 9),
+    });
+  }
+  return out;
+}
+
+function Deepstars({ active }: { active: boolean }) {
+  const [stars, setStars] = useState<Star[]>([]);
+  const [falls, setFalls] = useState<Fall[]>([]);
+  const nextId = useRef(0);
+
+  useEffect(() => {
+    setStars(makeStars());
+  }, []);
+
+  /* Falls are armed only while the reader is actually down here, and never for
+     someone who asked for less motion — a streak crossing the whole frame is
+     the most motion-forward thing on this page. */
+  useEffect(() => {
+    if (!active) return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    let timer = 0;
+    let first = true;
+    const arm = () => {
+      // The first comes soon, so arriving at the poem shows the screen what it
+      // does. After that it is rare, and a quarter of the gaps are long enough
+      // that the rhythm never becomes a metronome. Rare is the point: an effect
+      // you might miss is the one that is worth having seen.
+      const wait = first
+        ? rnd(8_000, 18_000)
+        : Math.random() < 0.25
+          ? rnd(58_000, 96_000)
+          : rnd(24_000, 58_000);
+      first = false;
+      timer = window.setTimeout(() => {
+        const id = nextId.current++;
+        // One in five burns longer and brighter. Every fall still crosses the
+        // frame; "long" only means more of it is visible at once.
+        const long = Math.random() < 0.22;
+        const f: Fall = {
+          id,
+          top: rnd(-8, 54),
+          left: rnd(-16, 34),
+          angle: rnd(9, 42),
+          /* Slower than the same effect in air. This one is being watched from
+             under several metres of water, which is also why the trail is
+             blurred and never reaches white. */
+          ms: long ? rnd(3600, 5200) : rnd(2400, 3600),
+          len: long ? rnd(240, 360) : rnd(140, 240),
+          travel: long ? rnd(180, 230) : rnd(150, 200),
+          peak: long ? rnd(0.42, 0.6) : rnd(0.26, 0.44),
+        };
+        setFalls((prev) => [...prev, f]);
+        window.setTimeout(() => {
+          setFalls((prev) => prev.filter((x) => x.id !== id));
+        }, f.ms + 300);
+        arm();
+      }, wait);
+    };
+    arm();
+    return () => window.clearTimeout(timer);
+  }, [active]);
+
+  return (
+    <div className="l-stars" aria-hidden>
+      {stars.map((s, i) => (
+        <span
+          key={i}
+          className="l-star"
+          style={
+            {
+              ['--x' as string]: s.x.toFixed(2) + '%',
+              ['--y' as string]: s.y.toFixed(2) + '%',
+              ['--r' as string]: s.r.toFixed(2) + 'px',
+              ['--lo' as string]: s.lo.toFixed(3),
+              ['--hi' as string]: s.hi.toFixed(3),
+              ['--dur' as string]: s.dur.toFixed(2) + 's',
+              /* Negative, so the field is already mid-cycle on the first frame
+                 rather than a hundred stars starting dark together. */
+              ['--delay' as string]: (-s.delay).toFixed(2) + 's',
+            } as React.CSSProperties
+          }
+        />
+      ))}
+      {falls.map((f) => (
+        <span
+          key={f.id}
+          className="l-fall-wrap"
+          style={{
+            top: f.top + '%',
+            left: f.left + '%',
+            transform: `rotate(${f.angle.toFixed(2)}deg)`,
+          }}
+        >
+          <span
+            className="l-fall"
+            style={
+              {
+                width: f.len.toFixed(0) + 'px',
+                animationDuration: f.ms.toFixed(0) + 'ms',
+                ['--travel' as string]: f.travel.toFixed(0) + 'vmax',
+                ['--peak' as string]: f.peak.toFixed(3),
+              } as React.CSSProperties
+            }
+          />
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }) {
   const [panel, setPanel] = useState<Panel>(null);
   const [cur, setCur] = useState(0);
@@ -1394,6 +1610,12 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           <i />
           <i />
         </div>
+        {/*
+          Last of the water layers and the only one made of objects rather than
+          of light — which is why it is last, and why it costs nothing but
+          opacity. See Deepstars.
+        */}
+        <Deepstars active={atTwo} />
       </div>
 
       {/*
@@ -3275,6 +3497,75 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-drift i:nth-child(2){--y:44%;--w:56vw;--h:52vh;--a:.09;--dur:137s;--delay:-64s;
   --from:62vw;--to:6vw}
 
+/* ---- the sky in the deep ----
+
+   The one place on this page where the rule above .l-rays is allowed to be
+   bent, and it is worth saying why that is not a contradiction. That rule
+   rejects PARTICULATE AS A TILE — a repeating field of specks resolves into its
+   own grid, because the eye reads high-frequency detail one item at a time and
+   finds the seam every time. None of it applies to a field placed once, per
+   star, with a period per star. There is no tile here to find.
+
+   The harder rule is the one the cut bioluminescence left: nothing on this
+   layer may animate anything but opacity, and nothing on this layer may create
+   a render surface. So there is no mask here, no filter on the container, and
+   no will-change. Each star is a 2px box whose opacity fades — which the
+   compositor promotes on its own, for the length of the animation, and drops
+   afterwards. A soft mask over the middle was tried and taken out: it forces
+   the whole viewport-sized subtree into one surface and re-rasters it every
+   frame, which is exactly the cost the glimmers were removed for. The verse's
+   space is kept clear by where the stars are PUT instead — see starOdds.
+
+   z-index 4 — over the drifting body of the water, under everything meant to be
+   read. The grain sits above it as it sits above everything, which is what stops
+   the dots from looking like they were added afterwards. */
+.l-stars{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:hidden;
+  /* Nothing until the descent is ~42% down, full by ~95%. Later than the water
+     itself on purpose: the light going is what you notice first, and the stars
+     are what is there once it has gone. */
+  opacity:clamp(0,calc(var(--s) * 1.9 - .8),1)}
+/* Cool and slightly blue, never white: this is light that has come through
+   water, and pure white is the one value that reads as a dust speck on the film
+   rather than as something behind it. Peaks top out at .58 and most sit near
+   .3, so the field is nearer to almost-nothing than to a night sky. */
+.l-star{position:absolute;left:var(--x);top:var(--y);
+  width:var(--r);height:var(--r);border-radius:50%;
+  background:rgb(208 232 248);opacity:var(--lo);
+  animation:l-twinkle var(--dur) ease-in-out var(--delay) infinite}
+@keyframes l-twinkle{
+  0%,100%{opacity:var(--lo)}
+  50%{opacity:var(--hi)}
+}
+
+/* A fall. The wrap holds position and angle, the child holds the streak and the
+   motion, because one element cannot be both rotated by a static transform and
+   translated by an animated one.
+
+   This is the only thing on the layer that moves, and it is allowed to because
+   there is at most one of them, for about three seconds, once or twice a
+   minute. It crosses the verse rather than being masked away from it — see the
+   note in Deepstars for why that is cheaper AND better. */
+.l-fall-wrap{position:absolute;width:0;height:0}
+.l-fall{position:absolute;top:0;left:0;height:1px;opacity:0;
+  /* The falloff is long and the bright end is short, so it reads as a trail
+     behind a moving point rather than as a line with two ends. Stops short of
+     white for the same reason .l-star does. */
+  background:linear-gradient(to right,
+    rgba(190,224,246,0) 0%,
+    rgba(190,224,246,.06) 14%,
+    rgba(190,224,246,.24) 48%,
+    rgba(206,234,250,.6) 80%,
+    rgba(226,244,255,.92) 96%,
+    rgba(255,255,255,0) 100%);
+  filter:blur(.5px);
+  animation:l-fall ease-out forwards}
+@keyframes l-fall{
+  0%{transform:translate(0,0);opacity:0}
+  10%{opacity:var(--peak)}
+  88%{opacity:var(--peak)}
+  100%{transform:translate(var(--travel),0);opacity:0}
+}}
+
 /* ---- the wordmark, which is also the way back up ---- */
 .landing .l-mark{background:none;border:none;padding:0;color:inherit;cursor:pointer;
   font-family:'Jost',sans-serif;font-weight:300;
@@ -3474,5 +3765,11 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 
 @media (prefers-reduced-motion: reduce){
   .landing *{animation:none !important}
+  /* The twinkle IS the star. Frozen, every one of them sits at its trough — a
+     field of near-invisible dots that reads as dirt on the screen rather than
+     as a sky. A still sky holds each at its own peak instead, so the field is
+     still varied and still there, it just does not move. (The falls are not
+     scheduled at all in this mode — see Deepstars.) */
+  .landing .l-star{opacity:var(--hi)}
 }
 `;
