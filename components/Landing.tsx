@@ -117,18 +117,6 @@ const PLAY_LABELS = {
 } as const;
 
 /**
- * The track the album is named after, and the one line of the poem that beats.
- *
- * The heartbeat is the album's own rhythm — it arrives at frame VI and from
- * there it drives everything, which is why the hero's "Heart" swells once a
- * second. On the tracklist the same beat lands on the same words, so the two
- * screens are keeping one time. Not literally: this one is a plain 1s loop
- * rather than the countdown's tick, because the two are never on screen
- * together and a shared clock would buy nothing a reader could ever see.
- */
-const HEART_TRACK = 6;
-
-/**
  * The shore painting. Served as WebP; the PNG master is in `artwork/hero_oil.png`,
  * versioned but outside `public/` so it never ships. Swap the file at this path to
  * change the artwork — nothing else references it.
@@ -373,11 +361,26 @@ function secondsUntil(releaseDate: string) {
  * the same placeholder on both passes removes the mismatch instead of silencing
  * it, and keeps the row's size so nothing jumps.
  */
-function Countdown({ secs }: { secs: number | null }) {
+/**
+ * "NEW ALBUM OUT DEC 20", built from the release date rather than typed.
+ *
+ * Deliberately not Intl / toLocaleDateString: the page is statically
+ * prerendered, so this string is produced once on the server and again in the
+ * browser, and the two have to be identical to the byte or React throws
+ * hydration away. Node and a browser do not always carry the same ICU data.
+ * Three lines of lookup can't disagree with themselves.
+ */
+const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+function outLine(releaseDate: string) {
+  const [, m, d] = releaseDate.split('-').map(Number);
+  return 'NEW ALBUM OUT ' + (MONTHS[m - 1] ?? '') + ' ' + d;
+}
+
+function Countdown({ secs, releaseDate }: { secs: number | null; releaseDate: string }) {
   if (secs !== null && secs <= 0) {
     return (
       <div className="l-cd">
-        <div className="l-cd-lead">ALBUM</div>
+        <div className="l-cd-lead">NEW ALBUM</div>
         <div className="l-cd-row">
           <span className="l-cd-num l-cd-out">OUT NOW</span>
         </div>
@@ -402,7 +405,10 @@ function Countdown({ secs }: { secs: number | null }) {
 
   return (
     <div className="l-cd">
-      <div className="l-cd-lead">ALBUM RELEASE IN</div>
+      {/* States the thing, rather than making the reader do the arithmetic to
+          find out what is being counted down to. The row underneath is then
+          free to be what it is — how long that is from right now. */}
+      <div className="l-cd-lead">{outLine(releaseDate)}</div>
       <div className="l-cd-row">
         {units.map(([v, label]) => (
           <span className="l-cd-unit" key={label}>
@@ -1189,7 +1195,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           </button>
           {META_PLACEMENT === 'topLeft' && (
             <div className="l-meta">
-              <Countdown secs={secs} />
+              <Countdown secs={secs} releaseDate={releaseDate} />
             </div>
           )}
         </div>
@@ -1217,7 +1223,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           <div className="l-hero">
             {META_PLACEMENT === 'eyebrow' && (
               <div className="l-meta l-meta-eyebrow">
-                <Countdown secs={secs} />
+                <Countdown secs={secs} releaseDate={releaseDate} />
               </div>
             )}
             <h1 className="l-title" data-inset={inset} data-lift={lift} ref={titleRef}>
@@ -1246,7 +1252,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             </h1>
             {META_PLACEMENT === 'underTitle' && (
               <div className="l-meta l-meta-under">
-                <Countdown secs={secs} />
+                <Countdown secs={secs} releaseDate={releaseDate} />
               </div>
             )}
 
@@ -1338,7 +1344,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
 
             {META_PLACEMENT === 'underPlay' && (
               <div className="l-meta l-meta-under">
-                <Countdown secs={secs} />
+                <Countdown secs={secs} releaseDate={releaseDate} />
               </div>
             )}
           </div>
@@ -1416,7 +1422,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                            win the cascade forever and freeze all three. One
                            wrapper keeps the entrance and the semantics apart. */
                         <div
-                          className={'l-poem-row' + (n === HEART_TRACK ? ' l-poem-heart' : '')}
+                          className="l-poem-row"
                           key={n}
                           style={{ ['--i' as string]: n } as React.CSSProperties}
                         >
@@ -2907,25 +2913,6 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    on touch, where there is no reaching. Slightly stronger than the panel's,
    since here they are the only thing that says these lines are playable. */
 .l-two .l-poem-line:hover .l-poem-num{opacity:.6}
-
-/* ---- VI, the one line that beats ----
-
-   Same swell as the title's, an octave down: a 60bpm bloom on the halo and
-   nothing else — no movement, no size change, nothing that would make a line of
-   verse jump. Fast attack and a long release, because a symmetric swell reads
-   as breathing rather than as a pulse.
-
-   It is on the button, so the sounding state turns it off by construction: a
-   playing line paints its text through .l-poem-ink, which states its own
-   text-shadow and so is untouched by this. Which is right — when the track is
-   actually sounding you can hear the heart, and the line has the fill to do. */
-.landing .l-poem-heart .l-poem-line{
-  animation:l-poem-beat 1s cubic-bezier(.15,.85,.25,1) infinite}
-@keyframes l-poem-beat{
-  0%{text-shadow:0 0 7px var(--poem-halo),0 1px 2px var(--poem-ink)}
-  11%{text-shadow:0 0 15px rgba(212,240,255,.82),0 1px 2px var(--poem-ink)}
-  100%{text-shadow:0 0 7px var(--poem-halo),0 1px 2px var(--poem-ink)}
-}
 
 /* ---- how screen two arrives ----
 

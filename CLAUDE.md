@@ -300,13 +300,12 @@ is new around it:
   screen wants to be a poem first and a tracklist second, and ten printed numerals
   make it the other way round. They are always visible on touch, where there is no
   reaching (`@media (hover:none)`), or the poem would hide that it is playable.
-- **Line VI beats.** `HEART_TRACK` — the album is named after it, the heartbeat is
-  the album's rhythm, and the hero's "Heart" already swells once a second. On the
-  tracklist the same beat lands on the same words. Not literally the same clock: a
-  plain 1s loop, because the two are never on screen together and a shared tick
-  would buy nothing anyone could see. It is on the button, so a sounding line turns
-  it off by construction — the words are painted by `.l-poem-ink`, which states its
-  own `text-shadow`.
+- **Nothing on this screen moves.** Line VI once carried a 60bpm bloom on its halo,
+  on the argument that the album is named after it and the hero's "Heart" already
+  swells once a second. Cut: the hero's beat is one word inside a display setting,
+  where a pulse is a texture. Ten lines of verse are a thing being *read*, and a
+  line that moves while you read it is a line asking to be watched instead. Same
+  reason the numbers went back to hover — screen two is a poem first.
 
 The reveal (`l-in`) staggers the lines in as you land. Two things keep it honest:
 it lives inside `@media (prefers-reduced-motion: no-preference)`, because the base
@@ -447,6 +446,13 @@ the album name up to it.
 and size. Dev affordance, renders for nobody else. `?type=1` still works.
 
 ### The countdown and the vignette
+
+The line above it states the release — `NEW ALBUM OUT DEC 20` — rather than leaving
+the reader to work out what is being counted down to; the row beneath is then free
+to be only *how long that is from now*. It is built from `releaseDate` by a
+three-line month lookup rather than `toLocaleDateString`, because the page is
+statically prerendered and the server's ICU data and the browser's have to produce
+the identical string or React throws hydration away.
 
 The meta line counts down in days / hours / minutes / seconds, live. It is its own
 component with its own interval so the rest of the page — the waveform above all —
