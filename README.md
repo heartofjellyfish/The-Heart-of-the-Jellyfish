@@ -36,10 +36,20 @@ npm run dev          # http://localhost:3000
 | `/descent?focus=abyss` | Locks depth at frame X (the deep). No poem overlay |
 | `/preview-jelly` | Standalone GLB inspector for the Chrysaora — animations, material override, lighting test |
 
-`/` is deliberately the light one: 108 kB First Load JS against `/descent`'s 425 kB, and it
-needs no model downloads, so it holds up on a phone. (102 kB of that 108 is the React/Next
-runtime every route pays; the page's own code is 5.7 kB.) The 3D work isn't abandoned — it just isn't the
-front door yet. See `CLAUDE.md` for how the single screen is put together.
+`/` is deliberately the light one: 140 kB First Load JS against `/descent`'s 425 kB, and it
+needs no model downloads, so it holds up on a phone. (102 kB of that 140 is the React/Next
+runtime every route pays; the page's own code is ~38 kB.) The 3D work isn't abandoned — it
+just isn't the front door yet. See `CLAUDE.md` for how the single screen is put together.
+*(Measured 2026-08-23. The old 108 kB / 5.7 kB figures here predated the two-screen rebuild
+and had been stale for a while; 1 kB of the current number is PostHog, the rest is the page.)*
+
+### Analytics
+
+PostHog, behind a first-party `/ingest` proxy and loaded on an idle callback so
+First Load JS is unchanged. Unset `NEXT_PUBLIC_POSTHOG_KEY` and the site behaves
+as if none of it were there. The event taxonomy — what is recorded, and the two
+questions it exists to answer — is [ANALYTICS.md](ANALYTICS.md); see
+[.env.example](.env.example) for the variables.
 
 ### Artwork
 

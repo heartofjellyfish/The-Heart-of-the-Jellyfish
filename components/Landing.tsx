@@ -20,6 +20,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { JellyMark, JELLY_MARK_CSS } from './JellyMark';
+import { track } from '@/lib/analytics';
 
 /**
  * The album *is* the poem — ten titles that read straight through. Punctuation
@@ -84,6 +85,24 @@ const FILES = [
   '/audio/09-the-day-after-without-us.mp3',
   '/audio/10-sea-risen.mp3',
 ];
+
+/**
+ * Every demo event carries the number AND the title. The number is what sorts
+ * and joins; the title is what makes a PostHog table readable without anyone
+ * holding the running order in their head. Redundant on purpose.
+ */
+function demoProps(n: number) {
+  return { track: n, title: TITLES[n - 1] };
+}
+
+/**
+ * Where a demo play is reported from, at the quarters. Not a raw progress
+ * stream — the question this site has is "which of the ten does someone stay
+ * with", and three marks plus the finish answers it in four events instead of
+ * a few hundred. 25 is past the intro, 50 is a real listen, 75 is essentially
+ * the whole thing; the four numbers together are a retention curve per track.
+ */
+const DEMO_MILESTONES = [25, 50, 75] as const;
 
 /**
  * Which tracks have a demo in `public/audio/`. All ten, as of the 2026-08-21
@@ -420,6 +439,17 @@ const WAVE_BARS = 160;
 
 
 type Panel = 'poem' | 'subscribe' | null;
+
+/**
+ * Which control started a demo. The hero button and the poem line play the same
+ * audio, but they are two different offers — one is "meet the album", the other
+ * is "I have read this line and want to hear it" — and knowing which one people
+ * actually use is the whole argument for keeping both.
+ *
+ * 'auto' is the track after, started by the previous one ending: it is a play
+ * nobody asked for, so it must never be counted as one of the ones they did.
+ */
+type PlaySource = 'hero' | 'poem' | 'keyboard' | 'auto';
 
 /* Mirrors the check in app/api/subscribe/route.ts. Duplicated on purpose: the
    server must not trust the client, and the client should not need a round trip
@@ -1047,7 +1077,21 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const curRef = useRef(0);
   const pctRef = useRef(0);
   /** Lets the `ended` listener advance a track without capturing a stale closure. */
-  const playTrackRef = useRef<(n: number) => void>(() => {});
+  const playTrackRef = useRef<(n: number, from?: PlaySource) => void>(() => {});
+  /** Highest quarter already reported for the track now loaded. Reset per track. */
+  const milestoneRef = useRef(0);
+  /**
+   * Screen two is reported once per visit, not once per crossing — someone who
+   * scrolls up and back down has not discovered the tracklist twice.
+   */
+  const reachedTwoRef = useRef(false);
+  /**
+   * How the descent was started, read by the scroll handler when it fires
+   * `tracklist_reached`. The scroll itself cannot tell a smooth programmatic
+   * scroll from a finger, so whoever called goTo leaves a note here first.
+   * Falls back to 'scroll', which is the honest answer for everyone else.
+   */
+  const descentViaRef = useRef<'scroll' | 'button' | 'chevron'>('scroll');
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -1102,6 +1146,14 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       const s = Math.min(1, Math.max(0, sc.scrollTop / h));
       root.style.setProperty('--s', s.toFixed(4));
       setAtTwo(s > 0.3);
+      // The funnel's second step, and the only one the page cannot infer from a
+      // click: most people arrive at the tracklist by scrolling, not by pressing
+      // anything. Same threshold as the type reveal, so "reached" means the same
+      // thing to us as it does to the visitor.
+      if (s > 0.3 && !reachedTwoRef.current) {
+        reachedTwoRef.current = true;
+        track('tracklist_reached', { via: descentViaRef.current });
+      }
       // Two screens should measure two screens. Anything over is the tracklist
       // spilling, and the snap has to give way — see .landing[data-tall].
       setTall(sc.scrollHeight > h * 2 + 2);
@@ -1125,22 +1177,42 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    * visitor has asked for less motion — in which case a page that animates its
    * way down is exactly what they said no to.
    */
-  const goTo = useCallback((screen: 0 | 1) => {
+  const goTo = useCallback((screen: 0 | 1, via?: 'button' | 'chevron') => {
     const sc = scrollRef.current;
     if (!sc) return;
+    if (screen === 1 && via) descentViaRef.current = via;
+    // Going back up is its own small signal: it is the only door out of screen
+    // two, so it separates "read the poem and left" from "read it and returned".
+    if (screen === 0) track('surfaced');
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     sc.scrollTo({ top: screen * sc.clientHeight, behavior: reduce ? 'auto' : 'smooth' });
   }, []);
+
+  /**
+   * Closing the panel, from the X or from Escape. It exists as one function
+   * because the abandonment has to be reported the same either way -- a funnel
+   * that only counts the visitors who reach for the mouse is measuring mice.
+   *
+   * `state` is what the form had got to: 'idle' is a look and a shrug, 'error'
+   * is someone who tried and was turned away, and those two want very different
+   * fixes. 'done' is not a dismissal at all and says nothing.
+   */
+  const closePanel = useCallback(() => {
+    if (panel === 'subscribe' && subState !== 'done') {
+      track('subscribe_dismissed', { state: subState });
+    }
+    setPanel(null);
+  }, [panel, subState]);
 
   /* --- Esc closes whatever panel is open -------------------------- */
   useEffect(() => {
     if (!panel) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setPanel(null);
+      if (e.key === 'Escape') closePanel();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [panel]);
+  }, [panel, closePanel]);
 
   /* --- audio ------------------------------------------------------ */
   const peaksRequested = useRef(false);
@@ -1163,12 +1235,26 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         pctRef.current = p;
         setPct(p);
       }
+      // Reported off the clock rather than off `ended`, so a listener who leaves
+      // at 60% still counts as having got halfway. Guarded by the highest mark
+      // already sent, which is also what stops a scrub backwards and forwards
+      // from sending 50 five times.
+      for (const m of DEMO_MILESTONES) {
+        if (p >= m && milestoneRef.current < m) {
+          milestoneRef.current = m;
+          track('demo_progress', { ...demoProps(curRef.current), milestone: m });
+        }
+      }
     });
     au.addEventListener('ended', () => {
-      if (curRef.current < FILES.length) playTrackRef.current(curRef.current + 1);
+      track('demo_finished', demoProps(curRef.current));
+      if (curRef.current < FILES.length) playTrackRef.current(curRef.current + 1, 'auto');
       else setPlaying(false);
     });
     au.addEventListener('error', () => {
+      // Somebody pressed a line whose demo is not up yet, or the file 404s. Both
+      // are worth knowing and neither is visible in a play count.
+      track('demo_unavailable', demoProps(curRef.current));
       setMissing(true);
       setPlaying(false);
     });
@@ -1177,7 +1263,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   }, []);
 
   const playTrack = useCallback(
-    (n: number) => {
+    (n: number, from: PlaySource = 'hero') => {
       if (n < 1 || n > FILES.length) return;
       loadPeaks();
       const au = ensureAudio();
@@ -1185,18 +1271,24 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         if (au.paused) {
           au.play().catch(() => {});
           setPlaying(true);
+          track('demo_resumed', { ...demoProps(n), percent: Math.round(pctRef.current) });
         } else {
           au.pause();
           setPlaying(false);
+          // Where they stopped, not that they stopped. A pause at 8% and a pause
+          // at 90% are opposite verdicts on the same track.
+          track('demo_paused', { ...demoProps(n), percent: Math.round(pctRef.current) });
         }
         return;
       }
       au.src = FILES[n - 1];
       curRef.current = n;
       pctRef.current = 0;
+      milestoneRef.current = 0;
       setCur(n);
       setMissing(false);
       setPct(0);
+      track('demo_started', { ...demoProps(n), from });
       au
         .play()
         .then(() => setPlaying(true))
@@ -1227,6 +1319,15 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     au.currentTime = c * au.duration;
     pctRef.current = c * 100;
     setPct(c * 100);
+    // Quarters that were jumped over are marked as spent WITHOUT reporting them.
+    // Dragging to the end is not listening to the end, and if the marks were
+    // left for the clock to hit on the way past, one scrub would file 25, 50 and
+    // 75 in the same tick and every retention curve would read as a flat line.
+    // Only ever raised, so a scrub backwards cannot resurrect a mark already
+    // sent and send it twice.
+    for (const m of DEMO_MILESTONES) {
+      if (pctRef.current >= m && milestoneRef.current < m) milestoneRef.current = m;
+    }
   }, []);
 
   const seekToClientX = useCallback(
@@ -1258,6 +1359,15 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     [seekToClientX],
   );
   const onSeekUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    // Once, where the finger lifted -- not once per pointermove, which on a drag
+    // across the bar is a hundred events describing one intention.
+    if (draggingRef.current) {
+      track('demo_seeked', {
+        ...demoProps(curRef.current),
+        percent: Math.round(pctRef.current),
+        control: 'bar',
+      });
+    }
     draggingRef.current = false;
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
@@ -1346,7 +1456,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       // and handed the transport: it is the only control left in the panel once
       // the line itself means position.
       if ((e.target as HTMLElement).closest('.l-poem-num')) {
-        playTrackRef.current(curRef.current);
+        playTrackRef.current(curRef.current, 'poem');
         return;
       }
       const f = inkFraction(e.clientX);
@@ -1376,6 +1486,15 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   );
 
   const onLineUp = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    // Only a real scrub. A press that landed on the number in the margin never
+    // started one -- it was the transport, and playTrack has already said so.
+    if (scrubbingRef.current) {
+      track('demo_seeked', {
+        ...demoProps(curRef.current),
+        percent: Math.round(pctRef.current),
+        control: 'poem_line',
+      });
+    }
     scrubbingRef.current = false;
     poemInkRef.current?.removeAttribute('data-scrubbing');
     try {
@@ -1399,7 +1518,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       if (!au) return;
       if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
-        playTrackRef.current(curRef.current);
+        playTrackRef.current(curRef.current, 'keyboard');
         return;
       }
       if (!au.duration || !isFinite(au.duration)) return;
@@ -1414,6 +1533,13 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   );
 
   const stop = useCallback(() => {
+    // Closing the bar is the one unambiguous "I am done listening" on the page.
+    if (curRef.current) {
+      track('player_closed', {
+        ...demoProps(curRef.current),
+        percent: Math.round(pctRef.current),
+      });
+    }
     audioRef.current?.pause();
     curRef.current = 0;
     pctRef.current = 0;
@@ -1444,7 +1570,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    * Audio outlives the view it was started from either way: navigating never
    * silences a track as a side effect.
    */
-  const playFromPoem = (n: number) => playTrack(n);
+  const playFromPoem = (n: number) => playTrack(n, 'poem');
 
   /* The hero's primary action. See PLAY_LABELS: it is "start the album" until
      something is loaded and the transport for that thing afterwards. */
@@ -1670,7 +1796,16 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           corner. Same rule and same weight as SIGN UP in the panel it opens, on
           purpose: the two are one action seen twice.
         */}
-        <button type="button" className="l-nav-cta" onClick={() => setPanel('subscribe')}>
+        <button
+          type="button"
+          className="l-nav-cta"
+          onClick={() => {
+            // The top of the funnel this whole page exists to feed. `via` is
+            // already here because PRE-SAVE will not stay the only way in.
+            track('subscribe_opened', { via: 'nav' });
+            setPanel('subscribe');
+          }}
+        >
           PRE-SAVE
         </button>
       </nav>
@@ -1778,7 +1913,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               {/* Was setPanel('poem') and stayed that way through the rebuild —
                   the panel it opened no longer exists, so it opened nothing.
                   It is the same destination it always was, one screen down. */}
-              <button type="button" className="l-act-second" onClick={() => goTo(1)}>
+              <button type="button" className="l-act-second" onClick={() => goTo(1, 'button')}>
                 <svg width="12" height="10" viewBox="0 0 12 10" aria-hidden>
                   <path d="M0 .5h12M0 5h12M0 9.5h8" stroke="currentColor" strokeWidth="1" fill="none" />
                 </svg>
@@ -1826,7 +1961,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             type="button"
             className="l-down"
             aria-label="Down to the tracklist"
-            onClick={() => goTo(1)}
+            onClick={() => goTo(1, 'chevron')}
           >
             {/* Two marks and nothing else — no rail, no ring, no container. See
                 the CSS for why the pair is drawn identical and separated only
@@ -2368,7 +2503,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             type="button"
             className="l-panel-close"
             aria-label="Close"
-            onClick={() => setPanel(null)}
+            onClick={closePanel}
           >
             ✕
           </button>
@@ -2385,8 +2520,18 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                 className="l-sub-form"
                 onSubmit={async (e) => {
                   e.preventDefault();
+                  // Reported on the press, before the address is judged, so the
+                  // funnel step means "answered the form" -- and so a wave of
+                  // submits with no completes reads as our validation being
+                  // wrong rather than as nobody being interested.
+                  //
+                  // The address itself is never sent to PostHog. MailerLite is
+                  // the only place a subscriber's email exists, which keeps one
+                  // list to honour an unsubscribe against instead of two.
+                  track('subscribe_submitted');
                   const email = emailRef.current?.value.trim() ?? '';
                   if (!EMAIL_RE.test(email)) {
+                    track('subscribe_failed', { reason: 'email_format' });
                     setSubErr('email');
                     setSubState('error');
                     emailRef.current?.focus();
@@ -2402,12 +2547,21 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                     if (!res.ok) {
                       // 400 is the address itself; anything else (503 no key, 502
                       // upstream, 500) is ours to own -- don't blame the visitor.
+                      // The status rides along: a 503 is a missing key on Vercel
+                      // and a 502 is MailerLite, and both look identical to the
+                      // visitor while needing completely different phone calls.
+                      track('subscribe_failed', {
+                        reason: res.status === 400 ? 'email_rejected' : 'server',
+                        status: res.status,
+                      });
                       setSubErr(res.status === 400 ? 'email' : 'server');
                       setSubState('error');
                       return;
                     }
+                    track('subscribe_completed');
                     setSubState('done');
                   } catch {
+                    track('subscribe_failed', { reason: 'network' });
                     setSubErr('server'); // never reached /api/subscribe at all
                     setSubState('error');
                   }

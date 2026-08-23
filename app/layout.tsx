@@ -1,6 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { Cormorant_Garamond } from 'next/font/google';
+import { Analytics } from '@/components/Analytics';
 
 const cormorant = Cormorant_Garamond({
   subsets: ['latin'],
@@ -44,7 +45,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;500&display=swap"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* Renders nothing; loads PostHog on an idle callback. See lib/analytics.ts. */}
+        <Analytics />
+      </body>
     </html>
   );
 }
