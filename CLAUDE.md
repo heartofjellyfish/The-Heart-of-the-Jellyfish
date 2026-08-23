@@ -283,6 +283,44 @@ wire and the whole layer reads as a machine. The sway lives on an inner
 `<span>`: the rise and the sway are two transforms that have to compose, and one
 element can only run one.
 
+### Why two messages never sit on each other
+
+*(the brief: 可以短暂的堆叠但是要迅速分开 — brief overlap is fine, a stack is not)*
+
+Everything above is per-message, and **every stacking problem is a relationship
+between two of them**, so motion stopped being a pure function of the id. It is
+now assigned with knowledge of what is already in the water, and **cached for
+the life of the tab** — that part is not an optimisation. Re-deriving phases
+when somebody posts would make the entire field jump mid-rise.
+
+Three rules, and each one was added because measurement said the previous set
+was not enough:
+
+- **Speeds are quantised into five bands, not drawn from a range.** Two
+  overlapping messages at the *same* speed never come apart — they are glued
+  for as long as both are in the water. A continuous range produces
+  near-identical pairs constantly.
+- **Anything that can overlap horizontally gets a band at least two away.**
+  Merely *different* was tried and measured: 41s against 50s is ~1.6px per
+  second of relative drift on an 880px rise, and the pair was still stacked
+  twenty seconds later. That is not brief overlap, it is a stack that
+  eventually resolves. Two bands apart is ~6px/s and clears in under ten
+  seconds. The bands were widened at the same time (36–84s).
+- **Starting phase is chosen against the neighbours, not within the column.**
+  Spreading evenly *inside* a column was the first attempt and it barely helped,
+  for a reason worth remembering: **a riser is ~26% of the width and the columns
+  are 10% apart, so most of a message's real neighbours are in other columns.**
+  The phase now tries sixteen positions around the cycle and keeps the one
+  furthest from everything it can actually overlap. Arrivals go to the emptiest
+  column — two people posting in the same minute is the commonest way a field
+  gets a stack.
+
+Measured after: zero overlapping pairs at load and none ten seconds later, where
+the previous version had three that never came apart. **If this is ever touched,
+measure it the same way** — walk the rendered boxes for intersections, twice,
+ten seconds apart. It is four lines in the console and it is the only way to
+tell a busy field from a broken one, because both look fine in a screenshot.
+
 **Both ends fade inside the keyframe, not under a mask.** A mask forces the
 whole viewport-sized subtree into one render surface and re-rasters it every
 frame — the exact cost the glimmers were removed for. Four opacity stops cost
@@ -346,6 +384,51 @@ own wall.
   reproduce. On the one control on this site that is a chat box, that is not a
   quirk worth leaving to the platform. The handler checks `isComposing`, because
   an IME's Enter commits the candidate and swallowing it would send 拼音.
+
+### The composer
+
+Three were built and tried at `/?say=1|2|3` — a hairline, a sentence, and a
+riser — because the first one shipped was a blurred pill with a border floating
+on an oil painting, which is the shape a chat input has on every product on the
+internet and the shape nothing else on this site has. Qi picked **3, the riser**:
+no form at all, set exactly like a message already in the water, and sending
+lets go of it. 1 and 2 stay behind the query param until it is settled.
+
+Its two faults were named immediately and they are one fault: *you cannot tell
+it is an input, and the risers go through it.* **Once messages travel upward,
+the bottom of the screen is where messages are born**, so anything parked there
+is guaranteed to be collided with by things that look exactly like it.
+
+The first fix was to part the water — empty a band at the bottom and start
+risers at the composer's own line. It worked and it was wrong: **the field
+filling the whole screen is the effect**, and cutting a strip off the bottom
+traded the thing people come for against a problem the control could solve
+locally. Worth keeping as a note; if the composer ever moves somewhere with room
+of its own, that version is waiting.
+
+What it does instead, none of it furniture:
+
+- **A tight halo on the glyphs.** A wide soft *dark* pool behind the whole
+  composer was built and cut for exactly the reason the down-mark's was: at the
+  radius that helped it was a patch of grey on an oil painting. Spread a halo
+  and it stops being light and becomes a shadow. Hugging the letters does the
+  same job and leaves no mark.
+- **A dim light of its own** (Qi's call) — the water around it lit faintly,
+  breathing on a slow cycle. Light is allowed here and objects are not; same
+  rule the shafts are built on. The cycle is deliberately **not** the album's
+  60bpm: the heartbeat belongs to the record, and a text field borrowing it
+  would be claiming to be part of the work rather than the way in.
+- **A caret**, 2px rather than the site's usual hairline, because a hairline is
+  this page's language for *structure* and this is the one mark that has to be
+  noticed — over grain, at half opacity for half of every second. It blinks at
+  1s, which is both a real caret's rate and the album's beat.
+- **Stillness.** It is the only thing on screen holding still. That reads, and
+  it is also why every screenshot of this design looks worse than the design is.
+
+The long fade-in does the rest: the composer sits inside the first tenth of the
+travel, where a riser is under half its brightness. Nothing is hidden — the
+bottom of the screen is full of messages, they are simply still coming out of
+the dark down there, which is where they should be coming out of.
 
 **This screen has no title, and that is the design rather than an omission.**
 

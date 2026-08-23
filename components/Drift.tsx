@@ -244,22 +244,73 @@ function hash(s: string): number {
   return h >>> 0;
 }
 
+type Look = {
+  x: number;
+  dur: number;
+  sway: number;
+  swayPx: number;
+  scale: number;
+  dim: number;
+  phase: number;
+  swayPhase: number;
+};
+
 /**
- * Everything about one line's motion, derived from its id.
+ * The five speeds, and there are five rather than a range for one reason.
  *
- * `depth` is the whole parallax: a line "further away" is slower, smaller and
- * dimmer, all three together, which is what makes a flat layer read as water
- * with volume instead of a list on a conveyor.
+ * Two messages that overlap and are travelling at the SAME speed never come
+ * apart — they are glued for as long as both are in the water, and that is what
+ * makes a field look broken rather than busy. A continuous range produces
+ * near-identical pairs constantly, so the speeds are quantised into bands and
+ * anything that can overlap is given a different one.
+ *
+ * The band spacing was widened once, after measuring. 41 against 50 is only
+ * ~1.6px a second of relative drift on an 880px rise — a pair took well over
+ * twenty seconds to come apart, which is not "brief overlap", it is a stack
+ * that eventually resolves. The neighbour rule now also skips the ADJACENT
+ * band, so an overlapping pair differs by at least two: ~6px a second, and a
+ * stack clears in well under ten.
+ *
+ * Brief overlap is fine and unavoidable in a drift. Slow overlap is the bug.
  */
-function look(m: DriftMessage, isFresh: boolean) {
+const SPEEDS = [36, 47, 59, 71, 84];
+
+/**
+ * How wide a riser is, as a percentage of the viewport, for collision purposes.
+ *
+ * An estimate, and it has to be an over-estimate: it is the max-inline-size in
+ * the stylesheet, and most messages are narrower than that. Guessing high costs
+ * a little variety in the speed assignment; guessing low puts two messages on
+ * top of each other permanently, which is the thing being prevented.
+ */
+const BLOCK_W = 26;
+
+/**
+ * Everything about one line's motion.
+ *
+ * Deliberately NOT a pure function of the id any more, which is a real cost
+ * worth naming: it was, and a pure hash is stable, needs no bookkeeping and
+ * looks the same for every visitor. What it cannot do is know about the other
+ * messages — and every stacking problem is a relationship between two of them.
+ * So this takes the column's current occupancy, and the assignment is cached
+ * for the life of the tab (see the layout ref): a message's motion is decided
+ * once, when it first appears, and never recomputed. That part is essential —
+ * re-deriving phases when someone posts would make the entire field jump.
+ *
+ * `depth` is still the parallax, and it now comes FROM the speed rather than
+ * alongside it: slower is further, so it is also smaller and dimmer. One
+ * quantity, three expressions, which is the only way the three cannot disagree.
+ */
+function look(m: DriftMessage, opts: { column: number; speed: number; phase: number }): Look {
   const h = hash(m.id);
-  const depth = ((h >>> 8) % 100) / 100; // 0 = near, 1 = far
-  const dur = 42 + depth * 34;
+  const depth = opts.speed / (SPEEDS.length - 1); // 0 = near and quick, 1 = far and slow
   return {
-    /* Column plus offset. The column keeps the field spread across the width;
-       the offset is what stops seven columns from reading as seven columns. */
-    x: (h % COLUMNS) * (60 / (COLUMNS - 1)) + (((h >>> 16) % 100) / 100) * 8,
-    dur,
+    /* Column plus a small offset. The column spreads the field across the
+       width; the offset is what stops seven columns from reading as seven
+       columns. It stays small — big enough to break the grid, not big enough to
+       undo the spacing the grid was for. */
+    x: opts.column * (60 / (COLUMNS - 1)) + (((h >>> 16) % 100) / 100) * 6,
+    dur: SPEEDS[opts.speed],
     /* The sway is the difference between rising and being winched.
        Its period is deliberately NOT a fraction of the rise: near-primes, the
        same trick the light shafts use, so a message never repeats the same
@@ -268,10 +319,7 @@ function look(m: DriftMessage, isFresh: boolean) {
     swayPx: 8 + depth * 16,
     scale: 1.06 - depth * 0.34,
     dim: 0.94 - depth * 0.36,
-    /* Phase. History is scattered across its own cycle so the water is already
-       full at first paint; anything that arrives while you are watching starts
-       at the floor, because seeing it rise is the point. */
-    phase: isFresh ? 0 : (((h >>> 4) % 1000) / 1000) * dur,
+    phase: opts.phase,
     swayPhase: (((h >>> 24) % 100) / 100) * 24,
   };
 }
@@ -377,16 +425,157 @@ export function Drift({ active }: { active: boolean }) {
 
   const left = MAX_TEXT - text.length;
 
+  /**
+   * Motion, decided once per message and never again.
+   *
+   * The cache is the point, not an optimisation. Phase and speed are now chosen
+   * with knowledge of what else is in the water, and anything derived from the
+   * live list would be re-derived the moment somebody posts — every message in
+   * the field would jump to a new position mid-rise. So a message's motion is
+   * fixed when it first appears and outlives every later change to the list.
+   */
+  const layout = useRef(new Map<string, Look>());
+  /** How many messages have been put in each column, for the life of the tab. */
+  const columnLoad = useRef<number[]>(new Array(COLUMNS).fill(0));
+  /** Round-robin over SPEEDS, so consecutive assignments never share a speed. */
+  const speedTurn = useRef(0);
+  /** Everything placed so far, for the one collision rule below. */
+  const placed = useRef<{ x: number; speed: number; at: number }[]>([]);
+
   /* Recomputed only when the list changes, not on every keystroke in the
      composer — otherwise typing would restyle sixty animated nodes per letter. */
-  const drawn = useMemo(
-    () =>
-      messages.map((m) => {
-        const isFresh = fresh.current.has(m.id);
-        return { m, s: look(m, isFresh), isFresh };
-      }),
-    [messages, fresh],
-  );
+  const drawn = useMemo(() => {
+    const pending = messages.filter((m) => !layout.current.has(m.id));
+
+    if (pending.length) {
+      /* History and arrivals are laid out differently, and they have to be.
+         History is a batch we can see all of at once, so it can be SPREAD —
+         which is the only chance to guarantee that two messages sharing a
+         column start far apart. An arrival is one message with nowhere to be
+         but the bottom of the screen. */
+      const history = pending.filter((m) => !fresh.current.has(m.id));
+      const arrivals = pending.filter((m) => fresh.current.has(m.id));
+
+      /**
+       * The one rule that makes an overlap temporary.
+       *
+       * Two messages whose columns are far apart can still overlap on screen —
+       * a riser is up to ~26% of the width and the columns are 10% apart, so a
+       * message shares horizontal space with several of its neighbours. Within
+       * a column the phase spread keeps them apart; across columns nothing did,
+       * and a pair that overlaps at the SAME speed is glued for as long as both
+       * are in the water. That is the difference between a busy field and a
+       * broken one, and it is the only overlap worth engineering against.
+       *
+       * So: a new message may not take a speed already held by anything it can
+       * overlap horizontally. Different speeds means they cross, briefly, and
+       * come apart on their own — which is exactly what a drift should do. If
+       * every speed is taken (a very crowded stripe) it falls back to the
+       * round-robin, because at that density no assignment saves it.
+       */
+      const neighbours = (x: number) =>
+        placed.current.filter((q) => Math.abs(q.x - x) < BLOCK_W);
+
+      const pickSpeed = (x: number) => {
+        const near = neighbours(x);
+        // Two passes, and the first one is why an overlap clears quickly rather
+        // than merely eventually: prefer a band at least two away from every
+        // neighbour's, and only then settle for merely different.
+        for (const gap of [2, 1]) {
+          for (let i = 0; i < SPEEDS.length; i++) {
+            const cand = (speedTurn.current + i) % SPEEDS.length;
+            if (near.every((q) => Math.abs(q.speed - cand) >= gap)) {
+              speedTurn.current = cand + 1;
+              return cand;
+            }
+          }
+        }
+        return speedTurn.current++ % SPEEDS.length;
+      };
+
+      /**
+       * Where in its cycle a history message starts, as a fraction.
+       *
+       * Spreading within a column was not enough, and the measurement said so:
+       * a riser is ~26% of the width and the columns are 10% apart, so most of
+       * a message's real neighbours are in OTHER columns, and nothing was
+       * keeping it away from those. Every overlap that survived a minute was
+       * one of those pairs, placed on top of each other at load and left to
+       * drift apart on their own.
+       *
+       * So the phase is chosen against whatever can actually overlap it: try
+       * sixteen positions around the cycle, keep the one furthest from every
+       * neighbour. Fraction of the cycle is the right unit — it maps directly
+       * to height on screen, whatever the speed.
+       */
+      const pickPhase = (x: number) => {
+        const near = neighbours(x);
+        if (!near.length) return 0;
+        let best = 0;
+        let bestGap = -1;
+        for (let i = 0; i < 16; i++) {
+          const cand = i / 16;
+          const gap = Math.min(
+            ...near.map((q) => {
+              const d = Math.abs(q.at - cand);
+              return Math.min(d, 1 - d); // the cycle wraps
+            }),
+          );
+          if (gap > bestGap) {
+            bestGap = gap;
+            best = cand;
+          }
+        }
+        return best;
+      };
+
+      const byColumn = new Map<number, DriftMessage[]>();
+      for (const m of history) {
+        const c = hash(m.id) % COLUMNS;
+        const list = byColumn.get(c);
+        if (list) list.push(m);
+        else byColumn.set(c, [m]);
+      }
+      for (const [column, members] of byColumn) {
+        columnLoad.current[column] += members.length;
+        members.forEach((m) => {
+          const x = column * (60 / (COLUMNS - 1)) + ((hash(m.id) >>> 16) % 100) / 100 * 6;
+          const speed = pickSpeed(x);
+          /* Plus a small per-message wobble, so the spacing is regular without
+             being measured. Regular beats random here: random phases produce
+             visible pile-ups at exactly the rate they produce visible gaps, and
+             the pile-up is the thing being fixed. */
+          const at = (pickPhase(x) + (hash(m.id) % 100) / 3200) % 1;
+          placed.current.push({ x, speed, at });
+          layout.current.set(m.id, look(m, { column, speed, phase: at * SPEEDS[speed] }));
+        });
+      }
+
+      for (const m of arrivals) {
+        /* Into the emptiest column. Two people posting in the same minute is
+           the commonest way a field gets a stack, and it is the one case where
+           a hash would put them anywhere at all — including on top of each
+           other. */
+        let column = 0;
+        for (let c = 1; c < COLUMNS; c++) {
+          if (columnLoad.current[c] < columnLoad.current[column]) column = c;
+        }
+        columnLoad.current[column] += 1;
+        const x = column * (60 / (COLUMNS - 1)) + ((hash(m.id) >>> 16) % 100) / 100 * 6;
+        const speed = pickSpeed(x);
+        placed.current.push({ x, speed, at: 0 });
+        // Phase 0: an arrival starts at the bottom, because watching it rise is
+        // the whole reason it is not just added to a list.
+        layout.current.set(m.id, look(m, { column, speed, phase: 0 }));
+      }
+    }
+
+    return messages.map((m) => ({
+      m,
+      s: layout.current.get(m.id) as Look,
+      isFresh: fresh.current.has(m.id),
+    }));
+  }, [messages, fresh]);
 
   return (
     <section
@@ -593,13 +782,10 @@ export const DRIFT_CSS = `
      the title it was clearing is gone. */
   --water-top:13dvh;--water-h:62dvh;
 
-  /* The still water at the bottom of the screen, and where a riser is born.
-     Zero for most designs — a riser starts off the bottom edge and the composer
-     sits on top of it behind a rule. The riser composer sets it, because that
-     design has no rule and therefore cannot survive anything passing behind it;
-     see [data-say=riser]. */
-  --say-zone:0px;
-  --rise-from:calc(100dvh - var(--say-zone))}
+  /* Where a riser is born. Off the bottom edge, so the field fills the whole
+     screen — see the note on the composer for the version of this that emptied
+     a band at the bottom instead, and why it lost. */
+  --rise-from:100dvh}
 
 /* The stage owns the dark down here — see .l-floor in Landing. This screen
    paints nothing of its own over the picture, which is what keeps the grain
@@ -647,7 +833,11 @@ export const DRIFT_CSS = `
    the keyframe fades TO the message's own brightness, not to 1. */
 @keyframes l-drift-up{
   0%{transform:translate3d(0,var(--rise-from,100dvh),0);opacity:0}
-  8%{opacity:var(--dim)}
+  /* Sixteen, not eight. The long fade-in is doing two jobs: things should
+     emerge out of the dark rather than switch on at the bottom edge, and it
+     means anything crossing the composer — which sits low, in the first tenth
+     of the travel — is at less than half its brightness while it does. */
+  16%{opacity:var(--dim)}
   /* Gone well before the top, not at it. The travel still runs off the edge —
      it just does it invisibly. A message that is still lit when it reaches the
      upper fifth of the screen crosses the title and then the nav, and a
@@ -771,60 +961,81 @@ export const DRIFT_CSS = `
    declaring "not a message" — which is designs 1 and 2, and is the furniture
    this one refuses.
 
-   So the fix is not to mark the composer off. It is to part the water:
-   --say-zone empties the bottom band, and risers now begin their travel at the
-   composer's own line instead of below the screen. Nothing ever passes behind
-   it, and the payoff is better than the problem was — a sent message starts
-   exactly where you typed it, so letting go is something you watch happen. The
-   line you write on is the seabed.
+   The first fix was to part the water — empty a band at the bottom and have
+   risers begin their travel at the composer's own line. It worked, and it was
+   wrong: **the field filling the entire screen is the effect.** Cutting a strip
+   off the bottom to protect one control traded the thing people come for
+   against a problem the control could solve locally. Kept as a note because the
+   idea was good and the trade was not: if the composer ever moves somewhere
+   with room of its own, that version is waiting.
 
-   What is left to say "this is yours" is not furniture either:
-     · it is the only thing on the screen holding still, in the only band of
-       water with nothing moving in it — stillness reads, in a field of motion
-     · a caret, blinking at the album's own 60bpm, which is the one glyph on
-       earth that means "type here"
-     · light, not an object: a soft rise of glow off the bottom, no edge
-       anywhere in it. The house rule is that light is allowed and objects are
-       not, and this is the same rule the shafts are built on. */
-.l-three[data-say=riser]{--say-band:clamp(116px,17vh,172px);
-  --say-zone:calc(var(--say-band) + var(--bar))}
+   What it does instead is win locally, three ways, none of them furniture:
 
-/* The light the composer sits in. Placed on the screen rather than on the form
-   so it is not clipped to the text's box, and sized in the same units as the
-   zone so the two cannot drift apart. No border, no radius, nothing with an
-   edge — at this alpha it is the water being lit from below, which is also
-   where a rising thing would be lit from. */
-.l-three[data-say=riser]::after{content:'';position:absolute;z-index:0;
-  left:0;right:0;bottom:0;height:calc(var(--say-zone) + 14vh);pointer-events:none;
-  background:radial-gradient(126% 100% at 50% 112%,
-    rgba(132,192,232,.2),rgba(132,192,232,.075) 44%,rgba(132,192,232,0) 74%)}
+     · **a tight halo**, hugging the glyphs. A wide soft pool behind the whole
+       composer was built first and cut for the reason the down-mark's was: at
+       the radius that helped, it was a patch of grey on an oil painting, and
+       nothing else on this page has one. Spread a halo and it stops being
+       light and becomes a shadow. Hugging the letters it does the same job —
+       a crossing message's strokes cannot merge with the composer's — and
+       leaves no mark of its own. Same construction as every white label on
+       the shore, which has to survive a much brighter ground than this.
+     · **a dim light of its own.** Qi's call, and it is the piece that finally
+       makes the thing announce itself without becoming an object: the water
+       around the composer is lit, faintly, the way something alive down there
+       would be. Light is allowed here and objects are not — the same rule the
+       shafts are built on, and the reason the wide DARK pool that was tried
+       first had to go. It breathes on a slow cycle, deliberately not the
+       album's 60bpm: the heartbeat belongs to the record, and a control that
+       borrowed it would be claiming to be part of the work. It brightens when
+       you are in the field, which is the only state change on this screen.
+     · **stillness.** It is the only thing on the screen holding still. In a
+       field where everything else is moving, that reads — it just cannot be
+       photographed, which is why the screenshots of this design looked worse
+       than the design is.
+     · **a caret**, blinking at the album's own 60bpm, which is the one glyph
+       on earth that means "type here".
 
-/* The horizon of the still band — where the water that moves stops and the
-   water you write in begins.
-
-   This is not design 1's rule wearing a different name, and the difference is
-   the ends: it is a gradient that reaches nothing at both edges of the screen,
-   so it never closes anything. A rule around a field says "control"; a line
-   with no ends, spanning the whole frame, says "surface" — and it is telling
-   the truth, because that IS the line every message is born on. It also gives
-   the eye the one boundary this design was missing without giving it a box. */
-.l-three[data-say=riser]::before{content:'';position:absolute;z-index:0;
-  left:0;right:0;bottom:var(--say-zone);block-size:1px;pointer-events:none;
-  background:linear-gradient(90deg,
-    rgba(150,200,236,0),rgba(150,200,236,.17) 26%,
-    rgba(150,200,236,.17) 74%,rgba(150,200,236,0))}
-
+   The long fade-in does the rest of the work: the composer sits inside the
+   first tenth of the travel, where a riser is still under half its brightness.
+   Nothing is being hidden — the bottom of the screen is full of messages, they
+   are simply still coming out of the dark down there, which is where they
+   should be coming out of. */
 .l-three[data-say=riser] .l-say{
   flex-wrap:wrap;gap:.3em .6em;justify-content:center;text-align:center;
   inline-size:min(32ch,calc(100vw - 48px));
-  /* Sits inside the band it just cleared, and above the player when there is
-     one. Expressed in the band's own variable, so the composer and the empty
-     water can never drift apart — the whole design depends on it being the only
-     thing down there. */
-  bottom:calc(var(--bar) + var(--say-band) * .34)}
-.l-three[data-say=riser] input{
-  text-align:center;color:rgba(228,242,252,.94);
-  text-shadow:0 0 18px rgba(96,172,220,.4)}
+  bottom:calc(clamp(46px,8vh,86px) + var(--bar))}
+
+/* The dim light. Inside .l-say, which is its own stacking context at z-index 2,
+   so a negative z-index puts it under the composer's type and still over the
+   water at z-index 1.
+
+   Inset negatively and hard, because the gradient must reach zero well outside
+   the words: a glow that stops where the text stops is a lozenge, and a
+   lozenge is a box that has been apologised for. Nothing in it has an edge. */
+.l-three[data-say=riser] .l-say::before{content:'';position:absolute;z-index:-1;
+  inset:-3.4em -30% -3.8em;pointer-events:none;
+  background:radial-gradient(56% 100% at 50% 50%,
+    rgba(122,186,232,.17),rgba(122,186,232,.06) 42%,rgba(122,186,232,0) 76%);
+  animation:l-say-breathe 7.4s ease-in-out infinite;
+  transition:opacity .6s ease}
+.l-three[data-say=riser] .l-say:focus-within::before{animation-play-state:paused;opacity:1}
+/* 7.4s, and the number matters only in that it is NOT 1s. The album's beat is
+   60bpm and it belongs to the record; a text field borrowing it would be
+   claiming to be part of the work rather than the way in. */
+@keyframes l-say-breathe{0%,100%{opacity:.62}50%{opacity:1}}
+
+
+.l-three[data-say=riser] input,
+.l-three[data-say=riser] .l-say-ghost{
+  text-align:center;
+  /* Two shadows doing opposite jobs on the same glyphs. The blue spread is what
+     makes this read as a message in the water like all the others; the tight
+     dark pair is what keeps it readable when one of them crosses behind. Order
+     matters — the dark is painted last, so it sits nearest the letter. */
+  text-shadow:0 0 18px rgba(96,172,220,.4),
+              0 0 9px rgba(2,10,20,.8),
+              0 1px 2px rgba(2,10,20,.9)}
+.l-three[data-say=riser] input{color:rgba(228,242,252,.94)}
 .l-three[data-say=riser] .l-say-text{flex:1 0 100%;caret-color:rgba(196,228,250,.9)}
 .l-three[data-say=riser] .l-say-name{flex:0 0 auto;inline-size:7em;
   font-size:.74em;opacity:.6}
