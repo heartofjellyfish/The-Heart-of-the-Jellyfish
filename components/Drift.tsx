@@ -46,16 +46,28 @@ export type DriftMessage = { id: string; name: string; text: string; at: number 
 
 /** How many lines can be in the water at once. Beyond this the oldest stop being drawn. */
 const IN_WATER = 60;
-/** Horizontal bands. Odd, so nothing sits exactly on the vertical centre. */
-const LANES = 11;
+/**
+ * Columns the risers start in.
+ *
+ * Coarse on purpose: the horizontal position is a column plus a per-message
+ * offset plus a slow sway, and three sloppy sources beat one precise one at
+ * looking unplanned. A pure `hash % 100` reads *more* regular than this, because
+ * a uniform scatter has no clumps and real water does.
+ */
+const COLUMNS = 7;
 const MAX_TEXT = 140;
 const MAX_NAME = 24;
 
 /* ---- the poll --------------------------------------------------------- */
 
-const POLL_FAST = 4000;
-const POLL_SLOW = 12000;
-const POLL_IDLE = 25000;
+/* 6s, not 4. A line takes the better part of a minute to cross the screen, so
+   the poll is still far inside the time anything is visible — and this is the
+   single biggest lever on how much of the store's free monthly budget a visitor
+   sitting on this screen burns. Halving the rate halves the bill for a delay
+   nobody can perceive. */
+const POLL_FAST = 6000;
+const POLL_SLOW = 15000;
+const POLL_IDLE = 30000;
 /** Empty polls before the sea is declared quiet. ~20s and ~2min of nothing. */
 const QUIET = 5;
 const ASLEEP = 30;
@@ -236,25 +248,31 @@ function hash(s: string): number {
  * Everything about one line's motion, derived from its id.
  *
  * `depth` is the whole parallax: a line "further away" is slower, smaller and
- * dimmer, all three together, which is what makes nine flat lanes read as
- * water with volume instead of a departures board.
+ * dimmer, all three together, which is what makes a flat layer read as water
+ * with volume instead of a list on a conveyor.
  */
 function look(m: DriftMessage, isFresh: boolean) {
   const h = hash(m.id);
-  const lane = h % LANES;
   const depth = ((h >>> 8) % 100) / 100; // 0 = near, 1 = far
+  const dur = 42 + depth * 34;
   return {
-    lane,
-    // Nudged off the lane's centre so two lines in the same lane are not
-    // perfectly stacked when they pass each other.
-    jitter: (((h >>> 16) % 100) / 100 - 0.5) * 6,
-    dur: 24 + depth * 26,
+    /* Column plus offset. The column keeps the field spread across the width;
+       the offset is what stops seven columns from reading as seven columns. */
+    x: (h % COLUMNS) * (60 / (COLUMNS - 1)) + (((h >>> 16) % 100) / 100) * 8,
+    dur,
+    /* The sway is the difference between rising and being winched.
+       Its period is deliberately NOT a fraction of the rise: near-primes, the
+       same trick the light shafts use, so a message never repeats the same
+       path twice on its way up and the layer as a whole never finds a beat. */
+    sway: 11 + ((h >>> 12) % 9) + ((h >>> 20) % 7) * 1.3,
+    swayPx: 8 + depth * 16,
     scale: 1.06 - depth * 0.34,
     dim: 0.94 - depth * 0.36,
-    /* Phase. History is scattered across its own cycle so the sea is already
+    /* Phase. History is scattered across its own cycle so the water is already
        full at first paint; anything that arrives while you are watching starts
-       at the right edge, because seeing it swim in is the point. */
-    phase: isFresh ? 0 : (((h >>> 4) % 1000) / 1000) * (24 + depth * 26),
+       at the floor, because seeing it rise is the point. */
+    phase: isFresh ? 0 : (((h >>> 4) % 1000) / 1000) * dur,
+    swayPhase: (((h >>> 24) % 100) / 100) * 24,
   };
 }
 
@@ -375,17 +393,25 @@ export function Drift({ active }: { active: boolean }) {
             className={'l-drift-msg' + (isFresh ? ' is-fresh' : '')}
             style={
               {
-                ['--lane' as string]: s.lane,
-                ['--jitter' as string]: s.jitter + 'vh',
+                ['--x' as string]: s.x.toFixed(2) + '%',
                 ['--dur' as string]: s.dur.toFixed(1) + 's',
                 ['--delay' as string]: (-s.phase).toFixed(1) + 's',
+                ['--sway' as string]: s.sway.toFixed(1) + 's',
+                ['--sway-delay' as string]: (-s.swayPhase).toFixed(1) + 's',
+                ['--sway-px' as string]: s.swayPx.toFixed(0) + 'px',
                 ['--dim' as string]: s.dim.toFixed(2),
                 ['--scale' as string]: s.scale.toFixed(2),
               } as React.CSSProperties
             }
           >
-            <span className="l-drift-text">{m.text}</span>
-            {m.name && <span className="l-drift-name">— {m.name}</span>}
+            {/* The rise is on the <li> and the sway is on the <span>: two
+                transforms that have to compose, and one element can only run
+                one. Nesting them is cheaper than a single keyframe that would
+                have to hard-code every combination of the two periods. */}
+            <span className="l-drift-in">
+              {m.text}
+              {m.name && <span className="l-drift-name">— {m.name}</span>}
+            </span>
           </li>
         ))}
       </ul>
@@ -467,7 +493,8 @@ export function Drift({ active }: { active: boolean }) {
 export const DRIFT_CSS = `
 .l-three{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
   height:100%;overflow:hidden;position:relative;
-  /* The band the lanes live in, as a fraction of the screen. */
+  /* Used only by the reduced-motion column, which is the one presentation here
+     that is laid out rather than travelling. */
   --water-top:21dvh;--water-h:53dvh;
   padding-top:clamp(58px,9vh,96px)}
 
@@ -480,7 +507,9 @@ export const DRIFT_CSS = `
     linear-gradient(180deg,rgba(2,12,26,.66),rgba(1,8,18,.9))}
 .l-three>*{position:relative;z-index:1}
 
-.l-three-head{display:flex;flex-direction:column;align-items:center;gap:.55em;text-align:center}
+.l-three-head{position:relative;z-index:3;
+  display:flex;flex-direction:column;align-items:center;gap:.55em;text-align:center;
+  pointer-events:none}
 .l-three-title{font-family:'Nothing You Could Do',cursive;
   font-size:clamp(24px,3.6vh,38px);color:rgba(233,245,252,.93);
   letter-spacing:.005em;text-shadow:0 0 26px rgba(120,190,235,.28)}
@@ -492,36 +521,69 @@ export const DRIFT_CSS = `
 .l-drift{position:absolute;left:0;right:0;top:0;bottom:0;margin:0;padding:0;
   list-style:none;overflow:hidden;pointer-events:none;z-index:1}
 
-.l-drift-msg{position:absolute;left:0;white-space:nowrap;will-change:transform;
-  top:calc(var(--water-top) + (var(--lane) / ${LANES - 1}) * var(--water-h) + var(--jitter));
+/* Messages RISE. They came off the floor, which is where the reader is, and
+   they leave through the surface — the direction the whole site has been
+   travelling, run backwards for the one thing on it that belongs to someone
+   else. Sideways was built first and was wrong twice over: it is the motion of
+   a ticker, and it forces every message onto one line, so a long one is three
+   phone screens wide and can never be read as a sentence.
+
+   Being a block rather than a line is what the change buys. A riser wraps to
+   two or three short lines and holds together as an object — a scrap of paper
+   going up — which is also why it can be read while it moves. */
+.l-drift-msg{position:absolute;top:0;inset-inline-start:var(--x);
+  max-inline-size:min(28ch,30vw);will-change:transform;
   font-family:'Cormorant Garamond',Georgia,serif;
   font-size:calc(clamp(15px,2.05vh,23px) * var(--scale));
-  color:rgba(224,240,250,var(--dim));
+  line-height:1.42;color:rgb(224,240,250);
   text-shadow:0 0 calc(16px * var(--scale)) rgba(96,172,220,calc(var(--dim) * .5));
-  animation:l-drift-x var(--dur) linear var(--delay) infinite}
+  animation:l-drift-up var(--dur) linear var(--delay) infinite}
 
-/* Right edge to gone. 100vw rather than 100% because the element is only as
-   wide as its own text — a percentage would start short lines already on screen. */
-@keyframes l-drift-x{
-  from{transform:translate3d(100vw,0,0)}
-  to{transform:translate3d(-100%,0,0)}}
+/* Floor to surface, fading at both ends.
+   The fade is inside the keyframe rather than done with a mask over the layer:
+   a mask forces the whole viewport-sized subtree into one render surface and
+   re-rasters it every frame — the exact cost the glimmers were removed for.
+   Four opacity stops cost nothing and solve the same problem, which is that a
+   message must not pop into existence at the bottom edge or blink out at the
+   top. var(--dim) in the middle two stops is what keeps the depth parallax:
+   the keyframe fades TO the message's own brightness, not to 1. */
+@keyframes l-drift-up{
+  0%{transform:translate3d(0,100dvh,0);opacity:0}
+  8%{opacity:var(--dim)}
+  /* Gone well before the top, not at it. The travel still runs off the edge —
+     it just does it invisibly. A message that is still lit when it reaches the
+     upper fifth of the screen crosses the title and then the nav, and a
+     stranger's sentence sliding through the album's own type reads as a bug
+     rather than as weather. The last quarter of the rise is the fade. */
+  66%{opacity:var(--dim)}
+  82%{opacity:0}
+  100%{transform:translate3d(0,-120%,0);opacity:0}}
 
-/* Just-arrived. Brighter for one pass, then it is one of the others. Kept as a
-   second animation on the same element so it composites with the drift instead
-   of fighting it for the transform. */
-.l-drift-msg.is-fresh{animation:l-drift-x var(--dur) linear var(--delay) infinite,
-  l-drift-lit 6s ease-out both}
+/* The sway. Without it a riser is on a wire, and the eye reads the whole layer
+   as a machine — the same failure as a tile with a findable period, one axis
+   over. alternate, so it turns back rather than snapping to its start. */
+.l-drift-in{display:block;will-change:transform;
+  animation:l-drift-sway var(--sway) ease-in-out var(--sway-delay) infinite alternate}
+@keyframes l-drift-sway{
+  from{transform:translate3d(calc(var(--sway-px) * -1),0,0)}
+  to{transform:translate3d(var(--sway-px),0,0)}}
+
+/* Just-arrived. Brighter for one rise, then it is one of the others. A filter,
+   so it composites with both transforms instead of fighting either for one. */
+.l-drift-msg.is-fresh{animation:l-drift-up var(--dur) linear var(--delay) infinite,
+  l-drift-lit 9s ease-out both}
 @keyframes l-drift-lit{
-  0%{filter:brightness(1.75) saturate(.9)}
+  0%{filter:brightness(1.8) saturate(.9)}
   100%{filter:brightness(1)}}
 
-.l-drift-name{margin-inline-start:.7em;font-size:.72em;letter-spacing:.06em;
-  opacity:.62;font-style:italic}
+.l-drift-name{display:block;margin-block-start:.24em;font-size:.72em;
+  letter-spacing:.06em;opacity:.62;font-style:italic}
 
 /* Off this screen the water is still there and still costing frames. Paused,
    it costs nothing — and because the animations keep their position, coming
    back does not restart the sea. */
-.l-three:not(.is-in) .l-drift-msg{animation-play-state:paused}
+.l-three:not(.is-in) .l-drift-msg,
+.l-three:not(.is-in) .l-drift-in{animation-play-state:paused}
 
 /* ---- the composer ---- */
 .l-say{position:absolute;left:0;right:0;margin-inline:auto;
@@ -592,25 +654,36 @@ export const DRIFT_CSS = `
     height:var(--water-h);overflow-y:auto;pointer-events:auto;
     display:flex;flex-direction:column;align-items:center;gap:.85em;
     padding:0 22px}
-  .l-drift-msg{position:static;animation:none;white-space:normal;text-align:center;
+  .l-drift-msg{position:static;animation:none;text-align:center;
+    inset-inline-start:auto;opacity:1;
     max-inline-size:min(620px,92vw);color:rgba(224,240,250,.86);
     font-size:clamp(15px,2vh,21px)}
-  .l-drift-msg.is-fresh{animation:none}}
+  .l-drift-msg.is-fresh{animation:none}
+  /* The sway is a transform, and animation:none freezes it at whatever the
+     from-frame says — every block offset left by its own amplitude. */
+  .l-drift-in{animation:none;transform:none}}
 
 @media (max-width:640px){
   .l-three{--water-top:20dvh;--water-h:52dvh}
-  /* Sized off the viewport WIDTH here, not the height.
-     A line is as long as its text, and the longest one allowed is 140
-     characters — at the desktop size that is about three phone screens wide, so
-     you never see a sentence, only the fragment passing the window. Coming down
-     to ~13px puts a full-length message inside two screens and a typical one
-     inside about one, which is the difference between a wall of messages and a
-     wall of moving syllables. */
-  .l-drift-msg{font-size:calc(clamp(12px,3.4vw,15px) * var(--scale))}
+  /* A riser has to be wide enough to be a paragraph and narrow enough to leave
+     room beside it. 38vw of a phone is 140px — a 140-character message would
+     come out eight lines tall and read as a column, not a scrap. So the block
+     gets most of the width here, and the starting position is scaled down to
+     match (the offset is an inline style, so the media query multiplies it
+     rather than replacing it: 0–61% becomes 0–23%, which keeps 74vw on screen). */
+  .l-drift-msg{max-inline-size:min(30ch,74vw);
+    inset-inline-start:calc(3% + var(--x) * .34);
+    font-size:calc(clamp(13px,3.6vw,16px) * var(--scale))}
+  /* Half the sway: the same swing that reads as drift on a desktop is a third
+     of a phone's width, and a block sliding that far is being blown, not adrift. */
+  .l-drift-in{animation-name:l-drift-sway-narrow}
   .l-say{gap:.6em;padding:.62em .85em}
   .l-say-name{inline-size:58px}
   /* nowrap keeps the counter and the two short errors on one line, which is
      what it is for — but the dev-only store warning is a sentence and would
      run off both edges of a phone. */
   .l-say-note{white-space:normal;padding:0 22px}}
+@keyframes l-drift-sway-narrow{
+  from{transform:translate3d(calc(var(--sway-px) * -.45),0,0)}
+  to{transform:translate3d(calc(var(--sway-px) * .45),0,0)}}
 `;

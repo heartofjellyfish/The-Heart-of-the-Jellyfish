@@ -37,7 +37,6 @@ export type Message = {
 const WALL = 200;
 
 const LIST_KEY = 'gb:msgs';
-const HIDDEN_KEY = 'gb:hidden';
 
 const URL_ = process.env.UPSTASH_REDIS_REST_URL?.replace(/\/$/, '');
 const TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -81,7 +80,6 @@ async function pipeline(cmds: (string | number)[][]): Promise<unknown[]> {
  * first thing to check when building this is how the wall moves when it is full.
  */
 const mem: Message[] = [];
-const memHidden = new Set<string>();
 
 /* ---- the store ---------------------------------------------------------- */
 
@@ -91,17 +89,22 @@ export function newId(now: number): string {
   return `${now}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** Newest first. `since` (ms) returns only what arrived after — the poll path. */
+/**
+ * Newest first. `since` (ms) returns only what arrived after — the poll path.
+ *
+ * **One command.** This runs on every poll from every visitor on screen three,
+ * so it is the only thing in this file whose command count matters: it is
+ * essentially the entire monthly usage of the free tier. An earlier version
+ * also read a set of hidden ids here, which doubled the bill of the hot path to
+ * serve a case that fires when Qi deletes a line of spam. Hiding now edits the
+ * list itself (see hide), and reading is a single LRANGE.
+ */
 export async function read(since = 0, limit = WALL): Promise<Message[]> {
   const n = Math.min(limit, WALL);
   let all: Message[];
-  let hidden: Set<string>;
 
   if (isPersistent()) {
-    const [raw, hid] = (await pipeline([
-      ['LRANGE', LIST_KEY, 0, WALL - 1],
-      ['SMEMBERS', HIDDEN_KEY],
-    ])) as [string[], string[]];
+    const [raw] = (await pipeline([['LRANGE', LIST_KEY, 0, WALL - 1]])) as [string[]];
     all = raw
       .map((s) => {
         try {
@@ -111,14 +114,12 @@ export async function read(since = 0, limit = WALL): Promise<Message[]> {
         }
       })
       .filter((m): m is Message => Boolean(m && m.id && typeof m.text === 'string'));
-    hidden = new Set(hid ?? []);
   } else {
     all = mem;
-    hidden = memHidden;
   }
 
   return all
-    .filter((m) => !hidden.has(m.id) && m.at > since)
+    .filter((m) => m.at > since)
     .sort((a, b) => b.at - a.at)
     .slice(0, n);
 }
@@ -141,15 +142,29 @@ export async function write(m: Message): Promise<void> {
  * Nothing here is reviewed before it appears — that is the decision, and it is
  * the right one for a wall that is supposed to feel live. But "no moderation
  * queue" and "no way to take something down" are different promises, and only
- * the first one was made. Hiding rather than deleting keeps the LIST append-only,
- * so this can never corrupt the wall; the hidden id is filtered on read.
+ * the first one was made.
+ *
+ * A read plus an LREM, because LREM matches on the exact stored string and the
+ * caller only has an id. That is the right way round: this runs when Qi deletes
+ * something, which is rare, and paying two commands here is what buys the poll
+ * — which runs constantly — its single-command read.
  */
 export async function hide(id: string): Promise<void> {
   if (!isPersistent()) {
-    memHidden.add(id);
+    const i = mem.findIndex((m) => m.id === id);
+    if (i >= 0) mem.splice(i, 1);
     return;
   }
-  await pipeline([['SADD', HIDDEN_KEY, id]]);
+  const [raw] = (await pipeline([['LRANGE', LIST_KEY, 0, WALL - 1]])) as [string[]];
+  const row = raw.find((r) => {
+    try {
+      return (JSON.parse(r) as Message).id === id;
+    } catch {
+      return false;
+    }
+  });
+  if (!row) return; // Already gone, or never there. Deleting twice is not an error.
+  await pipeline([['LREM', LIST_KEY, 1, row]]);
 }
 
 /**

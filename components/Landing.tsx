@@ -1986,31 +1986,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             <span className="l-two-cn-rule" />
           </div>
 
-          {/*
-            The same mark as the shore's, saying the same thing one screen
-            lower. It is absolutely positioned rather than laid out, and that
-            is not a style choice: screen two has to clear one window or the
-            snap drops to proximity (see [data-tall]), and a mark in the flow
-            would spend height the poem has already committed.
-
-            It is also the answer to "the poem ends on sea risen. and nothing
-            follows that" — nothing does. The mark is not a footer, it makes no
-            argument and asks for nothing; it says only that the water keeps
-            going down.
-          */}
-          <button
-            type="button"
-            className="l-down l-down-two"
-            aria-label="Down to the messages"
-            onClick={() => goTo(2)}
-          >
-            <span className="l-down-a" aria-hidden>
-              <Chevron />
-            </span>
-            <span className="l-down-b" aria-hidden>
-              <Chevron />
-            </span>
-          </button>
         </section>
 
         {/*
