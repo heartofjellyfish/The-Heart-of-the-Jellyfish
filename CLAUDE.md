@@ -410,10 +410,17 @@ at q92 — resolution is. A replacement wants to be ~3840×2160 for the same cro
 
 The painting is **Sho Peng**'s (pengsho.com), and the figure standing on the
 shore is a link to him. Nothing shows at rest. Hover or focus him and a light
-comes up behind his outline while *PAINTING BY / SHO PENG ↗* fades in on the sky in
+comes up behind his outline while *PAINTING BY / SHO PENG* fades in on the sky in
 front of his face; clicking opens the artist's site in a new tab. On touch,
 where there is no hover to find it with, the caption is simply on at .6 — the
 same answer the poem's track numbers give, for the same reason.
+
+There is no outbound arrow after the name, and the omission is deliberate: a
+mark that announces a link is UI, and that line is a signature on a painting.
+The wording carries the whole job instead — *painting **by*** — which is also
+what keeps a name set beside a man's head from reading as **his** name. **The
+figure is not the painter, and not Qi**; if that line is ever reworded, the
+`by` is the part that cannot go.
 
 **The credit is attached to him, not to the page.** That is the whole design
 argument: this site has no footer and should not grow one, and a credit badge
@@ -481,22 +488,39 @@ still catching clicks over the poem. It fades out by s = .294 and
 that takes it out of the paint, the tab order and the a11y tree together. Those
 two numbers are paired — move one and move the other.
 
-**The outline** is 108 points, ~1 kB, traced off `hero.webp` itself by
+**The outline** is 110 points, ~1 kB, traced off `hero.webp` itself by
 [scripts/trace-figure.py](scripts/trace-figure.py) — colour segmentation the
 painting happens to make easy (sky is the only thing here with more blue than
 red; sand the only thing both warm and not skin, *and only below the horizon* —
 applied to the whole frame that rule also ate the shadow under his brow), then a
 Moore-neighbour boundary walk and Douglas-Peucker.
 
-Both of that rule's thresholds were wrong once, and in opposite directions, which
-is worth knowing before touching either. The horizon guard is what keeps his brow
-shadow. The `R-B > 30` is what keeps the **contact shadow under his heel** on the
-sand's side of the line: it started at 45 on the reasoning that plain sand is
-50–75 and his clothes are 17–22, but the shadow he casts is sand at 43 with a
-floor of 32, and being neither warm enough for sand nor blue enough for sky it
-came out as *him* — a tab of shadow growing off the back of his foot, invisible
-until the glow traced it. **The gap that decides this rule is clothes-to-shaded-
-sand, 22 to 32, not clothes-to-sand.** A cut-out PNG would have cost
+**Every rule in it needed a second axis, and both times the missing one was
+brightness.** Colour alone put a tab of sand on the back of his heel and shaved
+the point off his fringe, and neither showed until the glow traced them:
+
+- **Sand is warm *and* not skin**, but only below the horizon — applied to the
+  whole frame that rule also ate the shadow under his brow. Its warmth floor is
+  `R-B > 30`, not the 45 it started at: plain sand is 50–75 and his clothes
+  17–22, so 45 looked like slack in a wide gap, but the shadow *he casts* is
+  still sand at 43 with a floor of 32. Too cool to be ground, too warm to be
+  sky, and so by elimination him. **The gap that decides it is clothes-to-
+  shaded-sand, 22 to 32 — not clothes-to-sand.**
+- **Sky is cool *and* bright.** `R-B < -35` is right about ordinary sky and
+  wrong about the tip of his fringe, which is painted a blue-black: R-B −13 to
+  −70, indistinguishable from sky on colour and nothing like it on value. The
+  floor at `V > 140` costs nothing — across 32,292 pixels of open sky in this
+  frame not one is darker than 140, and the fringe tip runs 53–120.
+
+**And the opening is a vertical line, not a square** (`open_v`). What it has to
+remove is the horizon seam — rows 580–585, a six-row band of sky-to-sand blend
+that is neither and so comes out as figure right across the frame; a vertical
+erosion of radius 3 deletes any horizontal band six rows or thinner and a body
+700 rows tall does not notice. A *square* opening of the same radius also
+deletes anything narrower than the kernel in **either** direction, and the
+fringe comes to a point: 38 pixels, gone, and with them the only thing telling
+the glow where the hair ended. It read on the page as a band of light cutting
+straight through his hair. A cut-out PNG would have cost
 ~25× that and bought a mask with no hit area. **Replacing the painting makes the
 path silently wrong** — it will still draw and still take clicks, just not on
 anybody. Re-run the script.

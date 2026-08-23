@@ -162,7 +162,7 @@ const HERO_IMAGE = '/images/hero.webp';
  * ART_W x ART_H and land exactly on him at any size. It came out of a colour
  * segmentation the painting happens to make easy — sky is the only thing here
  * with more blue than red, sand the only thing both warm and not skin — then a
- * Moore-neighbour boundary walk and Douglas-Peucker down to 108 points
+ * Moore-neighbour boundary walk and Douglas-Peucker down to 110 points
  * (`scripts/trace-figure.py`). 1 kB, versus ~25 kB for a cut-out PNG that would
  * have bought a mask and no hit area.
  *
@@ -172,7 +172,7 @@ const HERO_IMAGE = '/images/hero.webp';
 const ART_W = 1672;
 const ART_H = 941;
 const FIGURE_PATH =
-  'M1216,130L1234,130L1252,138L1264,150L1276,176L1299,206L1309,214L1321,218L1328,225L1335,226L1346,232L1357,243L1365,262L1371,284L1375,321L1379,339L1379,350L1385,393L1386,432L1382,455L1377,465L1378,503L1375,538L1371,550L1367,555L1367,609L1365,617L1367,625L1367,713L1369,721L1369,741L1371,744L1371,754L1370,764L1357,774L1357,787L1355,791L1358,813L1363,819L1363,830L1358,837L1350,838L1328,847L1307,853L1272,851L1270,849L1269,840L1286,832L1292,831L1301,825L1312,824L1315,821L1317,814L1314,810L1297,809L1288,813L1248,813L1243,809L1244,802L1273,795L1292,788L1303,779L1308,770L1309,761L1313,760L1316,755L1312,744L1297,734L1287,711L1280,686L1272,645L1265,625L1259,574L1258,544L1253,538L1243,531L1241,520L1241,510L1246,502L1252,486L1254,447L1253,432L1255,427L1254,392L1251,380L1249,314L1256,286L1262,276L1264,265L1270,255L1270,252L1262,245L1259,245L1250,251L1241,251L1235,246L1224,244L1219,239L1212,239L1210,237L1208,223L1197,215L1191,201L1188,198L1177,198L1177,169L1188,148L1198,136Z';
+  'M1220,129L1238,131L1254,139L1269,158L1270,164L1283,187L1299,206L1309,214L1321,218L1328,225L1335,226L1346,232L1357,243L1365,262L1371,284L1371,293L1383,371L1386,432L1382,455L1377,465L1377,519L1375,526L1375,538L1371,550L1367,555L1367,609L1365,614L1367,625L1367,713L1369,721L1369,741L1371,744L1371,754L1370,764L1357,775L1357,787L1355,791L1358,813L1363,819L1363,830L1358,837L1353,839L1348,839L1322,849L1300,854L1273,852L1270,849L1269,840L1282,833L1292,831L1298,826L1312,822L1317,814L1314,810L1297,809L1288,813L1251,814L1243,809L1244,802L1250,801L1253,798L1266,797L1276,794L1291,788L1302,780L1308,770L1310,749L1312,744L1297,734L1287,711L1280,686L1272,645L1265,625L1259,574L1258,544L1253,538L1243,531L1241,520L1241,510L1246,502L1252,486L1254,447L1253,432L1255,427L1254,392L1251,380L1249,314L1256,286L1262,276L1264,265L1270,255L1270,252L1262,245L1259,245L1250,251L1241,251L1235,246L1224,244L1219,239L1212,239L1210,237L1208,223L1197,215L1191,201L1186,198L1181,205L1177,199L1177,169L1187,149L1198,136Z';
 
 /** Whose painting it is. */
 const ARTIST = { name: 'Sho Peng', href: 'https://pengsho.com' };
@@ -2149,12 +2149,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           </svg>
           <span className="l-art-cap">
             <span className="l-art-cap-eyebrow">PAINTING BY</span>
-            <span className="l-art-cap-name">
-              {ARTIST.name}
-              <svg className="l-art-out" viewBox="0 0 10 10" aria-hidden>
-                <path d="M2.2 7.8L7.8 2.2M3.6 2.2h4.2v4.2" />
-              </svg>
-            </span>
+            <span className="l-art-cap-name">{ARTIST.name}</span>
           </span>
         </a>
       </div>
@@ -3251,15 +3246,15 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-art-cap-eyebrow{display:block;font-size:9.5px;letter-spacing:.34em;
   opacity:.66;margin-bottom:5px;
   text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4)}
+/* No outbound arrow. It was drawn rather than typed, for the reason the play
+   and pause marks are (U+2197 carries emoji presentation by default on iOS and
+   would arrive as a colour cartoon that ignores currentColor) -- but the reason
+   it is gone is not that one. It is Qi's call and the right one: a mark that
+   announces a link is UI, and this line is a signature on a painting. The
+   cursor and the browser's own status bar already say where it goes, to anyone
+   who is close enough to be about to click. */
 .l-art-cap-name{display:block;font-size:13px;letter-spacing:.2em;
-  display:inline-flex;align-items:center;gap:7px;
   text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4)}
-/* Drawn, not typed. U+2197 carries emoji presentation by default on iOS and
-   would arrive as a colour cartoon that ignores currentColor -- same trap the
-   play and pause marks are drawn to avoid. */
-.l-art-out{width:9px;height:9px;flex:none;opacity:.75;
-  fill:none;stroke:currentColor;stroke-width:1.1;
-  stroke-linecap:round;stroke-linejoin:round}
 /* A ring around a 700px-tall silhouette is not a focus ring, so the keyboard
    gets the same answer the mouse does -- the glow and the caption above -- and
    the outline is suppressed rather than drawn around the whole rectangle. */

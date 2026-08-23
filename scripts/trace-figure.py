@@ -32,9 +32,14 @@ EPSILON = 1.2          # Douglas-Peucker tolerance, in painting pixels
 def mask(a):
     R, G, B = a[..., 0], a[..., 1], a[..., 2]
     RB, RG = R - B, R - G
-    # Sky measures -71..-86 across this frame; hair in shadow reads bluish but
-    # only to about -30, so the line goes between them rather than at zero.
-    sky = RB < -35
+    V = a.max(axis=2)
+    # Cool AND bright. -35 alone is right about ordinary sky, which measures
+    # -71..-86 here, and wrong about the tip of his fringe, which is painted a
+    # blue-black: RB -13..-70, indistinguishable from sky on colour and nothing
+    # like it on value. The brightness floor costs nothing to add -- across
+    # 32,292 pixels of open sky in this frame, not one is darker than 140, and
+    # the fringe tip runs 53..120.
+    sky = (RB < -35) & (V > 140)
     below = np.zeros(RB.shape, bool)
     below[HORIZON:, :] = True
     # 30, not 45. Plain sand sits at R-B 50..75 and his clothes at 17..22, so
@@ -51,12 +56,49 @@ def mask(a):
     return fig & keep
 
 
+def shift_v(f, d):
+    """f moved d rows down (negative = up), with zeros shifted in."""
+    out = np.zeros_like(f)
+    if d > 0:
+        out[d:, :] = f[:-d, :]
+    elif d < 0:
+        out[:d, :] = f[-d:, :]
+    else:
+        out = f.copy()
+    return out
+
+
+def open_v(f, r):
+    """Opening with a vertical line, not a square.
+
+    The thing this has to remove is the horizon seam: rows 580-585, a six-row
+    band of sky-to-sand blend that is warm enough not to be sky and cool enough
+    not to be sand, and so comes out as figure right across the frame. A
+    vertical erosion of radius 3 deletes any horizontal band six rows or
+    thinner, and the body -- 700 rows tall -- does not notice.
+
+    It has to be a line and not a square, and that is the whole reason this
+    function exists. A square opening also deletes anything *narrower* than the
+    kernel in either direction, and the tip of his fringe is a wedge that comes
+    to a point: 38 pixels, gone, and with them the only thing telling the glow
+    where the hair ends. It read as a band of light cutting through his hair.
+    A vertical line erodes the wedge from above and below, which a wedge that
+    long survives.
+    """
+    e = f.copy()
+    for d in range(1, r + 1):
+        e &= shift_v(f, d) & shift_v(f, -d)
+    o = e.copy()
+    for d in range(1, r + 1):
+        o |= shift_v(e, d) | shift_v(e, -d)
+    return o
+
+
 def clean(f):
+    f = open_v(f, 3)
+    # Closing seals the hairline gaps the colour rule leaves at the waistband.
+    # Square is fine here: closing fills concavities, it does not shave points.
     im = Image.fromarray((f * 255).astype('uint8'))
-    # Opening removes the horizon seam -- a 3-5px band that is a blend of sky
-    # and sand and so neither -- without touching a body whose thinnest part is
-    # a ~15px wrist. Closing then seals the hairline gaps at the waistband.
-    im = im.filter(ImageFilter.MinFilter(7)).filter(ImageFilter.MaxFilter(7))
     im = im.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.MinFilter(5))
     f = np.asarray(im) > 127
 
