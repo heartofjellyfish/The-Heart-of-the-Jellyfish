@@ -20,6 +20,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { JellyMark, JELLY_MARK_CSS } from './JellyMark';
+import { Drift, DRIFT_CSS } from './Drift';
 
 /**
  * The album *is* the poem — ten titles that read straight through. Punctuation
@@ -1027,6 +1028,10 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    * would be an absurd price for a backdrop.
    */
   const [atTwo, setAtTwo] = useState(false);
+  /* Screen three, the drift. Its own flag rather than a range check on atTwo,
+     because it gates a poll: the difference between "past the shore" and
+     "actually down here" is a request every four seconds. */
+  const [atThree, setAtThree] = useState(false);
   /**
    * True when the two screens do not add up to exactly two screens — i.e. the
    * tracklist is taller than the window it is in. Measured rather than guessed
@@ -1102,9 +1107,18 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       const s = Math.min(1, Math.max(0, sc.scrollTop / h));
       root.style.setProperty('--s', s.toFixed(4));
       setAtTwo(s > 0.3);
-      // Two screens should measure two screens. Anything over is the tracklist
-      // spilling, and the snap has to give way — see .landing[data-tall].
-      setTall(sc.scrollHeight > h * 2 + 2);
+      /* The second screen height, on its own axis. --s stops at 1 because the
+         descent it drives — the veil, the parallax, the light — is finished by
+         the time the poem is on screen; there is nothing left for it to say
+         about the floor. Screen three gets its own 0..1 rather than stretching
+         --s to 0..2, which would have silently rescaled every layer that reads
+         it. */
+      const s3 = Math.min(1, Math.max(0, sc.scrollTop / h - 1));
+      root.style.setProperty('--s3', s3.toFixed(4));
+      setAtThree(s3 > 0.3);
+      // Three screens should measure three screens. Anything over is the
+      // tracklist spilling, and the snap has to give way — see [data-tall].
+      setTall(sc.scrollHeight > h * 3 + 2);
     };
     read();
     sc.addEventListener('scroll', read, { passive: true });
@@ -1125,7 +1139,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    * visitor has asked for less motion — in which case a page that animates its
    * way down is exactly what they said no to.
    */
-  const goTo = useCallback((screen: 0 | 1) => {
+  const goTo = useCallback((screen: 0 | 1 | 2) => {
     const sc = scrollRef.current;
     if (!sc) return;
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -1479,6 +1493,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
          events back once it is actually visible; `data-bar` lifts the arrow and
          screen two's footer clear of the player when there is one. */
       data-two={atTwo ? '' : undefined}
+      data-three={atThree ? '' : undefined}
       data-bar={barOn ? '' : undefined}
       data-tall={tall ? '' : undefined}
       style={
@@ -1504,7 +1519,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         } as React.CSSProperties
       }
     >
-      <style dangerouslySetInnerHTML={{ __html: LANDING_CSS + JELLY_MARK_CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: LANDING_CSS + JELLY_MARK_CSS + DRIFT_CSS }} />
 
       {/*
         The two filters that do the relief. Same construction, one difference:
@@ -1970,7 +1985,40 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             <span className="l-two-cn-text">水母之心</span>
             <span className="l-two-cn-rule" />
           </div>
+
+          {/*
+            The same mark as the shore's, saying the same thing one screen
+            lower. It is absolutely positioned rather than laid out, and that
+            is not a style choice: screen two has to clear one window or the
+            snap drops to proximity (see [data-tall]), and a mark in the flow
+            would spend height the poem has already committed.
+
+            It is also the answer to "the poem ends on sea risen. and nothing
+            follows that" — nothing does. The mark is not a footer, it makes no
+            argument and asks for nothing; it says only that the water keeps
+            going down.
+          */}
+          <button
+            type="button"
+            className="l-down l-down-two"
+            aria-label="Down to the messages"
+            onClick={() => goTo(2)}
+          >
+            <span className="l-down-a" aria-hidden>
+              <Chevron />
+            </span>
+            <span className="l-down-b" aria-hidden>
+              <Chevron />
+            </span>
+          </button>
         </section>
+
+        {/*
+          Screen three. Everything it needs is its own — the poll, the water,
+          the composer — so it is one import and one boolean, and the rest of
+          this file does not know what is on it.
+        */}
+        <Drift active={atThree} />
       </div>
 
       {/*

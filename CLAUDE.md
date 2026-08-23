@@ -35,27 +35,31 @@ Constants live at the top of OceanScene: `SURFACE_Y`, `JELLY_Y`, `ABYSS_Y`, `WRE
 - `/descent?focus=heart` — locks at d=0.55
 - `/descent?focus=abyss` — locks at d=0.92
 - `?tweak=1` — shows leva panel
-- `/` — the two-screen front page (see below); shares no code with the above
+- `/` — the three-screen front page (see below); shares no code with the above
 
-## The front page (`/`) — two screens, one descent
+## The front page (`/`) — three screens, one descent
 
-*(rebuilt from one screen to two on 2026-08-22)*
+*(rebuilt from one screen to two on 2026-08-22; the floor was added 2026-08-23)*
 
-`/` is two screens and nothing else: the shore, and the tracklist under water. The
+`/` is three screens: the shore, the tracklist under water, and the floor where
+visitors' messages drift. The
 document itself never scrolls — `html, body { overflow: hidden }`, the root is
-`position: fixed`, and inside it **one fixed scroller** (`.l-scroll`) holds both
-screens. Everything that must hold still while the type moves — the painting, the
+`position: fixed`, and inside it **one fixed scroller** (`.l-scroll`) holds all
+three screens. Everything that must hold still while the type moves — the painting, the
 nav, the player — is a sibling of that scroller, fixed to the window.
 
 [components/Landing.tsx](components/Landing.tsx) is the whole thing — markup plus a
 `LANDING_CSS` string at the bottom. Layers, back to front: the stage (painting,
-scrim, vignette, and the four water layers over them), the scroller with its two
+scrim, vignette, and the four water layers over them), the scroller with its three
 screens, the nav, the player, and the panel.
 
 ### The descent is one number
 
 `--s` is the scroll position over one screen height, clamped to 0..1: **0 on the
-shore, 1 in the water.** It is written straight to `.landing` as a custom property
+shore, 1 in the water.** Screen three has its own **`--s3`**, on the same scale,
+one screen lower. It is a second variable rather than stretching `--s` to 0..2
+because `--s` describes a descent that is *finished* once the poem is on screen
+— rescaling it would have silently retuned every layer that reads it. It is written straight to `.landing` as a custom property
 by the scroll effect, and *everything* about the transition reads it — the veil's
 opacity, the parallax and blur on the painting, the light from the surface, the
 light shafts, the drift, screen one fading out, the arrow fading out, the wordmark
@@ -222,6 +226,105 @@ holding each at its own peak instead. A still sky, not a dead one.
 Whether they are stars seen up through the surface or something alive at that
 depth is left open, and should stay open. Both readings are the record.
 
+### Screen three — the drift (2026-08-23)
+
+*(Qi's brief: 一个实时的弹幕之类的聊天室, 不用审核 — a live danmaku, no moderation)*
+
+The floor of the descent is a guestbook, and the whole design question was what
+shape a guestbook takes on **this** page. A list of dated entries is a comments
+section wearing the album's colours. What is there instead is the album's last
+frame taken literally: a world without us, with small lights still moving in the
+dark. Every message drifts right-to-left across the deep at its own speed and
+brightness, and there is one input at the bottom of the screen.
+
+Everything lives in [components/Drift.tsx](components/Drift.tsx) — markup, hook
+and a `DRIFT_CSS` string, the same shape as Landing. Landing knows two things
+about it: one import, and one boolean.
+
+**The three decisions worth keeping**, each against an obvious alternative:
+
+- **Polling, not a socket.** A line is in the water for ~35 seconds, so a
+  4-second poll lands inside the time it takes one message to cross a third of
+  the screen — nobody can perceive the difference from a WebSocket. What they
+  *would* perceive is the cost: a socket on Vercel means either a function
+  billed for the length of the connection or a second vendor with an SDK in the
+  bundle. The poll is gated on being on this screen, sleeps on a hidden tab, and
+  backs off to 12s and then 25s as the sea goes quiet. **The realtime feel comes
+  from how long a message stays visible, not from how fast it arrives.**
+- **One CSS animation per message, and no rAF.** Each line is an absolutely
+  positioned `translate3d` keyframe the compositor owns. Sixty cost about what
+  one costs, and the whole layer pauses (`animation-play-state`) the moment you
+  scroll off — same rule as the shafts and the stars: *anything animating on
+  this page has to be promotable and cheap.*
+- **History arrives mid-flight, via a negative `animation-delay`.** Without it
+  the sea is empty for thirty seconds after you land and then everything appears
+  at the right edge in a clump. Lane, speed, size, brightness and starting phase
+  are all derived from a hash of the message id, so nothing is stored per
+  message and every visitor sees the same water.
+
+**"Fresh" is not "near the top of the list."** Only messages that arrive while
+someone is watching swim in from the edge lit; the first poll's worth is
+absorbed as history. The flag flips on the first *completed* poll rather than
+the first one that brings something — an empty wall answers the first poll with
+nothing, and the very first message anyone ever leaves has to be the one that
+glows.
+
+**Unmoderated is a decision about review, not about defence.** Nothing is held
+for approval — that is what makes it feel like a room — and
+[app/api/guestbook/route.ts](app/api/guestbook/route.ts) is entirely defence
+instead: a honeypot and a dwell timer (both answering 200 with a decoy, because
+a bot told it failed learns to pass), 5/min and 40/hour per hashed IP, a 140
+character cap, and control/bidi characters stripped. Deliberately **no CAPTCHA**
+— it taxes every honest visitor against an attack nobody has made. If the wall
+is ever actually hit, Turnstile in front of the POST is one env var and ~10
+lines, and it belongs *then*.
+
+The undo Qi keeps is `DELETE /api/guestbook?id=…` with `GUESTBOOK_ADMIN_TOKEN`
+in a header — hide, not delete, so the list stays append-only. With the token
+unset the route 404s: an unconfigured admin door should not announce itself.
+
+**Storage is Upstash Redis over its REST API, which is why there is no new
+dependency.** Upstash speaks HTTP, so the store is a `fetch` — no client, no
+pool, no cold-start handshake, nothing in the browser bundle. Set
+`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`; with them unset the
+store falls back to process memory so the screen is fully playable locally with
+no account anywhere, and the UI says so on screen rather than pretending. That
+fallback is **not** a production mode — every serverless instance would keep its
+own wall.
+
+**Two things this screen taught the rest of the page:**
+
+- **`l-in` ends on `transform: none` with fill-mode `both`, so it owns the
+  property forever.** The composer was centred with `translateX(-50%)` and
+  jumped a half-width to the right the instant its entrance finished. Anything
+  on this page that is both animated and positioned has to be positioned
+  *without* transform — the composer is centred by `left:0;right:0;margin-inline:auto`.
+  Same family of trap as `l-down`'s `backwards`-not-`both`.
+- **Enter is handled explicitly.** A form with a submit button is supposed to
+  submit on Enter, and implicit submission is the browser's behaviour rather
+  than the form's — the first thing a wrapper or an automated key event fails to
+  reproduce. On the one control on this site that is a chat box, that is not a
+  quirk worth leaving to the platform. The handler checks `isComposing`, because
+  an IME's Enter commits the candidate and swallowing it would send 拼音.
+
+**The Chinese sits under the title, not vertically in the right margin.** A
+hanging 深海留言 to match 水母之心 was built and taken out for one reason: the
+poem never reaches its own margin, so nothing crosses it — but every line in
+this water crosses the full width, so the mark spent half its life with a
+stranger's sentence running through it. It read as a glitch, not as ceremony.
+
+**On a phone the type is sized off the viewport width, not its height.** A
+140-character line at the desktop size is about three phone screens wide, so you
+never see a sentence, only the fragment passing the window. At ~13px a full
+message fits inside two screens and a typical one inside about one — the
+difference between a wall of messages and a wall of moving syllables.
+
+Under `prefers-reduced-motion` the drift becomes what it always was underneath:
+a still, centred, newest-first column. The motion is the presentation, not the
+content, so nothing is lost. (The global `.landing *{animation:none}` would
+otherwise strand every line at `translate3d(0)` — flush left, stacked on top of
+each other, which is exactly what it looks like when that rule does not land.)
+
 ### Snap, and the one thing that can trap a reader
 
 `scroll-snap-type: y mandatory` is the whole feeling of "two pages". It is also the
@@ -230,7 +333,7 @@ position at its own bottom, so the scroller keeps pulling back and the tail of t
 poem becomes unreachable.
 
 So it gives way — **on a measurement, not on a breakpoint.** The scroll effect sets
-`data-tall` when the two screens measure more than two screens, and that switches
+`data-tall` when the three screens measure more than three screens, and that switches
 the snap to `proximity`. What makes screen two overflow is how many of the ten lines
 had to turn, which depends on the width, the height, which font finished loading and
 whether the player is up; no media query knows all four. (The effect re-runs on

@@ -25,11 +25,28 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
+### Environment
+
+Everything runs without any of these; each one turns on a feature that is
+otherwise off, and off is always the honest state rather than a silent failure.
+
+| Variable | What it turns on |
+|---|---|
+| `MAILERLITE_API_KEY` | The mailing list. Unset, `/api/subscribe` 503s and the form says so |
+| `MAILERLITE_GROUP_ID` | Tags new subscribers into a group, so the list can be split later |
+| `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | The guestbook's store. Unset, it falls back to process memory — fine on a laptop, **not** a production mode, and screen three says so on screen |
+| `GUESTBOOK_ADMIN_TOKEN` | `DELETE /api/guestbook?id=…` (send it as `x-guestbook-token`). Unset, that route 404s |
+| `GUESTBOOK_SALT` | Salts the hashed IP used for guestbook rate limiting |
+
+Upstash is reached over its REST API, so there is **no client library** — the
+free tier's URL and token are the whole setup, and nothing lands in the browser
+bundle.
+
 ## Routes
 
 | URL | What it shows |
 |---|---|
-| `/` | **The public site.** Two screens: the shore painting with the album over it, then the tracklist as a poem under water. The mailing list opens as a panel over either |
+| `/` | **The public site.** Three screens: the shore painting with the album over it, the tracklist as a poem under water, and the floor where visitors' messages drift. The mailing list opens as a panel over any of them |
 | `/descent` | The R3F 3D descent (real water, real GLB jellyfish, shipwreck). Was `/` until the 2026-07-27 launch |
 | `/descent?tweak=1` | Same, with Leva sliders top-right for live sunset / sky / water / lights tuning |
 | `/descent?focus=heart` | Locks depth at frame VI (the jellyfish heart). No poem overlay |
