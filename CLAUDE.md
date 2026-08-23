@@ -234,8 +234,18 @@ The floor of the descent is a guestbook, and the whole design question was what
 shape a guestbook takes on **this** page. A list of dated entries is a comments
 section wearing the album's colours. What is there instead is the album's last
 frame taken literally: a world without us, with small lights still moving in the
-dark. Every message drifts right-to-left across the deep at its own speed and
-brightness, and there is one input at the bottom of the screen.
+dark. Every message **rises** — off the floor, out through the surface — at its
+own speed and brightness, and there is one input at the bottom of the screen.
+
+**Sideways was built first and was wrong twice over**, which is worth keeping
+because it is the obvious way to build a danmaku. It is the motion of a stock
+ticker; and it forces every message onto one line, so a 140-character one is
+about three phone screens wide and can only ever be read as the fragment
+passing the window. Rising fixes both, and buys a third thing: a riser is a
+**block**, not a line. It wraps to two or three short lines and holds together
+as an object — a scrap of paper going up — which is why it can be read while it
+moves. Rising is also the site's own direction run backwards, for the one thing
+on the page that belongs to someone else.
 
 Everything lives in [components/Drift.tsx](components/Drift.tsx) — markup, hook
 and a `DRIFT_CSS` string, the same shape as Landing. Landing knows two things
@@ -243,24 +253,45 @@ about it: one import, and one boolean.
 
 **The three decisions worth keeping**, each against an obvious alternative:
 
-- **Polling, not a socket.** A line is in the water for ~35 seconds, so a
-  4-second poll lands inside the time it takes one message to cross a third of
-  the screen — nobody can perceive the difference from a WebSocket. What they
-  *would* perceive is the cost: a socket on Vercel means either a function
-  billed for the length of the connection or a second vendor with an SDK in the
-  bundle. The poll is gated on being on this screen, sleeps on a hidden tab, and
-  backs off to 12s and then 25s as the sea goes quiet. **The realtime feel comes
-  from how long a message stays visible, not from how fast it arrives.**
+- **Polling, not a socket.** A message takes 42–76 seconds to rise, so a
+  6-second poll lands well inside the time anything is visible — nobody can
+  perceive the difference from a WebSocket. What they *would* perceive is the
+  cost: a socket on Vercel means either a function billed for the length of the
+  connection or a second vendor with an SDK in the bundle. The poll is gated on
+  being on this screen, sleeps on a hidden tab, and backs off to 15s and then
+  30s as the sea goes quiet. **The realtime feel comes from how long a message
+  stays visible, not from how fast it arrives** — which is also why the poll
+  interval is the cheapest knob there is on the store's monthly bill.
 - **One CSS animation per message, and no rAF.** Each line is an absolutely
   positioned `translate3d` keyframe the compositor owns. Sixty cost about what
   one costs, and the whole layer pauses (`animation-play-state`) the moment you
   scroll off — same rule as the shafts and the stars: *anything animating on
   this page has to be promotable and cheap.*
 - **History arrives mid-flight, via a negative `animation-delay`.** Without it
-  the sea is empty for thirty seconds after you land and then everything appears
-  at the right edge in a clump. Lane, speed, size, brightness and starting phase
+  the water is empty for a minute after you land and then everything appears at
+  the floor in a clump. Column, speed, size, brightness, sway and starting phase
   are all derived from a hash of the message id, so nothing is stored per
   message and every visitor sees the same water.
+
+**The randomness is three sources, not one**, and that is deliberate: a uniform
+`hash % 100` reads *more* regular than this does, because a uniform scatter has
+no clumps and real water does. A riser gets a coarse column, a per-message
+offset, and a slow horizontal **sway** on a near-prime period that is not a
+fraction of its rise — the same trick the light shafts use, so no message ever
+repeats the same path twice on the way up. Without the sway a riser is on a
+wire and the whole layer reads as a machine. The sway lives on an inner
+`<span>`: the rise and the sway are two transforms that have to compose, and one
+element can only run one.
+
+**Both ends fade inside the keyframe, not under a mask.** A mask forces the
+whole viewport-sized subtree into one render surface and re-rasters it every
+frame — the exact cost the glimmers were removed for. Four opacity stops cost
+nothing. Two details in them: the middle stops fade *to* `var(--dim)` rather
+than to 1, or the depth parallax would be erased; and the fade completes at 82%
+of the travel rather than at 100%, well before the top. A message still lit when
+it reaches the upper fifth crosses the title and then the nav, and a stranger's
+sentence sliding through the album's own type reads as a bug rather than as
+weather.
 
 **"Fresh" is not "near the top of the list."** Only messages that arrive while
 someone is watching swim in from the edge lit; the first poll's worth is
@@ -285,7 +316,16 @@ unset the route 404s: an unconfigured admin door should not announce itself.
 
 **Storage is Upstash Redis over its REST API, which is why there is no new
 dependency.** Upstash speaks HTTP, so the store is a `fetch` — no client, no
-pool, no cold-start handshake, nothing in the browser bundle. Set
+pool, no cold-start handshake, nothing in the browser bundle. Its free tier is
+500K commands a month, needs no card, and rate-limits rather than billing when
+exceeded — so **the design constraint is command count, not money.** That is why
+`read()` is exactly one `LRANGE`: it runs on every poll from every visitor on
+this screen and is therefore essentially the entire monthly usage. An earlier
+version also read a set of hidden ids alongside it, doubling the bill of the hot
+path to serve a case that fires when Qi deletes spam; hiding does an `LREM`
+now — two commands, rarely. **Anything added to the read path is multiplied by
+every visitor-second on this screen; put it in the write path if there is any
+choice.** Set
 `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`; with them unset the
 store falls back to process memory so the screen is fully playable locally with
 no account anywhere, and the UI says so on screen rather than pretending. That
@@ -313,11 +353,19 @@ poem never reaches its own margin, so nothing crosses it — but every line in
 this water crosses the full width, so the mark spent half its life with a
 stranger's sentence running through it. It read as a glitch, not as ceremony.
 
-**On a phone the type is sized off the viewport width, not its height.** A
-140-character line at the desktop size is about three phone screens wide, so you
-never see a sentence, only the fragment passing the window. At ~13px a full
-message fits inside two screens and a typical one inside about one — the
-difference between a wall of messages and a wall of moving syllables.
+**On a phone the riser gets most of the width, and its starting offset is
+scaled to match.** 30vw of a phone is 112px, and a 140-character message in that
+column comes out eight lines tall — a column, not a scrap. The block goes to
+`min(30ch, 74vw)` there, and because the offset is an inline style the media
+query *multiplies* it rather than replacing it, taking 0–68% down to 3–26% so
+the wide block still lands on screen. The sway is halved for the same reason:
+the swing that reads as drift on a desktop is a third of a phone's width, and a
+block moving that far is being blown, not adrift.
+
+**There is no mark at the foot of the poem inviting anyone down here.** One was
+built — the shore's two chevrons, one screen lower — and Qi cut it. The poem is
+the one place on this site allowed to end in nothing, and a mark set after
+`sea risen.` is still something set after it.
 
 Under `prefers-reduced-motion` the drift becomes what it always was underneath:
 a still, centred, newest-first column. The motion is the presentation, not the
