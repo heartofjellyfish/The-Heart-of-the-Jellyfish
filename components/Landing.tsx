@@ -2121,20 +2121,34 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               <rect width={ART_W} height={ART_H} fill="#fff" />
               <path d={FIGURE_PATH} fill="#000" />
             </mask>
-            <path className="l-art-glow" d={FIGURE_PATH} mask="url(#l-art-outside)" />
             {/*
-              And a tighter one inside it, because half of him is standing on
-              sand. A wide soft light reads beautifully against the sky and does
-              nothing at all against a ground already nearly as bright as the
-              light, so the legs and the feet would simply not answer. A narrow
-              rim carries enough density per pixel to show on either. The two
-              together are one falloff, not two effects.
+              One mask on the group, and one opacity animated on the group --
+              not two of each, one per path. A mask forces its subtree into its
+              own render surface, so two masked paths are two surfaces to
+              rasterise where one will do, and two independently animated
+              properties where one will do. The paths carry their relative
+              strengths as static opacities and the group carries the fade, so
+              turning the light up and down is a single alpha on a single
+              surface. Same reason the star field on screen two has no mask at
+              all: on this page the cost of an effect is how many surfaces it
+              makes, not how many shapes are in it.
+
+              The second, tighter stroke is there because half of him is
+              standing on sand. A wide soft light reads beautifully against the
+              sky and does nothing at all against a ground already nearly as
+              bright as the light, so the legs and the feet would simply not
+              answer. A narrow rim carries enough density per pixel to show on
+              either. The two are one falloff, not two effects -- which is the
+              other reason they share a group.
             */}
-            <path className="l-art-rim" d={FIGURE_PATH} mask="url(#l-art-outside)" />
+            <g className="l-art-light" mask="url(#l-art-outside)">
+              <path className="l-art-glow" d={FIGURE_PATH} />
+              <path className="l-art-rim" d={FIGURE_PATH} />
+            </g>
             <path className="l-art-hit" d={FIGURE_PATH} />
           </svg>
           <span className="l-art-cap">
-            <span className="l-art-cap-eyebrow">PAINTING</span>
+            <span className="l-art-cap-eyebrow">PAINTING BY</span>
             <span className="l-art-cap-name">
               {ARTIST.name}
               <svg className="l-art-out" viewBox="0 0 10 10" aria-hidden>
@@ -3208,13 +3222,18 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    Both numbers are painting pixels, not CSS pixels: they are inside a viewBox,
    so they scale with him and no breakpoint ever has to know about them. */
 .l-art-glow{fill:none;stroke:#fff3dd;stroke-width:13;stroke-linejoin:round;
-  filter:blur(11px);opacity:0;transition:opacity .55s ease}
-.l-art:hover .l-art-glow,
-.l-art:focus-visible .l-art-glow{opacity:.78;transition-duration:.3s}
+  filter:blur(11px);opacity:.78}
 .l-art-rim{fill:none;stroke:#fff6e8;stroke-width:5;stroke-linejoin:round;
-  filter:blur(3px);opacity:0;transition:opacity .55s ease}
-.l-art:hover .l-art-rim,
-.l-art:focus-visible .l-art-rim{opacity:.62;transition-duration:.3s}
+  filter:blur(3px);opacity:.62}
+/* The only thing that moves. The two strokes above never change -- their
+   opacities are the mix between them and nothing else -- so the whole effect
+   is one alpha on one already-rasterised surface, both on hover and during the
+   breath. At rest it is 0, and a fully transparent subtree is not painted at
+   all, so the two blurs cost nothing for the 99% of the time nobody is looking
+   at him. */
+.l-art-light{opacity:0;transition:opacity .55s ease}
+.l-art:hover .l-art-light,
+.l-art:focus-visible .l-art-light{opacity:1;transition-duration:.3s}
 
 /* The caption is type and must not scale with the painting, so it is placed in
    painting coordinates and sized in px. x=1148 puts its right edge just short
@@ -3259,13 +3278,13 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
      it ends and the hover transition is silently outranked -- it would hold the
      glow at the 100% keyframe, which is 0, and the man would stop lighting up.
      Same trap as the down-mark's entrance. */
-  .l-art-glow,.l-art-rim{animation:l-art-breath 4.4s 5s ease-in-out 1 backwards}
-  .l-art:hover .l-art-glow,.l-art:hover .l-art-rim,
-  .l-art:focus-visible .l-art-glow,.l-art:focus-visible .l-art-rim{animation:none}
+  .l-art-light{animation:l-art-breath 4.4s 5s ease-in-out 1 backwards}
+  .l-art:hover .l-art-light,
+  .l-art:focus-visible .l-art-light{animation:none}
 }
 @keyframes l-art-breath{
   0%,100%{opacity:0}
-  46%{opacity:.4}
+  46%{opacity:.5}
 }
 
 /* Below 13/10 the crop takes him off the right-hand edge entirely (see the
@@ -3281,7 +3300,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    reach on. */
 @media (hover: none){
   .l-art-cap{opacity:.6;transform:none}
-  .l-art-glow,.l-art-rim{animation:none}
+  .l-art-light{animation:none}
 }
 
 /* ---- nav ---- */

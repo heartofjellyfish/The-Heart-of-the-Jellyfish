@@ -410,7 +410,7 @@ at q92 — resolution is. A replacement wants to be ~3840×2160 for the same cro
 
 The painting is **Sho Peng**'s (pengsho.com), and the figure standing on the
 shore is a link to him. Nothing shows at rest. Hover or focus him and a light
-comes up behind his outline while *PAINTING / SHO PENG ↗* fades in on the sky in
+comes up behind his outline while *PAINTING BY / SHO PENG ↗* fades in on the sky in
 front of his face; clicking opens the artist's site in a new tab. On touch,
 where there is no hover to find it with, the caption is simply on at .6 — the
 same answer the poem's track numbers give, for the same reason.
@@ -460,7 +460,20 @@ container the box above measures against.
   against the sky and does nothing at all against a ground nearly as bright as
   the light, so the legs and feet would not answer at all. A narrow rim
   (`.l-art-rim`) carries enough density per pixel to show on either. One
-  falloff, not two effects.
+  falloff, not two effects — which is also why they share a `<g>`.
+
+**One mask and one animated property, on that group.** Each stroke had its own
+mask and its own animated opacity first, and both are a cost rather than a
+style: a mask forces its subtree into its own render surface, so that was two
+surfaces to rasterise where one does, and two properties to animate where one
+does. The strokes now carry their relative strengths as static opacities (`.78`
+and `.62` — the mix between them, and nothing else) and `.l-art-light` carries
+the fade, so turning the light up and down is a single alpha on a single
+already-rasterised surface, on hover and during the breath alike. At rest that
+alpha is 0 and a fully transparent subtree is not painted, so the two blurs cost
+nothing for the whole time nobody is looking at him. **On this page the price of
+an effect is how many render surfaces it makes, not how many shapes are in it** —
+same lesson as the mask that was taken back off the star field.
 
 `opacity` alone does not un-link a link: at `--s` 1 the anchor was invisible and
 still catching clicks over the poem. It fades out by s = .294 and
