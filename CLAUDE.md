@@ -283,6 +283,30 @@ wire and the whole layer reads as a machine. The sway lives on an inner
 `<span>`: the rise and the sway are two transforms that have to compose, and one
 element can only run one.
 
+### The composer is in front, and the water goes behind it
+
+Qi's call, and it changed what the composer is allowed to be. It sits under two
+layers of its own, both inside `.l-say`'s stacking context on negative
+z-indexes, both soft to nothing at every edge:
+
+- **a pool** in the floor's own colour, which does the occluding. It needs a
+  *plateau*, not a ramp — a single ramp from the centre was measured against a
+  message parked exactly behind the composer and only reached ~.35 alpha at the
+  far end of the words, which is dimmed rather than hidden and reads worse than
+  either. The near-opaque part has to be at least as wide as the text it hides
+  things behind. Verified by placing a riser on the composer's exact
+  coordinates: it disappears completely.
+- **a dim light** over the pool, flickering. It is not a scrim laid over the
+  picture — the colour is the deep's own, so it reads as the water being denser
+  here, and water is allowed to be denser somewhere.
+
+The **geometry rule for both**: last colour stop × radius must be under 50% *on
+each axis*, because radial-gradient percentages resolve per axis. Getting that
+wrong is what made the first glow read as a banner — sized `56% 100%`, its
+vertical radius was the box's full height, so the ramp was still at ~.04 alpha
+when it hit the top and bottom edges and simply stopped. **A glow with a
+straight edge is not a glow.**
+
 ### Why two messages never sit on each other
 
 *(the brief: 可以短暂的堆叠但是要迅速分开 — brief overlap is fine, a stack is not)*
@@ -306,6 +330,20 @@ was not enough:
   twenty seconds later. That is not brief overlap, it is a stack that
   eventually resolves. Two bands apart is ~6px/s and clears in under ten
   seconds. The bands were widened at the same time (36–84s).
+- **Density is capped by viewport width, and that is the biggest lever.** About
+  one message per 80px of width, floored at 8 and capped at 16. A screen holds
+  what a screen holds: a phone is effectively *one* column, and eighteen
+  messages there measured thirteen overlapping pairs at the worst moment. No
+  amount of placement cleverness fixes that — there is nowhere for them to be.
+  Arrivals are exempt from the cap; someone who has just typed must see their
+  message. **When a field looks broken, check how many things are in it before
+  improving where they go.**
+- **The collision geometry lives in the component, not the stylesheet.** It used
+  to be a CSS override that squeezed the offsets on a phone while the JS model
+  still used desktop numbers — so the model believed the field was seven
+  spread-out columns while the screen showed one stack, and cheerfully gave
+  overlapping messages the same speed. Phones were visibly worse than desktops
+  for exactly that reason. One source of truth; the CSS places what it is given.
 - **Starting phase is chosen against the neighbours, not within the column.**
   Spreading evenly *inside* a column was the first attempt and it barely helped,
   for a reason worth remembering: **a riser is ~30% of the width and the columns
@@ -326,6 +364,11 @@ Measured over two minutes of motion with 16 messages: **none overlapping at
 load**, 26 pairs overlap at some point during the two minutes, the median one
 for **6 seconds** and the worst for 14. Nothing is permanent, which was the
 brief. Before these rules there were three pairs that never came apart at all.
+
+There are **seven** speed bands rather than five for the same reason the cap
+exists: on a phone every message is every other message's neighbour, and with
+five bands and eight messages three pairs were forced to share a speed — and a
+shared speed is a pair that never converges but also never comes apart.
 
 **How to measure it, because two obvious methods are both wrong.** A screenshot
 cannot tell a busy field from a broken one, and neither can watching — the
@@ -419,12 +462,15 @@ own wall.
 
 ### The composer
 
-Three were built and tried at `/?say=1|2|3` — a hairline, a sentence, and a
+Three were built and tried at `?say=1|2|3` — a hairline, a sentence, and a
 riser — because the first one shipped was a blurred pill with a border floating
 on an oil painting, which is the shape a chat input has on every product on the
 internet and the shape nothing else on this site has. Qi picked **3, the riser**:
 no form at all, set exactly like a message already in the water, and sending
-lets go of it. 1 and 2 stay behind the query param until it is settled.
+lets go of it. **The other two have been deleted rather than left behind a
+flag** — they never received the occlusion, the single caret or the left
+alignment, and a stale alternative is more misleading than no alternative. They
+are in the history, which is where cut work belongs.
 
 Its two faults were named immediately and they are one fault: *you cannot tell
 it is an input, and the risers go through it.* **Once messages travel upward,

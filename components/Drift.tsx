@@ -44,8 +44,46 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 export type DriftMessage = { id: string; name: string; text: string; at: number };
 
-/** How many lines can be in the water at once. Beyond this the oldest stop being drawn. */
+/*
+ * A note on the class prefix: everything here is `l-riser*`, NOT `l-drift*`.
+ *
+ * It was `l-drift`, and `.l-drift` is already taken — it is screen two's pair
+ * of slow water clouds, in LANDING_CSS. Because DRIFT_CSS is concatenated after
+ * it, this file's rules silently won: the clouds lost their z-index, and under
+ * prefers-reduced-motion they were turned into a scrolling flex column. Nothing
+ * errored and screen three looked perfect; the damage was one screen up.
+ *
+ * This page has one flat namespace shared by two large stylesheets in two
+ * files. Grep before naming.
+ */
+
+/** The buffer. Beyond this the oldest stop being held at all. */
 const IN_WATER = 60;
+
+/**
+ * How much history to put in the water, which is not the same number.
+ *
+ * A screen holds what a screen holds. On a desktop the field is seven columns
+ * wide and takes a couple of dozen risers before it stops reading as drift and
+ * starts reading as a page of text; a phone is effectively ONE column, and the
+ * same twenty-odd messages there are a queue with everything overlapping
+ * everything. Measured on a 375px screen with eighteen: thirteen pairs
+ * overlapping at the worst moment. No amount of placement cleverness fixes
+ * that — there is nowhere for them to be. The cap is the fix.
+ *
+ * Arrivals are exempt: someone who has just typed must see their message,
+ * whatever the field already holds. IN_WATER is still the ceiling.
+ *
+ * It scales with the width rather than switching at a breakpoint, because
+ * crowding does: a 768px tablet gets the desktop geometry and used to get the
+ * desktop count with it, which measured one overlap at load where 1280px
+ * measured none. Roughly one message per 80px of width, floored at eight so a
+ * phone still feels inhabited and capped at sixteen so a wide screen does not
+ * become a page of text.
+ */
+function historyCap(width: number) {
+  return Math.max(8, Math.min(16, Math.round(width / 80)));
+}
 /**
  * Columns the risers start in.
  *
@@ -79,7 +117,7 @@ const ASLEEP = 30;
  * about this hook is gated on it: a poll running behind the poem is a request
  * per visitor per four seconds buying a screen nobody is on.
  */
-function useDrift(active: boolean) {
+function useDrift(active: boolean, capacity: number) {
   const [messages, setMessages] = useState<DriftMessage[]>([]);
   const [loaded, setLoaded] = useState(false);
   /** False when the server has no store configured — the UI says so rather than lying. */
@@ -118,7 +156,14 @@ function useDrift(active: boolean) {
    * answers with the real row and this call replaces it, and then the next poll
    * must not put a third copy in the water.
    */
-  const merge = useCallback((incoming: DriftMessage[], absorb: boolean) => {
+  const merge = useCallback(
+    (all: DriftMessage[], absorb: boolean) => {
+    if (!all.length) return;
+    /* The cursor must advance past everything the server sent, including what
+       is about to be dropped for being more history than the screen can hold —
+       otherwise the next poll returns it again, forever. */
+    cursor.current = Math.max(cursor.current, ...all.map((m) => m.at));
+    const incoming = absorb ? all.slice(0, capacity) : all;
     if (!incoming.length) return;
     if (!absorb) incoming.forEach((m) => fresh.current.add(m.id));
     setMessages((prev) => {
@@ -127,8 +172,9 @@ function useDrift(active: boolean) {
       if (!fresh.length) return prev;
       return [...fresh, ...prev].sort((a, b) => b.at - a.at).slice(0, IN_WATER);
     });
-    cursor.current = Math.max(cursor.current, ...incoming.map((m) => m.at));
-  }, []);
+    },
+    [capacity],
+  );
 
   useEffect(() => {
     if (!active) return;
@@ -273,23 +319,43 @@ type Look = {
  *
  * Brief overlap is fine and unavoidable in a drift. Slow overlap is the bug.
  */
-const SPEEDS = [36, 47, 59, 71, 84];
+/* Seven, not five. On a phone the field is one column, so every message is
+   every other message's neighbour and the speed rule runs out of distinct bands
+   to hand out — with five and a cap of eight, three pairs were forced to share,
+   and a shared speed means a pair that never converges but also never comes
+   apart. Seven covers the crowded case with room to spare and costs nothing on
+   a desktop, where the three-bands-apart preference now has more to work with. */
+const SPEEDS = [34, 42, 51, 60, 70, 81, 93];
 
 /**
  * How wide a riser is, as a percentage of the viewport, for collision purposes.
  *
- * An estimate, and it has to be an over-estimate: it is the max-inline-size in
- * the stylesheet plus the sway's swing on either side, and most messages are
- * narrower than that. Guessing high costs a little variety in the speed
+ * An over-estimate on purpose: the max-inline-size in the stylesheet plus the
+ * sway's swing either side. Guessing high costs a little variety in the speed
  * assignment; guessing low puts two messages on top of each other permanently,
  * which is the thing being prevented.
  *
- * The sway is the part that is easy to forget, in the code and in the
+ * **It is per-viewport, and the geometry it describes lives here rather than in
+ * the stylesheet.** A phone gives a riser most of the width, so every message
+ * is every other message's neighbour and the whole field is effectively one
+ * column — the opposite of the desktop case. That used to be expressed as a CSS
+ * override that scaled the offset down, with the collision model still using
+ * desktop numbers: the model believed the field was seven spread-out columns
+ * while the screen showed one stack, so it cheerfully gave overlapping messages
+ * the same speed. Phones were visibly worse than desktops for exactly that
+ * reason. **One source of truth: the offset is computed here, and the CSS just
+ * places what it is given.**
+ *
+ * The sway is the other easy thing to forget, in the code and in the
  * measurement both: it is a transform on an INNER span, so it moves the text
  * without moving the <li>'s box. A collision check written against the outer
  * element is blind to it.
  */
-const BLOCK_W = 30;
+function geometry(narrow: boolean) {
+  return narrow
+    ? { block: 78, spread: 18, base: 3, jitter: 3 }
+    : { block: 30, spread: 60, base: 0, jitter: 6 };
+}
 
 /**
  * Everything about one line's motion.
@@ -307,15 +373,14 @@ const BLOCK_W = 30;
  * alongside it: slower is further, so it is also smaller and dimmer. One
  * quantity, three expressions, which is the only way the three cannot disagree.
  */
-function look(m: DriftMessage, opts: { column: number; speed: number; phase: number }): Look {
+function look(
+  m: DriftMessage,
+  opts: { column: number; speed: number; phase: number; x: number },
+): Look {
   const h = hash(m.id);
   const depth = opts.speed / (SPEEDS.length - 1); // 0 = near and quick, 1 = far and slow
   return {
-    /* Column plus a small offset. The column spreads the field across the
-       width; the offset is what stops seven columns from reading as seven
-       columns. It stays small — big enough to break the grid, not big enough to
-       undo the spacing the grid was for. */
-    x: opts.column * (60 / (COLUMNS - 1)) + (((h >>> 16) % 100) / 100) * 6,
+    x: opts.x,
     dur: SPEEDS[opts.speed],
     /* The sway is the difference between rising and being winched.
        Its period is deliberately NOT a fraction of the rise: near-primes, the
@@ -354,15 +419,16 @@ const SAY_DEFAULT: Say = 'riser';
 const SAY_BY_PARAM: Record<string, Say> = { '1': 'rule', '2': 'sentence', '3': 'riser' };
 
 export function Drift({ active }: { active: boolean }) {
-  const { messages, loaded, persistent, say, fresh } = useDrift(active);
-
-  /* Read after mount, not during render: the page is statically prerendered and
-     the query string does not exist on the server. Same reason the tuner does. */
-  const [design, setDesign] = useState<Say>(SAY_DEFAULT);
+  /* Read once, after mount — the page is statically prerendered and there is no
+     viewport on the server. A rotation does not re-cap: obeying it would mean
+     deleting messages mid-rise, and a slightly crowded phone beats a screen
+     that removes what someone is reading. */
+  const [view, setView] = useState({ narrow: false, cap: 16 });
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search).get('say');
-    if (q && SAY_BY_PARAM[q]) setDesign(SAY_BY_PARAM[q]);
+    setView({ narrow: window.innerWidth <= 640, cap: historyCap(window.innerWidth) });
   }, []);
+
+  const { messages, loaded, persistent, say, fresh } = useDrift(active, view.cap);
 
   const [name, setName] = useState('');
   const [text, setText] = useState('');
@@ -456,6 +522,15 @@ export function Drift({ active }: { active: boolean }) {
     const pending = messages.filter((m) => !layout.current.has(m.id));
 
     if (pending.length) {
+      /* Read once per batch, not per message. A rotation between batches will
+         leave earlier placements described by the old geometry; that is
+         accepted — positions are percentages and stay on screen, only the
+         neighbour model goes slightly stale, and re-deriving would make the
+         whole field jump. */
+      const geo = geometry(view.narrow);
+      const xOf = (h: number, column: number) =>
+        geo.base + column * (geo.spread / (COLUMNS - 1)) + ((h >>> 16) % 100) / 100 * geo.jitter;
+
       /* History and arrivals are laid out differently, and they have to be.
          History is a batch we can see all of at once, so it can be SPREAD —
          which is the only chance to guarantee that two messages sharing a
@@ -482,7 +557,7 @@ export function Drift({ active }: { active: boolean }) {
        * round-robin, because at that density no assignment saves it.
        */
       const neighbours = (x: number) =>
-        placed.current.filter((q) => Math.abs(q.x - x) < BLOCK_W);
+        placed.current.filter((q) => Math.abs(q.x - x) < geo.block);
 
       const pickSpeed = (x: number) => {
         const near = neighbours(x);
@@ -505,16 +580,37 @@ export function Drift({ active }: { active: boolean }) {
        * Where in its cycle a history message starts, as a fraction.
        *
        * Spreading within a column was not enough, and the measurement said so:
-       * a riser is ~26% of the width and the columns are 10% apart, so most of
+       * a riser is ~30% of the width and the columns are 10% apart, so most of
        * a message's real neighbours are in OTHER columns, and nothing was
-       * keeping it away from those. Every overlap that survived a minute was
-       * one of those pairs, placed on top of each other at load and left to
-       * drift apart on their own.
+       * keeping it away from those.
        *
-       * So the phase is chosen against whatever can actually overlap it: try
-       * sixteen positions around the cycle, keep the one furthest from every
-       * neighbour. Fraction of the cycle is the right unit — it maps directly
-       * to height on screen, whatever the speed.
+       * So: try 48 positions around the cycle, keep the one furthest from
+       * everything that can actually overlap it. Fraction of the cycle is the
+       * right unit — it maps straight to height on screen, whatever the speed.
+       *
+       * **Two cleverer objectives were built, measured, and thrown away**, and
+       * they are recorded here so nobody spends the afternoon again:
+       *
+       *   *maximise the time until the next exact coincidence* — the obvious
+       *   "don't just look good now, look good in a minute" upgrade. Far worse:
+       *   9 overlaps at load and a 46-second stack, because two messages
+       *   already sitting on top of each other are not due to coincide again
+       *   for nearly a whole relative period, so that state scores brilliantly.
+       *   Exact coincidence is not the event that matters.
+       *
+       *   *simulate ninety seconds and minimise the time spent overlapping* —
+       *   the honest version of the same idea, weighted towards the near
+       *   future. Still worse: 3 at load, 26-second worst. It optimises a total
+       *   and will happily buy a long stack later with a clean start, or the
+       *   reverse.
+       *
+       * Plain distance wins because the speed rule is already doing the
+       * future-proofing: nothing that can overlap shares a speed, and most
+       * differ by two bands or more, so every pair is guaranteed to cross
+       * rather than sit. Given that, the only thing left worth choosing is
+       * where they are *now*. **When a heuristic is already constrained into
+       * good behaviour, adding a smarter objective mostly finds new ways to
+       * satisfy it.**
        */
       const pickPhase = (x: number, seed: number) => {
         const near = neighbours(x);
@@ -528,14 +624,13 @@ export function Drift({ active }: { active: boolean }) {
         if (!near.length) return (seed % 1000) / 1000;
         let best = 0;
         let bestGap = -1;
-        for (let i = 0; i < 16; i++) {
-          const cand = i / 16;
-          const gap = Math.min(
-            ...near.map((q) => {
-              const d = Math.abs(q.at - cand);
-              return Math.min(d, 1 - d); // the cycle wraps
-            }),
-          );
+        for (let i = 0; i < 48; i++) {
+          const cand = i / 48;
+          let gap = 1;
+          for (const q of near) {
+            const d = Math.abs(q.at - cand);
+            gap = Math.min(gap, Math.min(d, 1 - d)); // the cycle wraps
+          }
           if (gap > bestGap) {
             bestGap = gap;
             best = cand;
@@ -554,7 +649,7 @@ export function Drift({ active }: { active: boolean }) {
       for (const [column, members] of byColumn) {
         columnLoad.current[column] += members.length;
         members.forEach((m) => {
-          const x = column * (60 / (COLUMNS - 1)) + ((hash(m.id) >>> 16) % 100) / 100 * 6;
+          const x = xOf(hash(m.id), column);
           const speed = pickSpeed(x);
           /* Plus a small per-message wobble, so the spacing is regular without
              being measured. Regular beats random here: random phases produce
@@ -562,7 +657,7 @@ export function Drift({ active }: { active: boolean }) {
              the pile-up is the thing being fixed. */
           const at = (pickPhase(x, hash(m.id)) + (hash(m.id) % 100) / 3200) % 1;
           placed.current.push({ x, speed, at });
-          layout.current.set(m.id, look(m, { column, speed, phase: at * SPEEDS[speed] }));
+          layout.current.set(m.id, look(m, { column, speed, phase: at * SPEEDS[speed], x }));
         });
       }
 
@@ -576,12 +671,12 @@ export function Drift({ active }: { active: boolean }) {
           if (columnLoad.current[c] < columnLoad.current[column]) column = c;
         }
         columnLoad.current[column] += 1;
-        const x = column * (60 / (COLUMNS - 1)) + ((hash(m.id) >>> 16) % 100) / 100 * 6;
+        const x = xOf(hash(m.id), column);
         const speed = pickSpeed(x);
         placed.current.push({ x, speed, at: 0 });
         // Phase 0: an arrival starts at the bottom, because watching it rise is
         // the whole reason it is not just added to a list.
-        layout.current.set(m.id, look(m, { column, speed, phase: 0 }));
+        layout.current.set(m.id, look(m, { column, speed, phase: 0, x }));
       }
     }
 
@@ -590,12 +685,11 @@ export function Drift({ active }: { active: boolean }) {
       s: layout.current.get(m.id) as Look,
       isFresh: fresh.current.has(m.id),
     }));
-  }, [messages, fresh]);
+  }, [messages, fresh, view.narrow]);
 
   return (
     <section
       className={'l-screen l-three' + (active ? ' is-in' : '')}
-      data-say={design}
       aria-label="Messages in the deep"
     >
       {/*
@@ -628,14 +722,14 @@ export function Drift({ active }: { active: boolean }) {
       {loaded && messages.length === 0 && (
         /* An empty sea with an input in it reads as broken, or as still
            loading. One line, and it is the only place the site speaks here. */
-        <p className="l-drift-none">还没有人说话</p>
+        <p className="l-risers-none">还没有人说话</p>
       )}
 
-      <ul className="l-drift" aria-live="off">
+      <ul className="l-risers" aria-live="off">
         {drawn.map(({ m, s, isFresh }) => (
           <li
             key={m.id}
-            className={'l-drift-msg' + (isFresh ? ' is-fresh' : '')}
+            className={'l-riser' + (isFresh ? ' is-fresh' : '')}
             style={
               {
                 ['--x' as string]: s.x.toFixed(2) + '%',
@@ -653,9 +747,9 @@ export function Drift({ active }: { active: boolean }) {
                 transforms that have to compose, and one element can only run
                 one. Nesting them is cheaper than a single keyframe that would
                 have to hard-code every combination of the two periods. */}
-            <span className="l-drift-in">
+            <span className="l-riser-in">
               {m.text}
-              {m.name && <span className="l-drift-name">— {m.name}</span>}
+              {m.name && <span className="l-riser-name">— {m.name}</span>}
             </span>
           </li>
         ))}
@@ -666,30 +760,17 @@ export function Drift({ active }: { active: boolean }) {
           is the part that matters for half this album's audience: an IME's
           Enter commits the candidate, and swallowing it would send 拼音.
 
-          One form, three designs. The fields, the handlers and the honeypot are
-          identical in all three — only the furniture around them and the order
-          of the two inputs change, which is the whole reason this is a data
-          attribute and not three components. */}
+    */}
       <form className="l-say" onSubmit={onSubmit} onKeyDown={onKeyDown}>
-        {design === 'sentence' && <span className="l-say-word">say</span>}
-
         <input
           className="l-say-text"
           type="text"
           value={text}
           maxLength={MAX_TEXT}
-          /* Each design's prompt is a different part of speech, because in
-             the sentence the field is INSIDE the copy: "say ___ , from ___"
-             already contains the verb, so a placeholder that repeats it reads
-             "say say something to the water". The riser has none at all — see
-             the ghost below. */
-          placeholder={
-            design === 'sentence'
-              ? 'something to the water'
-              : design === 'riser'
-                ? ''
-                : 'say something to the water…'
-          }
+          /* No placeholder: this field IS a message, and a message with grey
+             instructions inside it is not one. The prompt sits beside the caret
+             instead — see the ghost below. */
+          placeholder=""
           aria-label="Your message"
           autoComplete="off"
           enterKeyHint="send"
@@ -702,22 +783,17 @@ export function Drift({ active }: { active: boolean }) {
         {/* The riser has no placeholder of its own — it IS a message, and a
             message with grey instructions in it is not one. The prompt sits
             beside the caret instead and goes the moment anything is typed. */}
-        {/* The caret is the whole affordance in this design. Everything else
-            about a riser-shaped input says "message"; one blinking bar is what
-            says "yours". It is drawn rather than relying on the real text
-            caret, which is invisible until the field has focus — and the field
-            not looking focusable is the exact problem here. */}
-        {design === 'riser' && !text && (
+        {/* The caret is the whole affordance here. Everything else about a
+            riser-shaped input says "message"; one blinking bar is what says
+            "yours". It is drawn rather than relying on the real text caret,
+            which is invisible until the field has focus — and the field not
+            looking focusable is the exact problem. */}
+        {!text && (
           <span className="l-say-ghost" aria-hidden>
             <span className="l-say-caret" />
             say something to the water
           </span>
         )}
-
-        {design === 'sentence' && (
-          <span className="l-say-word l-say-word-tight">, from</span>
-        )}
-        {design === 'rule' && <span className="l-say-rule" aria-hidden />}
 
         <input
           className="l-say-name"
@@ -729,7 +805,7 @@ export function Drift({ active }: { active: boolean }) {
              rather than with :focus::placeholder because the aria-label is what
              actually names the field — the placeholder here is copy, not a
              label, and copy that has served its purpose can leave. */
-          placeholder={design === 'riser' ? (signing ? '' : 'sign it') : 'name'}
+          placeholder={signing ? '' : 'sign it'}
           aria-label="Your name, optional"
           autoComplete="nickname"
           onFocus={() => setSigning(true)}
@@ -754,22 +830,8 @@ export function Drift({ active }: { active: boolean }) {
           onChange={() => {}}
         />
 
-        {/* The submit, in each design's own voice. The sentence's is the last
-            word of the sentence with the full stop OUTSIDE the rule — the same
-            construction as `yes.` in the mailing-list panel, so the underline
-            stays on the word and not on the punctuation. */}
         <button className="l-say-go" type="submit" disabled={!text.trim() || state === 'sending'}>
-          {state === 'sending' ? (
-            <span className="l-say-go-ink">…</span>
-          ) : design === 'sentence' ? (
-            <>
-              <span className="l-say-go-ink">send it up</span>.
-            </>
-          ) : design === 'riser' ? (
-            <span className="l-say-go-ink">send</span>
-          ) : (
-            <span className="l-say-go-ink">SEND</span>
-          )}
+          <span className="l-say-go-ink">{state === 'sending' ? '…' : 'send'}</span>
         </button>
       </form>
 
@@ -817,14 +879,14 @@ export const DRIFT_CSS = `
 /* The empty state, and the only thing the site itself says on this screen.
    Sits where the risers will be, so the screen does not change shape when the
    first one arrives. */
-.l-drift-none{position:absolute;left:0;right:0;top:42%;z-index:2;
+.l-risers-none{position:absolute;left:0;right:0;top:42%;z-index:2;
   margin:0;text-align:center;pointer-events:none;
   font-family:'Cormorant Garamond',Georgia,serif;
   font-size:clamp(13px,1.8vh,16px);letter-spacing:.3em;
   color:rgba(196,222,240,.34)}
 
 /* ---- the water ---- */
-.l-drift{position:absolute;left:0;right:0;top:0;bottom:0;margin:0;padding:0;
+.l-risers{position:absolute;left:0;right:0;top:0;bottom:0;margin:0;padding:0;
   list-style:none;overflow:hidden;pointer-events:none;z-index:1}
 
 /* Messages RISE. They came off the floor, which is where the reader is, and
@@ -837,13 +899,17 @@ export const DRIFT_CSS = `
    Being a block rather than a line is what the change buys. A riser wraps to
    two or three short lines and holds together as an object — a scrap of paper
    going up — which is also why it can be read while it moves. */
-.l-drift-msg{position:absolute;top:0;inset-inline-start:var(--x);
+.l-riser{position:absolute;top:0;inset-inline-start:var(--x);
   max-inline-size:min(28ch,30vw);will-change:transform;
   font-family:'Cormorant Garamond',Georgia,serif;
-  font-size:calc(clamp(15px,2.05vh,23px) * var(--scale));
+  /* A floor under the parallax. --scale runs to .72 for the furthest messages,
+     and on a short viewport that took the smallest risers to 9.7px, which is
+     not distance, it is unreadable. Depth is allowed to make a message quieter;
+     it is not allowed to make it a texture. */
+  font-size:max(12.5px,calc(clamp(15px,2.05vh,23px) * var(--scale)));
   line-height:1.42;color:rgb(224,240,250);
   text-shadow:0 0 calc(16px * var(--scale)) rgba(96,172,220,calc(var(--dim) * .5));
-  animation:l-drift-up var(--dur) linear var(--delay) infinite}
+  animation:l-rise var(--dur) linear var(--delay) infinite}
 
 /* Floor to surface, fading at both ends.
    The fade is inside the keyframe rather than done with a mask over the layer:
@@ -853,7 +919,7 @@ export const DRIFT_CSS = `
    message must not pop into existence at the bottom edge or blink out at the
    top. var(--dim) in the middle two stops is what keeps the depth parallax:
    the keyframe fades TO the message's own brightness, not to 1. */
-@keyframes l-drift-up{
+@keyframes l-rise{
   0%{transform:translate3d(0,var(--rise-from,100dvh),0);opacity:0}
   /* Sixteen, not eight. The long fade-in is doing two jobs: things should
      emerge out of the dark rather than switch on at the bottom edge, and it
@@ -872,36 +938,35 @@ export const DRIFT_CSS = `
 /* The sway. Without it a riser is on a wire, and the eye reads the whole layer
    as a machine — the same failure as a tile with a findable period, one axis
    over. alternate, so it turns back rather than snapping to its start. */
-.l-drift-in{display:block;will-change:transform;
-  animation:l-drift-sway var(--sway) ease-in-out var(--sway-delay) infinite alternate}
-@keyframes l-drift-sway{
+.l-riser-in{display:block;will-change:transform;
+  animation:l-rise-sway var(--sway) ease-in-out var(--sway-delay) infinite alternate}
+@keyframes l-rise-sway{
   from{transform:translate3d(calc(var(--sway-px) * -1),0,0)}
   to{transform:translate3d(var(--sway-px),0,0)}}
 
 /* Just-arrived. Brighter for one rise, then it is one of the others. A filter,
    so it composites with both transforms instead of fighting either for one. */
-.l-drift-msg.is-fresh{animation:l-drift-up var(--dur) linear var(--delay) infinite,
-  l-drift-lit 9s ease-out both}
-@keyframes l-drift-lit{
+.l-riser.is-fresh{animation:l-rise var(--dur) linear var(--delay) infinite,
+  l-rise-lit 9s ease-out both}
+@keyframes l-rise-lit{
   0%{filter:brightness(1.8) saturate(.9)}
   100%{filter:brightness(1)}}
 
-.l-drift-name{display:block;margin-block-start:.24em;font-size:.72em;
+.l-riser-name{display:block;margin-block-start:.24em;font-size:.72em;
   letter-spacing:.06em;opacity:.62;font-style:italic}
 
 /* Off this screen the water is still there and still costing frames. Paused,
    it costs nothing — and because the animations keep their position, coming
    back does not restart the sea. */
-.l-three:not(.is-in) .l-drift-msg,
-.l-three:not(.is-in) .l-drift-in{animation-play-state:paused}
+.l-three:not(.is-in) .l-riser,
+.l-three:not(.is-in) .l-riser-in{animation-play-state:paused}
 
 /* ---- the composer ------------------------------------------------------
-   Three designs behind /?say=1|2|3. What they share is below; what makes each
-   one itself is in its own block. The shared part is deliberately almost
-   nothing: no box, no blur, no radius, no fill. That was the first version —
-   a pill with a border and a backdrop-blur, which is the shape a chat input has
-   on every product on the internet and the shape nothing else on this site has.
-   Furniture is the thing being chosen between here, so none of it is shared. */
+   No box, no blur, no radius, no fill. The first version was a pill with a
+   border and a backdrop-blur — the shape a chat input has on every product on
+   the internet, and the shape nothing else on this site has. Two alternatives
+   with less furniture were built beside this one and cut; see the note in the
+   markup. */
 .l-say{position:absolute;left:0;right:0;margin-inline:auto;
   bottom:calc(clamp(30px,6vh,64px) + var(--bar));
   z-index:2;display:flex;align-items:baseline;
@@ -927,51 +992,7 @@ export const DRIFT_CSS = `
 .landing .l-say-go:disabled{opacity:.28;cursor:default}
 .landing .l-say-go:not(:disabled):hover{color:#fff}
 
-/* ---- 1 · the rule ----
-   A single hairline and the type sitting on it. The argument is the down-mark's:
-   of eight candidates the one with the least furniture won, because on a
-   painting every box you draw is an object competing with the picture. The line
-   is not decoration — it is the only thing telling you this is a field, so it
-   lights up when you are in it and is otherwise almost not there. */
-.l-three[data-say=rule] .l-say{
-  gap:.9em;padding-block-end:.5em;
-  border-block-end:1px solid rgba(150,196,226,.2);
-  transition:border-color .45s ease}
-.l-three[data-say=rule] .l-say:focus-within{border-block-end-color:rgba(178,220,248,.5)}
-.l-three[data-say=rule] .l-say-rule{align-self:center;flex:0 0 auto;
-  inline-size:1px;block-size:1.15em;background:rgba(150,196,226,.22)}
-.landing .l-three[data-say=rule] .l-say-go{
-  font-family:'Jost',system-ui,sans-serif;font-weight:300;
-  font-size:clamp(9.5px,1.3vh,11.5px);letter-spacing:.3em}
-
-/* ---- 2 · the sentence ----
-   The mailing-list panel's device, and the reason to reuse it is that it is
-   already the answer to this exact problem: a form that must not look like one.
-   The copy IS the label, so there is nothing to read twice, and the submit is
-   the sentence's last word rather than a button parked at the end of it.
-
-   The full stop sits OUTSIDE the underlined span — punctuation is the
-   sentence's, not the control's — which is the same detail as 'yes.' upstairs. */
-.l-three[data-say=sentence] .l-say{
-  flex-wrap:wrap;gap:.1em .42em;justify-content:center;text-align:center;
-  font-family:'Cormorant Garamond',Georgia,serif;
-  font-size:clamp(16px,2.05vh,21px);color:rgba(206,229,246,.62)}
-.l-three[data-say=sentence] .l-say-word{flex:0 0 auto}
-/* A comma sits on the word before it. The flex gap puts a space there, so this
-   takes it back — otherwise the sentence reads "the water , from". */
-.l-three[data-say=sentence] .l-say-word-tight{margin-inline-start:-.36em}
-.l-three[data-say=sentence] input{
-  border-block-end:1px solid rgba(150,196,226,.26);padding-block-end:.12em;
-  transition:border-color .45s ease}
-.l-three[data-say=sentence] input:focus{border-block-end-color:rgba(178,220,248,.55)}
-.l-three[data-say=sentence] .l-say-text{min-inline-size:clamp(180px,34vw,320px)}
-.landing .l-three[data-say=sentence] .l-say-go{
-  font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;
-  font-size:clamp(16px,2.05vh,21px);letter-spacing:0;padding-inline-start:.35em}
-.l-three[data-say=sentence] .l-say-go-ink{
-  border-block-end:1px solid currentColor;padding-block-end:.06em}
-
-/* ---- 3 · the riser ----
+/* ---- the composer ----
    No form at all. It is set exactly like a message already in the water — same
    face, same size, same glow — held still, and sending lets go of it.
 
@@ -993,14 +1014,17 @@ export const DRIFT_CSS = `
 
    What it does instead is win locally, three ways, none of them furniture:
 
-     · **a tight halo**, hugging the glyphs. A wide soft pool behind the whole
-       composer was built first and cut for the reason the down-mark's was: at
-       the radius that helped, it was a patch of grey on an oil painting, and
-       nothing else on this page has one. Spread a halo and it stops being
-       light and becomes a shadow. Hugging the letters it does the same job —
-       a crossing message's strokes cannot merge with the composer's — and
-       leaves no mark of its own. Same construction as every white label on
-       the shore, which has to survive a much brighter ground than this.
+     · **depth**: the composer is in front, and risers go behind it. A pool in
+       the floor's own colour, soft to nothing at every edge, so a message
+       crossing under it is occluded rather than interleaved. An earlier version
+       of this pool was cut for being a patch of grey on an oil painting — the
+       difference now is the colour and the falloff. It is not a scrim laid over
+       the picture, it is the same deep the picture already is, thicker where
+       the composer sits. Water is allowed to be denser somewhere.
+     · **a tight halo**, hugging the glyphs, doing the last few percent the pool
+       cannot: it stops a crossing message's strokes merging with the
+       composer's at the exact edge of the pool. Same construction as every
+       white label on the shore, which survives a much brighter ground.
      · **a dim light of its own.** Qi's call, and it is the piece that finally
        makes the thing announce itself without becoming an object: the water
        around the composer is lit, faintly, the way something alive down there
@@ -1034,7 +1058,7 @@ export const DRIFT_CSS = `
    drawn caret can only be in one place. Ragged-right, the two are the same
    point — start of the line — and typing simply moves it right, which is what
    a caret is supposed to do. */
-.l-three[data-say=riser] .l-say{
+.l-three .l-say{
   flex-wrap:wrap;gap:.34em .6em;justify-content:flex-start;text-align:left;
   inline-size:min(32ch,calc(100vw - 48px));
   /* Set here so the glow below can be sized in em and land somewhere
@@ -1042,9 +1066,34 @@ export const DRIFT_CSS = `
   font-size:clamp(16px,2.05vh,21px);
   bottom:calc(clamp(46px,8vh,86px) + var(--bar))}
 
-/* The dim light. Inside .l-say, which is its own stacking context at z-index 2,
-   so a negative z-index puts it under the composer's type and still over the
-   water at z-index 1.
+/* The pool that puts the composer in front.
+   .l-say is its own stacking context at z-index 2, so both of these sit under
+   its type on a negative z-index and still comfortably over the water at
+   z-index 1 — the occlusion is real, not a trick of contrast.
+
+   Two layers, in this order: the pool hides, then the light is added over it.
+   One layer cannot do both, because the thing that hides has to be nearly
+   opaque and the thing that glows has to be nearly not.
+
+   Same geometry rule as the glow below — last stop x radius < 50% on BOTH axes
+   — because an occluder with an edge is a box, and a box is what this design
+   exists to avoid. And the colour is the floor's own, not a grey: this is not a
+   scrim laid over the picture, it is the water being denser here. */
+.l-three .l-say::after{content:'';position:absolute;z-index:-2;
+  inset:-3.6em -7em;pointer-events:none;
+  /* A plateau, then a shoulder — not a single ramp. A plain ramp from the
+     centre was measured against a riser parked exactly behind the composer and
+     it only reached ~.35 alpha at the far end of the words: dimmed, not
+     occluded, which is worse than either. The near-opaque part has to be at
+     least as wide as the text it is hiding things behind, and only then start
+     falling away. It is short vertically for the same reason in reverse: the
+     composer is two lines tall, so anything taller than that is dark for no
+     one's benefit. */
+  background:radial-gradient(46% 48% at 50% 50%,
+    rgba(2,11,23,.97) 0%,rgba(2,11,23,.93) 52%,
+    rgba(2,11,23,.5) 70%,rgba(2,11,23,0) 96%)}
+
+/* The dim light, over the pool.
 
    **The gradient must reach fully transparent INSIDE its own box**, and getting
    that wrong is what made the first version read as a banner rather than as a
@@ -1058,7 +1107,7 @@ export const DRIFT_CSS = `
 
    It is also nearly as tall as it is wide, on purpose — 一团, a body of light
    the composer sits inside, not a bar behind a line of text. */
-.l-three[data-say=riser] .l-say::before{content:'';position:absolute;z-index:-1;
+.l-three .l-say::before{content:'';position:absolute;z-index:-1;
   inset:-7.5em -8em;pointer-events:none;
   background:radial-gradient(44% 46% at 50% 50%,
     rgba(122,186,232,.2),rgba(122,186,232,.075) 40%,rgba(122,186,232,0) 72%);
@@ -1090,12 +1139,12 @@ export const DRIFT_CSS = `
 
 /* Steady while you are in it. The one state change on this screen, and the
    right way round: an unstable light that settles when touched is alive. */
-.l-three[data-say=riser] .l-say:focus-within::before{
+.l-three .l-say:focus-within::before{
   animation-play-state:paused,paused;opacity:1;filter:brightness(1.12)}
 
 
-.l-three[data-say=riser] input,
-.l-three[data-say=riser] .l-say-ghost{
+.l-three input,
+.l-three .l-say-ghost{
   text-align:left;
   /* Two shadows doing opposite jobs on the same glyphs. The blue spread is what
      makes this read as a message in the water like all the others; the tight
@@ -1104,28 +1153,28 @@ export const DRIFT_CSS = `
   text-shadow:0 0 18px rgba(96,172,220,.4),
               0 0 9px rgba(2,10,20,.8),
               0 1px 2px rgba(2,10,20,.9)}
-.l-three[data-say=riser] input{color:rgba(228,242,252,.94)}
-.l-three[data-say=riser] .l-say-text{flex:1 0 100%;caret-color:rgba(214,238,254,.95)}
+.l-three input{color:rgba(228,242,252,.94)}
+.l-three .l-say-text{flex:1 0 100%;caret-color:rgba(214,238,254,.95)}
 /* The name sits under the message, and clicking it should give you a caret and
    nothing else — the word "sign it" is an invitation, and once accepted it is
    just in the way. Transparent rather than removed, so the box does not resize
    under the pointer that just landed in it. */
-.l-three[data-say=riser] .l-say-name{flex:0 0 auto;inline-size:8em;
+.l-three .l-say-name{flex:0 0 auto;inline-size:8em;
   font-size:.74em;opacity:.6;caret-color:rgba(214,238,254,.95)}
-.l-three[data-say=riser] .l-say-name:focus{opacity:.85}
+.l-three .l-say-name:focus{opacity:.85}
 /* Pushed to the far end of the second line, so the name and the send are the
    two ends of one row rather than a pair of words stuck together. */
-.landing .l-three[data-say=riser] .l-say-go{margin-inline-start:auto}
-.l-three[data-say=riser] .l-say-ghost{position:absolute;left:0;right:0;top:0;
+.landing .l-three .l-say-go{margin-inline-start:auto}
+.l-three .l-say-ghost{position:absolute;left:0;right:0;top:0;
   pointer-events:none;color:rgba(184,212,232,.34);font-style:italic;
   font-family:'Cormorant Garamond',Georgia,serif;
   font-size:clamp(16px,2.05vh,21px);line-height:1.5}
-.l-three[data-say=riser] .l-say:focus-within .l-say-ghost{color:rgba(190,218,238,.42)}
+.l-three .l-say:focus-within .l-say-ghost{color:rgba(190,218,238,.42)}
 /* Handover. The drawn caret goes when the real one arrives, and goes by
    visibility rather than by display — the prompt after it must not shift
    sideways by a caret's width at the exact moment someone clicks into the
    field, which is the one moment they are looking straight at it. */
-.l-three[data-say=riser] .l-say:focus-within .l-say-caret{visibility:hidden}
+.l-three .l-say:focus-within .l-say-caret{visibility:hidden}
 /* 1s, steps(1) — a real caret's rate, and the album's 60bpm, which are the same
    number. Not a soft pulse: a soft pulse reads as decoration, and the hard
    on/off is the entire reason anyone recognises a caret. */
@@ -1142,8 +1191,8 @@ export const DRIFT_CSS = `
 /* Nothing to let go of yet, so the words for it are not there either. Hidden
    rather than dimmed: in a design with no furniture, a greyed-out control is
    just another piece of furniture. */
-.landing .l-three[data-say=riser] .l-say-go:disabled{opacity:0}
-.landing .l-three[data-say=riser] .l-say-go{
+.landing .l-three .l-say-go:disabled{opacity:0}
+.landing .l-three .l-say-go{
   font-family:'Jost',system-ui,sans-serif;font-weight:300;
   font-size:clamp(9px,1.2vh,10.5px);letter-spacing:.28em;text-transform:uppercase;
   padding:0;opacity:.7}
@@ -1175,26 +1224,26 @@ export const DRIFT_CSS = `
    fill-mode both, so a translateX(-50%) here would survive exactly until the
    entrance finished. See .l-say. */
 @media (prefers-reduced-motion:no-preference){
-  .l-say,.l-drift-none{opacity:0}
+  .l-say,.l-risers-none{opacity:0}
   .l-three.is-in .l-say{animation:l-in .9s cubic-bezier(.2,.7,.2,1) .25s both}
-  .l-three.is-in .l-drift-none{animation:l-in 1.2s cubic-bezier(.2,.7,.2,1) .5s both}}
+  .l-three.is-in .l-risers-none{animation:l-in 1.2s cubic-bezier(.2,.7,.2,1) .5s both}}
 
 /* Asked for less motion, and given a guestbook instead of a current: the same
    messages, newest first, holding still. The drift is the presentation, not the
    content, so nothing is lost by dropping it. */
 @media (prefers-reduced-motion:reduce){
-  .l-drift{position:absolute;top:var(--water-top);bottom:auto;
+  .l-risers{position:absolute;top:var(--water-top);bottom:auto;
     height:var(--water-h);overflow-y:auto;pointer-events:auto;
     display:flex;flex-direction:column;align-items:center;gap:.85em;
     padding:0 22px}
-  .l-drift-msg{position:static;animation:none;text-align:center;
+  .l-riser{position:static;animation:none;text-align:center;
     inset-inline-start:auto;opacity:1;
     max-inline-size:min(620px,92vw);color:rgba(224,240,250,.86);
     font-size:clamp(15px,2vh,21px)}
-  .l-drift-msg.is-fresh{animation:none}
+  .l-riser.is-fresh{animation:none}
   /* The sway is a transform, and animation:none freezes it at whatever the
      from-frame says — every block offset left by its own amplitude. */
-  .l-drift-in{animation:none;transform:none}}
+  .l-riser-in{animation:none;transform:none}}
 
 @media (max-width:640px){
   .l-three{--water-top:20dvh;--water-h:52dvh}
@@ -1204,21 +1253,20 @@ export const DRIFT_CSS = `
      gets most of the width here, and the starting position is scaled down to
      match (the offset is an inline style, so the media query multiplies it
      rather than replacing it: 0–61% becomes 0–23%, which keeps 74vw on screen). */
-  .l-drift-msg{max-inline-size:min(30ch,74vw);
-    inset-inline-start:calc(3% + var(--x) * .34);
-    font-size:calc(clamp(13px,3.6vw,16px) * var(--scale))}
+  /* The offset is NOT recomputed here — see geometry(). This block sets only
+     what is genuinely presentational: how wide a riser may be, and how big. */
+  .l-riser{max-inline-size:min(30ch,74vw);
+    font-size:max(12.5px,calc(clamp(14px,4vw,17px) * var(--scale)))}
   /* Half the sway: the same swing that reads as drift on a desktop is a third
      of a phone's width, and a block sliding that far is being blown, not adrift. */
-  .l-drift-in{animation-name:l-drift-sway-narrow}
+  .l-riser-in{animation-name:l-rise-sway-narrow}
   .l-say{width:calc(100vw - 34px)}
   .l-say-name{inline-size:54px}
-  .l-three[data-say=rule] .l-say{gap:.6em}
-  .l-three[data-say=sentence] .l-say-text{min-inline-size:100%}
   /* nowrap keeps the counter and the two short errors on one line, which is
      what it is for — but the dev-only store warning is a sentence and would
      run off both edges of a phone. */
   .l-say-note{white-space:normal;padding:0 22px}}
-@keyframes l-drift-sway-narrow{
+@keyframes l-rise-sway-narrow{
   from{transform:translate3d(calc(var(--sway-px) * -.45),0,0)}
   to{transform:translate3d(calc(var(--sway-px) * .45),0,0)}}
 `;

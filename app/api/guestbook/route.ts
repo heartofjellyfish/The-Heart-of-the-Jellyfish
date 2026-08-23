@@ -89,6 +89,13 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  /* Refuse the body before parsing it. The caps further down protect the STORE
+     — they run after req.json() has already decoded whatever arrived, so a
+     200KB payload is 200KB of parse for a 140-character message. The largest
+     honest request here is well under 1KB. */
+  const len = Number(req.headers.get('content-length') ?? 0);
+  if (len > 4096) return NextResponse.json({ error: 'too large' }, { status: 413 });
+
   let b: { name?: unknown; text?: unknown; hp?: unknown; dwell?: unknown };
   try {
     b = await req.json();
