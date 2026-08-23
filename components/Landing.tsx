@@ -149,6 +149,35 @@ const PLAY_LABELS = {
 const HERO_IMAGE = '/images/hero.webp';
 
 /**
+ * The painting's natural size, and the man standing in it.
+ *
+ * The figure is the album's only human and the only thing on this page that is
+ * somebody else's work, so the credit lives **on him** rather than in a footer
+ * this site does not have. He is a link; hovering him lights his outline and
+ * names the painter, and that is the whole affordance. Nothing shows at rest —
+ * a badge over an oil painting is the thing this page has refused four times.
+ *
+ * FIGURE_PATH is his silhouette traced off `hero.webp` itself, in the painting's
+ * own pixel coordinates, which is why it can be dropped into a viewBox of
+ * ART_W x ART_H and land exactly on him at any size. It came out of a colour
+ * segmentation the painting happens to make easy — sky is the only thing here
+ * with more blue than red, sand the only thing both warm and not skin — then a
+ * Moore-neighbour boundary walk and Douglas-Peucker down to 120 points
+ * (`scripts/trace-figure.py`). 1 kB, versus ~25 kB for a cut-out PNG that would
+ * have bought a mask and no hit area.
+ *
+ * If the painting is ever replaced, this is stale and silently wrong: it will
+ * still draw and still take clicks, just not on anybody. Re-run the script.
+ */
+const ART_W = 1672;
+const ART_H = 941;
+const FIGURE_PATH =
+  'M1216,130L1234,130L1252,138L1264,150L1276,176L1283,187L1303,210L1313,216L1321,218L1328,225L1335,226L1350,235L1359,246L1371,284L1371,293L1383,371L1386,432L1382,455L1377,465L1378,503L1375,538L1371,550L1367,555L1367,624L1368,656L1370,664L1368,674L1368,713L1370,720L1372,754L1371,765L1365,771L1360,772L1357,775L1355,796L1357,800L1358,813L1363,819L1362,833L1365,836L1374,836L1383,841L1383,848L1378,849L1374,855L1357,851L1352,846L1352,842L1349,839L1307,853L1272,851L1269,845L1270,839L1292,831L1301,825L1312,824L1315,821L1317,813L1314,810L1303,809L1297,809L1288,813L1248,813L1243,809L1244,802L1273,795L1292,788L1303,779L1308,770L1309,761L1312,760L1315,755L1311,745L1297,737L1287,715L1286,707L1277,680L1277,672L1272,656L1272,650L1264,626L1262,602L1259,592L1260,575L1258,544L1253,538L1243,531L1241,520L1241,510L1246,502L1252,486L1254,447L1253,432L1255,427L1254,392L1251,380L1249,314L1256,286L1262,276L1264,265L1270,255L1270,252L1262,245L1259,245L1250,251L1241,251L1235,246L1224,244L1219,239L1212,239L1210,237L1208,223L1197,215L1191,201L1188,198L1177,198L1177,169L1188,148L1198,136Z';
+
+/** Whose painting it is. */
+const ARTIST = { name: 'Sho Peng', href: 'https://pengsho.com' };
+
+/**
  * Where the poem breaks. Four stanzas, uneven on purpose — the movements are not
  * the same length. Indices are track numbers, so this reads the same as the sleeve.
  */
@@ -1889,8 +1918,10 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           off the art, and it has no business surviving into the deep.
 
           It carries the same crop as .l-bg or the glow drifts off the thing that
-          is glowing — hence --bg-pos, which both read and the media queries set
-          in one place.
+          is glowing — hence --bg-px / --bg-py, which both read and the media
+          queries set in one place. The painter's credit reads them too, and
+          that is why they are bare fractions rather than an object-position
+          pair: it has to do arithmetic on them.
         */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="l-halo" src={HERO_IMAGE} alt="" aria-hidden="true" />
@@ -1905,6 +1936,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             } as React.CSSProperties
           }
         />
+
         {/*
           The water. All of it is driven by --s and is simply not there at 0,
           so screen one is untouched by any of it and nothing below costs a
@@ -2012,6 +2044,107 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         with one scrolling child is the version of that with no position:fixed
         children inside a transformed ancestor waiting to go wrong on iOS.
       */}
+      {/*
+        The painter's credit, worn by the man he painted.
+
+        It is a sibling of the scroller rather than a layer of .l-stage, and
+        that is not a style choice: .l-scroll is fixed over the whole window at
+        z-index 10 to catch the wheel, so anything inside the stage is
+        unhoverable by construction, and nothing inside the stage can climb out
+        of it either -- it is its own stacking context at z-index 0. So the
+        credit lives out here at 12, above the scroller and below the nav. That
+        is safe only because the one thing in it that takes a pointer is the man
+        himself, and no control on this page is standing where he is.
+
+        Between the nav and the scroller, and that is tab order rather than
+        paint order -- an explicit z-index means it can sit anywhere in the
+        document and still be on top. After the scroller, where it started, a
+        keyboard reached the painter only after all ten lines of screen two;
+        before the nav it was the first thing on the page, ahead of the one ask.
+        Here it is what it is: part of screen one, after screen one's own ask
+        and before screen one's actions.
+
+        Two boxes, and the outer one is the rest of the trick: .l-art-plane
+        carries the painting's own parallax so this layer sinks with it, and
+        .l-art reproduces -- in pure CSS -- the rectangle object-fit:cover paints
+        .l-bg into. Once that box is the painting's rectangle, an SVG with the
+        painting's own viewBox puts every coordinate below in *painting pixels*,
+        and the outline sits on him at every window size with nothing measured
+        and no resize listener. See the CSS for the two lines of arithmetic.
+
+        The path is the hit area as well as the glow, so the pointer only
+        becomes a pointer over the man himself -- not over the rectangle around
+        him, three quarters of which is empty sky.
+      */}
+      <div className="l-art-plane">
+        <a
+          className="l-art"
+          href={ARTIST.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          /* Leaving for someone else's site should not cost this one its
+             place, and the label has to say where it goes: the visible
+             caption is two lines of display type and reads as a signature,
+             not as a destination. */
+          aria-label={`Painting by ${ARTIST.name} — opens the artist's site in a new tab`}
+          /* Same rule as the wordmark opposite: an element that is only
+             invisible is still a place a keyboard can land, and a focus ring
+             on nothing is worse than no control. Below 13/10 the crop leaves
+             him out of frame entirely and the CSS takes the layer out of the
+             document, which handles that case without help. */
+          tabIndex={atTwo ? -1 : 0}
+          aria-hidden={atTwo ? true : undefined}
+        >
+          <svg
+            className="l-art-svg"
+            viewBox={`0 0 ${ART_W} ${ART_H}`}
+            preserveAspectRatio="none"
+            aria-hidden
+          >
+            {/*
+              Everything the blurred stroke would put *inside* him is thrown
+              away. Half a soft stroke lying over the man is paint on the
+              painting: it flattens his hair into a white smear and the figure
+              starts to read as a sticker cut out and laid back down. Masked to
+              the outside it is a backlight instead, and the brushwork is
+              untouched. Order matters and SVG gets it right -- filter, then
+              mask -- so what is cut is the blurred result, not the stroke.
+            */}
+            <mask
+              id="l-art-outside"
+              maskUnits="userSpaceOnUse"
+              x="0"
+              y="0"
+              width={ART_W}
+              height={ART_H}
+            >
+              <rect width={ART_W} height={ART_H} fill="#fff" />
+              <path d={FIGURE_PATH} fill="#000" />
+            </mask>
+            <path className="l-art-glow" d={FIGURE_PATH} mask="url(#l-art-outside)" />
+            {/*
+              And a tighter one inside it, because half of him is standing on
+              sand. A wide soft light reads beautifully against the sky and does
+              nothing at all against a ground already nearly as bright as the
+              light, so the legs and the feet would simply not answer. A narrow
+              rim carries enough density per pixel to show on either. The two
+              together are one falloff, not two effects.
+            */}
+            <path className="l-art-rim" d={FIGURE_PATH} mask="url(#l-art-outside)" />
+            <path className="l-art-hit" d={FIGURE_PATH} />
+          </svg>
+          <span className="l-art-cap">
+            <span className="l-art-cap-eyebrow">PAINTING</span>
+            <span className="l-art-cap-name">
+              {ARTIST.name}
+              <svg className="l-art-out" viewBox="0 0 10 10" aria-hidden>
+                <path d="M2.2 7.8L7.8 2.2M3.6 2.2h4.2v4.2" />
+              </svg>
+            </span>
+          </span>
+        </a>
+      </div>
+
       <div className="l-scroll" ref={scrollRef}>
         <section className="l-screen l-one">
           <div className="l-hero">
@@ -2841,7 +2974,12 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
      one of those is already fluid, so this scales the whole curve rather than
      any one breakpoint. The bottom tracklist is deliberately NOT on it: its
      sizing is a measured fit for ten titles and scaling it would break that. */
-  --type-scale:1.15}
+  --type-scale:1.15;
+  /* Where the painting's overflow is taken off, as fractions rather than as an
+     object-position pair. Two things read them now — .l-bg's crop and the
+     credit layer, which has to reproduce that crop in calc() to sit on the man
+     inside it — and one number they could disagree about is one too many. */
+  --bg-px:.5;--bg-py:.45}
 .landing ::selection{background:rgba(230,207,130,.32)}
 /* Normalises the UA button font. Note it is (0,1,1) and beats any bare .l-*
    class, so every button rule below that sets a font has to be written as
@@ -2850,7 +2988,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 
 /* ---- background ---- */
 .l-bg,.l-halo{position:absolute;inset:0;width:100%;height:100%;
-  object-fit:cover;object-position:var(--bg-pos,center 45%)}
+  object-fit:cover;object-position:calc(var(--bg-px) * 100%) calc(var(--bg-py) * 100%)}
 
 /* The tone curve, such as it is. contrast() pivots on mid-grey, so a value under
    1 lifts the blacks and rolls the whites off in one move — which is the whole
@@ -2989,10 +3127,161 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   /* 12%, not 22%: at 22 the right edge landed on the figure's head and clipped a
      corner of it, which reads as a smudge rather than a person. Better to leave
      him out of frame entirely than to show a piece of him. */
-  .landing{--bg-pos:12% 45%}
+  .landing{--bg-px:.12}
 }
 @media (max-aspect-ratio: 1/1){
-  .landing{--bg-pos:17% 42%}
+  .landing{--bg-px:.17;--bg-py:.42}
+}
+
+/* ---- the painter's credit ---- */
+
+/* Two boxes. This one exists only to carry .l-bg's parallax, so the outline
+   sinks with the painting rather than sliding across it — same transform, same
+   origin, and a change to one is a change to both.
+
+   It is also the container the box below measures itself against, which is why
+   container-type is here and not there: cqw/cqh have to be the *untransformed*
+   stage, so that the scale applies to painting and outline as one thing. */
+.l-art-plane{position:fixed;inset:0;z-index:12;pointer-events:none;overflow:hidden;
+  container-type:size;
+  transform:translate3d(0,calc(var(--s) * -3.4vh),0) scale(calc(1 + var(--s) * .07));
+  transform-origin:50% 42%;
+  /* Gone well before the water is: this is a credit on a painting, and one
+     screen down there is no painting.
+
+     The 3.4 is not a taste number -- it puts the last of the glow at s=.294,
+     just under the .3 where atTwo flips, so the rule below takes the layer out
+     of the document on the frame after it stops being visible and never before.
+     An invisible link is still a link: opacity 0 keeps its hit area, and left
+     alone this one would sit over the poem catching clicks from a reader who
+     can see nothing there to click. Change one of the two numbers and the other
+     has to move with it. */
+  opacity:clamp(0,calc(1 - var(--s) * 3.4),1)}
+/* visibility rather than pointer-events, because it also takes the anchor out
+   of the tab order and the accessibility tree -- the three things that have to
+   go together and that opacity does none of. */
+.landing[data-two] .l-art-plane{visibility:hidden}
+
+/* And this one is the rectangle object-fit:cover paints the painting into,
+   written out in CSS.
+
+   cover scales until both axes are covered, i.e. by the larger of the two
+   ratios — so the drawn width is whichever is bigger, the stage's own width or
+   its height times the painting's aspect. Whatever that overshoots by is the
+   overflow, and object-position decides how much of it comes off which side:
+   at .5 the two overhangs are equal, at .12 nearly all of it is taken off the
+   right. Same two numbers .l-bg is given, which is the point of storing them
+   as fractions.
+
+   Once this box is the painting's rectangle, a viewBox of the painting's own
+   dimensions makes every coordinate inside it a *painting pixel* — so the
+   traced outline lands on the man with nothing measured, no resize listener,
+   and no second copy of the crop rules to keep in sync. */
+.l-art{position:absolute;display:block;pointer-events:none;
+  --aw:max(100cqw, 100cqh * 1.77683);
+  --ah:max(100cqh, 100cqw / 1.77683);
+  width:var(--aw);height:var(--ah);
+  left:calc((100cqw - var(--aw)) * var(--bg-px));
+  top:calc((100cqh - var(--ah)) * var(--bg-py));
+  color:#fff;text-decoration:none;-webkit-tap-highlight-color:transparent}
+.l-art-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+
+/* The hit area is the man, not the rectangle around him — three quarters of
+   which is empty sky, and a cursor that turns into a pointer over empty sky is
+   a link to nothing. pointer-events:all is what lets a child take events back
+   from a pointer-events:none ancestor; it has to be on the path rather than on
+   the anchor, or the anchor's whole box becomes the target again.
+
+   The stroke is invisible and exists only to widen him by a few painting pixels,
+   because a toe rendered 4px wide is not something anyone can hit. */
+.l-art-hit{fill:transparent;stroke:transparent;stroke-width:16;
+  pointer-events:all;cursor:pointer}
+
+/* Light finding him.
+
+   A stroke blurred wider than itself is a band that falls off both ways from
+   the edge, which is what a rim light is. A *filled* shape blurred is a cloud
+   over his middle, which is not — the density of a blurred solid is highest
+   where the solid was, so it would wash the painting out exactly where the
+   painting is him.
+
+   Both numbers are painting pixels, not CSS pixels: they are inside a viewBox,
+   so they scale with him and no breakpoint ever has to know about them. */
+.l-art-glow{fill:none;stroke:#fff3dd;stroke-width:13;stroke-linejoin:round;
+  filter:blur(11px);opacity:0;transition:opacity .55s ease}
+.l-art:hover .l-art-glow,
+.l-art:focus-visible .l-art-glow{opacity:.78;transition-duration:.3s}
+.l-art-rim{fill:none;stroke:#fff6e8;stroke-width:5;stroke-linejoin:round;
+  filter:blur(3px);opacity:0;transition:opacity .55s ease}
+.l-art:hover .l-art-rim,
+.l-art:focus-visible .l-art-rim{opacity:.62;transition-duration:.3s}
+
+/* The caption is type and must not scale with the painting, so it is placed in
+   painting coordinates and sized in px. x=1148 puts its right edge just short
+   of his hair and y=196 sets it at his brow — the empty sky in front of him is
+   the only clear ground next to him, and it is the side he is facing. */
+.l-art-cap{position:absolute;right:calc(100% - 1148 / 1672 * 100%);
+  top:calc(196 / 941 * 100%);text-align:right;white-space:nowrap;
+  font-family:'Jost',sans-serif;font-weight:400;text-transform:uppercase;
+  opacity:0;transform:translateX(9px);
+  transition:opacity .45s ease,transform .45s cubic-bezier(.2,.85,.25,1)}
+.l-art:hover .l-art-cap,
+.l-art:focus-visible .l-art-cap{opacity:1;transform:none;transition-duration:.3s}
+/* The same tight dark halo every other small letterspaced cap on this painting
+   gets. Without it, 10px of white type over the pale sky is not there at all. */
+.l-art-cap-eyebrow{display:block;font-size:9.5px;letter-spacing:.34em;
+  opacity:.66;margin-bottom:5px;
+  text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4)}
+.l-art-cap-name{display:block;font-size:13px;letter-spacing:.2em;
+  display:inline-flex;align-items:center;gap:7px;
+  text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4)}
+/* Drawn, not typed. U+2197 carries emoji presentation by default on iOS and
+   would arrive as a colour cartoon that ignores currentColor -- same trap the
+   play and pause marks are drawn to avoid. */
+.l-art-out{width:9px;height:9px;flex:none;opacity:.75;
+  fill:none;stroke:currentColor;stroke-width:1.1;
+  stroke-linecap:round;stroke-linejoin:round}
+/* A ring around a 700px-tall silhouette is not a focus ring, so the keyboard
+   gets the same answer the mouse does -- the glow and the caption above -- and
+   the outline is suppressed rather than drawn around the whole rectangle. */
+.l-art:focus{outline:none}
+.l-art:focus-visible{outline:none}
+
+/* One breath, five seconds after arriving, and never again.
+
+   Nothing on this page says the man is a link, and nothing should: a badge over
+   an oil painting is the thing this page has refused four times over. So it
+   says it once, the way the falling stars on screen two do -- an effect you
+   might miss is the one worth having seen -- and then it is only ever found by
+   moving the cursor onto him. Delete the animation line to take it back out. */
+@media (prefers-reduced-motion: no-preference){
+  /* backwards, never both: with both, the animation owns opacity forever after
+     it ends and the hover transition is silently outranked -- it would hold the
+     glow at the 100% keyframe, which is 0, and the man would stop lighting up.
+     Same trap as the down-mark's entrance. */
+  .l-art-glow,.l-art-rim{animation:l-art-breath 4.4s 5s ease-in-out 1 backwards}
+  .l-art:hover .l-art-glow,.l-art:hover .l-art-rim,
+  .l-art:focus-visible .l-art-glow,.l-art:focus-visible .l-art-rim{animation:none}
+}
+@keyframes l-art-breath{
+  0%,100%{opacity:0}
+  46%{opacity:.4}
+}
+
+/* Below 13/10 the crop takes him off the right-hand edge entirely (see the
+   note on --bg-px), so there is no man to credit and the layer leaves the
+   document -- which also takes it out of the tab order and the a11y tree,
+   the two things opacity alone would not. */
+@media (max-aspect-ratio: 13/10){
+  .l-art-plane{display:none}
+}
+/* No hover to find it with, so the caption is simply on. Same answer the poem's
+   track numbers give touch, and for the same reason: an affordance that can
+   only be revealed by reaching is not there at all on a screen you cannot
+   reach on. */
+@media (hover: none){
+  .l-art-cap{opacity:.6;transform:none}
+  .l-art-glow,.l-art-rim{animation:none}
 }
 
 /* ---- nav ---- */

@@ -1,5 +1,17 @@
 # Asset credits
 
+## Painting
+
+### The shore (`public/images/hero.webp`)
+**Sho Peng** — https://pengsho.com
+
+The whole of the front page. Credited on the site itself rather than only here:
+the figure in it is a link to the artist, and hovering him names him. That
+credit is attached to *him*, so it is only shown at aspect ratios wide enough to
+keep him in frame — below 13/10 the crop follows the jellyfish and he is off the
+right-hand edge (see `web/CLAUDE.md`). His outline is traced from the file by
+`scripts/trace-figure.py`; replacing the painting means re-running it.
+
 ## 3D models
 
 ### Shipwreck (`public/models/wreck/`)

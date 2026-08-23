@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""Trace the figure in the shore painting and print his outline as an SVG path.
+
+    python3 scripts/trace-figure.py            # prints the path
+    python3 scripts/trace-figure.py --check    # also writes /tmp/figure-check.png
+
+The result goes into FIGURE_PATH in components/Landing.tsx, where it is dropped
+into an SVG with the painting's own viewBox so the coordinates below are the
+painting's own pixels. Re-run this whenever public/images/hero.webp changes --
+a stale path still draws and still takes clicks, just not on anybody.
+
+Why this works at all: the painting separates on two channels and nothing else
+is needed. Sky is the only thing in the frame with more blue than red. Sand is
+the only thing that is both warm and not skin -- and it only exists below the
+horizon, which matters, because applied to the whole frame that rule also eats
+the shadow under his brow. Everything left in the neighbourhood is the man.
+
+Dependencies: Pillow and numpy. No OpenCV, no potrace.
+"""
+import sys
+from PIL import Image, ImageFilter
+import numpy as np
+
+SRC = 'public/images/hero.webp'
+# The neighbourhood he stands in. Only here, so the sea (also blue) and the far
+# shore never enter the argument.
+BOX = (slice(100, 900), slice(1150, 1450))
+HORIZON = 560          # first row that can contain sand
+EPSILON = 1.2          # Douglas-Peucker tolerance, in painting pixels
+
+
+def mask(a):
+    R, G, B = a[..., 0], a[..., 1], a[..., 2]
+    RB, RG = R - B, R - G
+    # Sky measures -71..-86 across this frame; hair in shadow reads bluish but
+    # only to about -30, so the line goes between them rather than at zero.
+    sky = RB < -35
+    below = np.zeros(RB.shape, bool)
+    below[HORIZON:, :] = True
+    sand = below & (RB > 45) & (RG < 28)
+    fig = ~(sky | sand)
+    keep = np.zeros(fig.shape, bool)
+    keep[BOX] = True
+    return fig & keep
+
+
+def clean(f):
+    im = Image.fromarray((f * 255).astype('uint8'))
+    # Opening removes the horizon seam -- a 3-5px band that is a blend of sky
+    # and sand and so neither -- without touching a body whose thinnest part is
+    # a ~15px wrist. Closing then seals the hairline gaps at the waistband.
+    im = im.filter(ImageFilter.MinFilter(7)).filter(ImageFilter.MaxFilter(7))
+    im = im.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.MinFilter(5))
+    f = np.asarray(im) > 127
+
+    f = largest(f)
+    f = fill_holes(f)
+    # The threshold leaves a staircase on what is a brushed edge; this is the
+    # difference between an outline that hugs him and one that buzzes.
+    return np.asarray(Image.fromarray((f * 255).astype('uint8'))
+                      .filter(ImageFilter.GaussianBlur(1.6))) > 120
+
+
+def flood(seed_iter, passable, seen):
+    stack = list(seed_iter)
+    h, w = passable.shape
+    for y, x in stack:
+        seen[y, x] = True
+    while stack:
+        y, x = stack.pop()
+        for v, u in ((y+1, x), (y-1, x), (y, x+1), (y, x-1)):
+            if 0 <= v < h and 0 <= u < w and passable[v, u] and not seen[v, u]:
+                seen[v, u] = True
+                stack.append((v, u))
+
+
+def largest(f):
+    lab = np.zeros(f.shape, np.int32)
+    best_id, best_n, nxt = 0, 0, 0
+    for sy, sx in zip(*np.nonzero(f)):
+        if lab[sy, sx]:
+            continue
+        nxt += 1
+        seen = np.zeros(f.shape, bool)
+        flood([(sy, sx)], f, seen)
+        n = int(seen.sum())
+        lab[seen] = nxt
+        if n > best_n:
+            best_id, best_n = nxt, n
+    return lab == best_id
+
+
+def fill_holes(f):
+    """Flood the outside; whatever the flood never reaches is interior."""
+    out = np.zeros(f.shape, bool)
+    h, w = f.shape
+    edge = ([(0, x) for x in range(w) if not f[0, x]] +
+            [(h-1, x) for x in range(w) if not f[h-1, x]] +
+            [(y, 0) for y in range(h) if not f[y, 0]] +
+            [(y, w-1) for y in range(h) if not f[y, w-1]])
+    flood(edge, ~f, out)
+    return ~out
+
+
+def contour(f):
+    """Moore-neighbour boundary walk, clockwise from north."""
+    p = np.pad(f, 1)
+    nbr = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)]
+    ys, xs = np.nonzero(p)
+    start = tuple(int(v) for v in (ys[np.lexsort((xs, ys))[0]],
+                                   xs[np.lexsort((xs, ys))[0]]))
+    b, prev, out = start, (start[0], start[1] - 1), [start]
+    while True:
+        di = nbr.index((prev[0] - b[0], prev[1] - b[1]))
+        for k in range(1, 9):
+            d = (di + k) % 8
+            c = (b[0] + nbr[d][0], b[1] + nbr[d][1])
+            if p[c]:
+                b, prev = c, (b[0] + nbr[(d-1) % 8][0], b[1] + nbr[(d-1) % 8][1])
+                break
+        else:
+            break
+        if b == start:
+            break
+        out.append(b)
+        if len(out) > 400000:
+            break
+    return [(x - 1, y - 1) for y, x in out]
+
+
+def simplify(pl, eps):
+    keep = [False] * len(pl)
+    keep[0] = keep[-1] = True
+    st = [(0, len(pl) - 1)]
+    while st:
+        a, z = st.pop()
+        if z <= a + 1:
+            continue
+        (x0, y0), (x1, y1) = pl[a], pl[z]
+        dx, dy = x1 - x0, y1 - y0
+        n = (dx * dx + dy * dy) ** .5
+        mi, md = a, -1.0
+        for i in range(a + 1, z):
+            x, y = pl[i]
+            d = (abs(dy*x - dx*y + x1*y0 - y1*x0) / n if n
+                 else ((x-x0)**2 + (y-y0)**2) ** .5)
+            if d > md:
+                mi, md = i, d
+        if md > eps:
+            keep[mi] = True
+            st += [(a, mi), (mi, z)]
+    return [q for q, k in zip(pl, keep) if k]
+
+
+def main():
+    im = Image.open(SRC).convert('RGB')
+    f = clean(mask(np.asarray(im).astype(int)))
+    pts = simplify(contour(f) + [contour(f)[0]], EPSILON)
+    d = 'M' + 'L'.join(f'{x},{y}' for x, y in pts[:-1]) + 'Z'
+    print(f'/* {im.size[0]}x{im.size[1]}, {len(pts)-1} points, '
+          f'{len(d)} chars */', file=sys.stderr)
+    print(d)
+    if '--check' in sys.argv:
+        from PIL import ImageDraw
+        chk = im.copy()
+        ImageDraw.Draw(chk).line([tuple(q) for q in pts], fill=(255, 45, 85), width=3)
+        chk.save('/tmp/figure-check.png')
+        print('wrote /tmp/figure-check.png', file=sys.stderr)
+
+
+if __name__ == '__main__':
+    main()

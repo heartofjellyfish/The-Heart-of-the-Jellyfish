@@ -406,7 +406,85 @@ is the current weak point: on a 1440-wide retina screen the browser paints it at
 device pixels, a 1.7× upscale, and it reads soft. Quality isn't the lever — it's encoded
 at q92 — resolution is. A replacement wants to be ~3840×2160 for the same crop.
 
-#### One layer, cover everywhere — only the crop moves
+#### The painter's credit is the man in the painting (2026-08-23)
+
+The painting is **Sho Peng**'s (pengsho.com), and the figure standing on the
+shore is a link to him. Nothing shows at rest. Hover or focus him and a light
+comes up behind his outline while *PAINTING / SHO PENG ↗* fades in on the sky in
+front of his face; clicking opens the artist's site in a new tab. On touch,
+where there is no hover to find it with, the caption is simply on at .6 — the
+same answer the poem's track numbers give, for the same reason.
+
+**The credit is attached to him, not to the page.** That is the whole design
+argument: this site has no footer and should not grow one, and a credit badge
+laid over an oil painting is the thing screen one has now refused four separate
+times. It also means the credit is only there when *he* is — below 13/10 the
+crop follows the jellyfish and he is off the right-hand edge, and the layer
+leaves the document entirely. There is currently **no credit at all on portrait
+screens**; that is a known, deliberate gap, not an oversight.
+
+#### The box that makes it free
+
+`.l-art` reproduces, in CSS, the rectangle `object-fit: cover` paints `.l-bg`
+into:
+
+```
+width  = max(100cqw, 100cqh × 1.77683)      // cover = the larger of the two scales
+left   = (100cqw − width) × var(--bg-px)    // object-position places the overflow
+```
+
+Once that box **is** the painting's rectangle, an `<svg viewBox="0 0 1672 941">`
+inside it makes every coordinate in it a *painting pixel* — so the traced
+outline lands on him at every window size with nothing measured, no resize
+listener, and no second copy of the crop rules to drift out of sync. This is why
+`--bg-pos` was split into `--bg-px` / `--bg-py` as bare fractions: two things
+now need those numbers, and one number they could disagree about is one too
+many. `.l-art-plane` exists only to carry `.l-bg`'s parallax transform (same
+transform, same origin — change one and you change both) and to be the query
+container the box above measures against.
+
+#### Three things that were wrong first, and are load-bearing now
+
+- **It cannot live in `.l-stage`.** `.l-scroll` is fixed over the whole window
+  at z-index 10 to catch the wheel, so anything inside the stage is unhoverable
+  by construction — and nothing inside the stage can climb over it either, since
+  the stage is its own stacking context at z-index 0. The layer is a sibling of
+  the scroller at z-index 12. That is only safe because the one thing in it that
+  takes a pointer is the path, and no control on this page stands where he does.
+- **The glow is masked to the outside of him.** A blurred stroke straddles the
+  edge, and the inside half is paint on the painting: it flattened his hair into
+  a white smear and the whole figure read as a sticker cut out and laid back
+  down. Masked to the outside it is a backlight instead. SVG applies the filter
+  before the mask, so what gets cut is the blurred result, not the stroke.
+- **Two strokes, because half of him stands on sand.** A wide soft light reads
+  against the sky and does nothing at all against a ground nearly as bright as
+  the light, so the legs and feet would not answer at all. A narrow rim
+  (`.l-art-rim`) carries enough density per pixel to show on either. One
+  falloff, not two effects.
+
+`opacity` alone does not un-link a link: at `--s` 1 the anchor was invisible and
+still catching clicks over the poem. It fades out by s = .294 and
+`.landing[data-two]` then hides it with `visibility`, which is the one property
+that takes it out of the paint, the tab order and the a11y tree together. Those
+two numbers are paired — move one and move the other.
+
+**The outline** is 120 points, ~1 kB, traced off `hero.webp` itself by
+[scripts/trace-figure.py](scripts/trace-figure.py) — colour segmentation the
+painting happens to make easy (sky is the only thing here with more blue than
+red; sand the only thing both warm and not skin, *and only below the horizon* —
+applied to the whole frame that rule also ate the shadow under his brow), then a
+Moore-neighbour boundary walk and Douglas-Peucker. A cut-out PNG would have cost
+~25× that and bought a mask with no hit area. **Replacing the painting makes the
+path silently wrong** — it will still draw and still take clicks, just not on
+anybody. Re-run the script.
+
+One breath of the glow fires five seconds after arrival and never again, because
+nothing else on the page says he is a link and nothing should. `backwards`, not
+`both`: with `both` the animation owns `opacity` forever after it ends and the
+hover transition is silently outranked — the same trap as the down-mark's
+entrance.
+
+### One layer, cover everywhere — only the crop moves
 
 ```
 wide  (≥13:10)   object-position: center 45%
