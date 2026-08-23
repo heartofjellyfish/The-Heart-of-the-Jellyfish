@@ -93,10 +93,28 @@ const FILES = [
 const AVAILABLE_DEMOS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 /**
- * What LISTEN NOW starts on. Not track 01 — this is the one to meet the album
- * with, and it is a separate decision from the running order.
+ * What the hero's play button starts on. Not track 01 — this is the one to meet
+ * the album with, and it is a separate decision from the running order.
  */
 const FEATURED_DEMO = 3;
+
+/**
+ * The hero's primary action, in its three states.
+ *
+ * It said LISTEN NOW, which is what a released album says. This one is not
+ * released — these are demos, and saying so is not a disclaimer, it is the
+ * offer: you are hearing it before it exists. So the idle label names what it
+ * actually is, and the other two are the transport it becomes.
+ *
+ * Once a track is loaded the button stops being "start the album" and becomes
+ * the transport for whatever is sounding — a play button that restarts a
+ * different track while music is already playing is a bug the size of the hero.
+ */
+const PLAY_LABELS = {
+  idle: 'HEAR THE DEMOS',
+  playing: 'PAUSE',
+  paused: 'RESUME',
+} as const;
 
 /**
  * The track the album is named after, and the one line of the poem that beats.
@@ -1016,6 +1034,18 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    */
   const playFromPoem = (n: number) => playTrack(n);
 
+  /* The hero's primary action. See PLAY_LABELS: it is "start the album" until
+     something is loaded and the transport for that thing afterwards. */
+  const heroTrack = barOn ? cur : FEATURED_DEMO;
+  const heroLabel = !barOn
+    ? PLAY_LABELS.idle
+    : playing
+      ? PLAY_LABELS.playing
+      : PLAY_LABELS.paused;
+  const heroAria = !barOn
+    ? 'Hear the demos — ' + TITLES[FEATURED_DEMO - 1]
+    : (playing ? 'Pause — ' : 'Resume — ') + TITLES[cur - 1];
+
   const litVals = LITS.find((l) => l.key === lit) ?? LITS[0];
 
   const waveData = cur > 0 ? peaks?.[String(cur).padStart(2, '0')] ?? null : null;
@@ -1134,6 +1164,19 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           <i />
           <i />
         </div>
+        {/*
+          Bioluminescence. Six, and you will almost never see two at once — see
+          the CSS for why the rarity is the whole effect rather than a setting
+          on it.
+        */}
+        <div className="l-glim" aria-hidden>
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+        </div>
       </div>
 
       <nav className="l-nav">
@@ -1163,7 +1206,14 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             </div>
           )}
         </div>
-        <button type="button" className="l-nav-item" onClick={() => setPanel('subscribe')}>
+        {/*
+          The one thing being asked for, so it is the one thing built like a
+          button. It reads as a link the moment it is set like the rest of the
+          nav — and it was, in the same 11.5px Jost as everything else, in the
+          corner. Same rule and same weight as SIGN UP in the panel it opens, on
+          purpose: the two are one action seen twice.
+        */}
+        <button type="button" className="l-nav-cta" onClick={() => setPanel('subscribe')}>
           PRE-SAVE
         </button>
       </nav>
@@ -1220,23 +1270,35 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                 <button
                   type="button"
                   className="l-play"
-                  aria-label={'Listen — ' + TITLES[FEATURED_DEMO - 1]}
-                  onClick={() => playTrack(FEATURED_DEMO)}
+                  /* Pause is two symmetric bars and wants no optical offset; the
+                     triangle's mass sits on its flat edge and does. */
+                  data-glyph={barOn && playing ? 'pause' : 'play'}
+                  aria-label={heroAria}
+                  onClick={() => playTrack(heroTrack)}
                 >
-                  <svg width="13" height="15" viewBox="0 0 13 15" fill="currentColor" aria-hidden>
-                    <path d="M0 0l13 7.5L0 15z" />
-                  </svg>
+                  {barOn && playing ? (
+                    <svg width="12" height="15" viewBox="0 0 12 15" fill="currentColor" aria-hidden>
+                      <path d="M0 0h3.8v15H0zM8.2 0H12v15H8.2z" />
+                    </svg>
+                  ) : (
+                    <svg width="13" height="15" viewBox="0 0 13 15" fill="currentColor" aria-hidden>
+                      <path d="M0 0l13 7.5L0 15z" />
+                    </svg>
+                  )}
                 </button>
-                <button type="button" className="l-play-label" onClick={() => playTrack(FEATURED_DEMO)}>
+                <button type="button" className="l-play-label" onClick={() => playTrack(heroTrack)}>
                   {/*
                     Per letter, so the motion is a transform and never a reflow.
                     Opening the letter-spacing would have been the obvious move and
                     is the wrong one — it widens the button, which shoves the rule
                     and TRACKLIST sideways every time the cursor arrives.
+
+                    Keyed by label as well as index, so the letters re-enter when
+                    the word changes rather than morphing in place.
                   */}
-                  {Array.from('LISTEN NOW').map((ch, i) => (
+                  {Array.from(heroLabel).map((ch, i) => (
                     <span
-                      key={i}
+                      key={heroLabel + i}
                       className="l-ll"
                       style={{ ['--i' as string]: i } as React.CSSProperties}
                     >
@@ -1256,7 +1318,10 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                 nothing.
               */}
               <span className="l-act-rule" aria-hidden />
-              <button type="button" className="l-act-second" onClick={() => setPanel('poem')}>
+              {/* Was setPanel('poem') and stayed that way through the rebuild —
+                  the panel it opened no longer exists, so it opened nothing.
+                  It is the same destination it always was, one screen down. */}
+              <button type="button" className="l-act-second" onClick={() => goTo(1)}>
                 <svg width="12" height="10" viewBox="0 0 12 10" aria-hidden>
                   <path d="M0 .5h12M0 5h12M0 9.5h8" stroke="currentColor" strokeWidth="1" fill="none" />
                 </svg>
@@ -1435,17 +1500,45 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                 </div>
               ))}
             </div>
+            {/*
+              Where the poem ends is where the asking belongs — someone who has
+              read ten lines has already said yes to something. Set in the
+              album's own type rather than the poem's hand: the hand is the
+              work, and this is not part of the work.
+            */}
+            <div className="l-two-cta">
+              <span className="l-two-cta-rule" aria-hidden />
+              <p className="l-two-cta-line">Be there when it surfaces.</p>
+              <button type="button" className="l-cta" onClick={() => setPanel('subscribe')}>
+                PRE-SAVE
+              </button>
+            </div>
           </div>
           {/*
-            The Chinese title, set the way it would be on a spine. It is the only
-            thing on this screen that is not English and not a control, and it
-            hangs in the right margin where a seal would — which is also the one
-            place it can be large and quiet at the same time. Gone below 900px,
-            where there is no margin to hang anything in.
+            The spine.
+
+            It was a line of vertical Chinese hanging in the right margin, which
+            is the *position* of a spine without being one. A spine is an edge:
+            it has a width, it is ruled off from the face, the title sits in it
+            rather than beside it, and it carries the maker's mark at its foot.
+            All four are cheap to build and the difference between a decorative
+            vertical and a thing that looks like it was printed.
+
+            The mark is a seal, because that is what signs a poem in Chinese —
+            白文, the character knocked out of the ink rather than drawn in it,
+            stamped a degree or two off square the way a hand leaves it. It is
+            the only warm colour anywhere on either screen, which is the whole
+            reason it can be 26px and still be the last thing you look at.
+
+            Gone below 900px: there is no margin to build an edge in, and a
+            spine laid over the verse is just a stripe.
           */}
-          <div className="l-two-cn" aria-hidden>
-            <span className="l-two-cn-rule" />
-            水母之心
+          <div className="l-spine" aria-hidden>
+            <div className="l-spine-mid">
+              <span className="l-spine-title">水母之心</span>
+              <span className="l-spine-rule" />
+            </div>
+            <span className="l-spine-seal">琦</span>
           </div>
         </section>
       </div>
@@ -1865,13 +1958,29 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 /* ---- nav ---- */
 .l-nav{position:fixed;top:0;left:0;right:0;z-index:20;
   display:flex;justify-content:space-between;align-items:center;
-  padding:26px clamp(24px,3vw,52px);
+  /* 18, not 26: the nav used to be two lines of 11.5px type and is now a
+     bordered button ~36px tall. At the old padding it stood 88px off the top
+     and screen two's title had to start below that — which is 88px the poem
+     could not have. */
+  padding:18px clamp(24px,3vw,52px);
   font-family:'Jost',sans-serif;font-weight:300;font-size:11.5px;letter-spacing:.3em}
 .l-nav-left{display:flex;gap:clamp(20px,2.6vw,42px);align-items:baseline}
 .l-nav-item{color:inherit;text-decoration:none;white-space:nowrap;
   background:none;border:none;padding:0;cursor:pointer;opacity:.95;transition:opacity .4s;
   text-shadow:0 1px 2px rgba(10,42,70,.5)}
 .l-nav-item:hover{opacity:1}
+
+/* The one thing being asked for, so it is the one thing built like a button.
+   Set like the rest of the nav it reads as a link, which is what it was: 11.5px
+   Jost in a corner, the same weight as a wordmark that does nothing. Same rule
+   and same fill-on-hover as SIGN UP in the panel it opens — the two are one
+   action seen twice, and looking alike is how anyone knows that. */
+.landing .l-nav-cta{padding:9px 20px;border:1px solid rgba(255,255,255,.55);
+  background:transparent;color:#fff;cursor:pointer;white-space:nowrap;
+  font-family:'Jost',sans-serif;font-weight:400;font-size:11.5px;letter-spacing:.3em;
+  text-shadow:0 1px 2px rgba(10,42,70,.5);
+  transition:background .4s,color .4s,border-color .4s}
+.landing .l-nav-cta:hover{background:#fff;color:#0d3550;border-color:#fff;text-shadow:none}
 
 /* ---- hero ---- */
 .l-hero{position:absolute;z-index:10;
@@ -2035,6 +2144,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   flex-shrink:0;display:flex;align-items:center;justify-content:center;padding-left:4px;
   transition:background .4s cubic-bezier(.2,.8,.2,1),color .4s,
              border-color .4s,transform .4s cubic-bezier(.2,.8,.2,1)}
+.landing .l-play[data-glyph=pause]{padding-left:0}
 .landing .l-play::after{content:'';position:absolute;inset:-1px;border-radius:50%;
   border:1px solid rgba(255,255,255,.75);opacity:0;transform:scale(1);
   transition:opacity .5s,transform .5s cubic-bezier(.2,.8,.2,1);pointer-events:none}
@@ -2654,9 +2764,56 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-drift i:nth-child(2){--y:44%;--w:56vw;--h:52vh;--a:.09;--dur:137s;--delay:-64s;
   --from:62vw;--to:6vw}
 
-/* ---- the wordmark, which is also the way back up ---- *//* ---- the wordmark, which is also the way back up ---- */
+/* Bioluminescence.
+   
+   Qi asked for "黑暗中的闪光" and the honest question was whether it needed a 3D
+   model. It does not, and it should not have one: this page exists because the
+   WebGL canvas came off it, and 300kB of R3F for an ambient sparkle is the
+   trade run backwards. The house rule is the right one — real models for
+   creatures, procedural for light and atmosphere — and a flash IS light.
+
+   What makes this different from the dot field it sits next to in the git
+   history is RARITY. Six of them, on 23-53s near-prime periods, each lit for
+   under three seconds: you will almost never see two at once, and most of the
+   time you will see none. An effect you are not sure you saw is worth ten you
+   can count. They are also SOFT and SIZED — a bright core inside a 58-130px
+   halo, not a 1px speck — and they flash TWICE, bright then weak, because a
+   single clean fade reads as a dial being turned and a stutter reads as
+   something alive.
+
+   Placed out toward the edges, away from the column the verse occupies. This is
+   meant to be caught in the corner of the eye while reading, never to be read
+   through. */
+.l-glim{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:hidden;
+  opacity:var(--s)}
+.l-glim i{position:absolute;left:var(--x);top:var(--y);
+  width:var(--d);height:var(--d);margin:calc(var(--d) / -2) 0 0 calc(var(--d) / -2);
+  border-radius:50%;opacity:0;
+  background:radial-gradient(closest-side,
+    rgba(234,251,255,.95) 0%,
+    rgba(154,226,250,.5) 20%,
+    rgba(92,192,236,.17) 44%,
+    transparent 72%);
+  animation:l-glim var(--dur) linear infinite;animation-delay:var(--delay)}
+@keyframes l-glim{
+  0%{opacity:0;transform:scale(.5)}
+  1.4%{opacity:1;transform:scale(1)}
+  3.2%{opacity:.1;transform:scale(1.1)}
+  4.4%{opacity:.7;transform:scale(1.05)}
+  8%{opacity:0;transform:scale(1.3)}
+  100%{opacity:0;transform:scale(1.3)}
+}
+.l-glim i:nth-child(1){--x:9%;--y:27%;--d:96px;--dur:29s;--delay:-3s}
+.l-glim i:nth-child(2){--x:79%;--y:13%;--d:70px;--dur:37s;--delay:-14s}
+.l-glim i:nth-child(3){--x:18%;--y:74%;--d:130px;--dur:43s;--delay:-26s}
+.l-glim i:nth-child(4){--x:89%;--y:57%;--d:58px;--dur:23s;--delay:-9s}
+.l-glim i:nth-child(5){--x:64%;--y:88%;--d:112px;--dur:53s;--delay:-38s}
+.l-glim i:nth-child(6){--x:41%;--y:7%;--d:64px;--dur:31s;--delay:-20s}
+
+/* ---- the wordmark, which is also the way back up ---- */
 .landing .l-mark{background:none;border:none;padding:0;color:inherit;cursor:pointer;
-  font-family:'Jost',sans-serif;font-weight:300;font-size:inherit;letter-spacing:.3em;
+  font-family:'Jost',sans-serif;font-weight:300;
+  font-size:clamp(13px,1.05vw,16px);letter-spacing:.34em;
   white-space:nowrap;text-shadow:0 1px 2px rgba(10,42,70,.5);
   /* Exactly the inverse of the title it stands in for: it arrives as the carved
      one leaves, so the album is named on both screens and never twice at once.
@@ -2770,8 +2927,11 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    poem itself is centred in what is left, so adding the player nudges the verse
    up rather than putting the bar on top of it. */
 .l-two{display:flex;align-items:center;justify-content:center;
-  padding:clamp(78px,12vh,120px) clamp(24px,6vw,80px)
-          calc(clamp(44px,8vh,92px) + var(--bar))}
+  /* Top clears the fixed nav, bottom clears the player when there is one, and
+     both are as tight as they can be: everything on this screen is competing
+     for one window. */
+  padding:clamp(78px,10.4vh,112px) calc(clamp(24px,6vw,80px) + var(--spine-w,0px))
+          calc(clamp(40px,6.6vh,84px) + var(--bar)) clamp(24px,6vw,80px)}
 
 /* The album, in the poem's own hand — see the note in the markup for the one
    thing that keeps it from reading as the poem's first line. A wider bloom than
@@ -2779,37 +2939,114 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    inside the letterform instead of around it. Same dark seat. */
 .l-poem-head{--o:.72;font-family:'Nothing You Could Do',cursive;font-weight:400;
   font-size:clamp(26px,3.7vh,42px);letter-spacing:.01em;line-height:1.2;
-  opacity:.72;margin-bottom:clamp(46px,9.5vh,98px);
+  opacity:.72;margin-bottom:clamp(40px,7.4vh,86px);
   text-shadow:0 0 11px rgba(186,230,252,.5),0 1px 2px rgba(2,14,26,.8)}
 
-/* The Chinese title, set the way it would run on a spine./* The Chinese title, set the way it would run on a spine. It is the only thing
-   on this screen that is neither English nor a control, and it hangs in the
-   right margin where a seal would — the one place it can be large and quiet at
-   once. Below 900px there is no margin to hang anything in, so it goes.
-   
-   The rule above it is an inline-block inside vertical text, which is why its
-   size is given logically: in vertical-rl the inline axis runs down the page, so
-   inline-size is the length of the line and block-size is its thickness. */
-.l-two-cn{--o:.32;position:absolute;right:clamp(20px,3.4vw,54px);top:50%;
-  transform:translateY(-50%);writing-mode:vertical-rl;pointer-events:none;
-  font-family:'Noto Serif SC','Songti SC',serif;font-weight:300;
-  font-size:clamp(13px,1.55vh,18px);letter-spacing:.62em;color:#dcecf6;opacity:.32;
-  text-shadow:0 0 10px rgba(150,210,240,.35),0 1px 2px rgba(2,14,26,.7)}
-.l-two-cn-rule{display:inline-block;inline-size:clamp(24px,6vh,58px);block-size:1px;
-  background:currentColor;opacity:.55;vertical-align:middle;
-  margin-inline-end:clamp(12px,2.6vh,26px)}
-@media (max-width:900px){.l-two-cn{display:none}}
+/* ---- the spine ----
+
+   This was a line of vertical Chinese hanging in the right margin, which is the
+   *position* of a spine without being one. A spine is an EDGE: it has a width,
+   it is ruled off from the face, the title sits inside it rather than beside it,
+   and it carries the maker's mark at its foot. All four are nearly free to
+   build, and together they are the difference between a decorative vertical and
+   something that looks printed.
+
+   Letter-spacing in vertical text lands below the last character as well as
+   between them, so the block hangs .52em low in its box. margin-bottom is a
+   physical property and still means physical bottom here, which is the shortest
+   way to take it back — the flex column above measures physical height. */
+.l-two{--spine-w:clamp(54px,4.6vw,74px)}
+.l-spine{--o:1;position:absolute;right:0;top:0;bottom:0;width:var(--spine-w);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  pointer-events:none;
+  /* A lit fold, then the board turning away from the light. That pair is what
+     makes 60px of gradient read as an edge with a thickness rather than as a
+     darker stripe — the hairline alone reads as a rule, the gradient alone
+     reads as a vignette, and only together do they describe a corner. */
+  border-left:1px solid rgba(220,238,250,.26);
+  background:linear-gradient(90deg,
+    rgba(226,242,252,.075) 0 2px,
+    rgba(2,12,26,.20) 2px,
+    rgba(2,12,26,.56) 100%)}
+/* Ruled across at both ends, which is the detail that settles it. A spine is
+   almost never one uninterrupted field — it is banded, and the band at the foot
+   is where the publisher's mark goes. Here that compartment holds the seal, so
+   the ruling is not decoration: it is what says the mark at the bottom is a
+   colophon and not a stray dot of colour. */
+.l-spine::before,.l-spine::after{content:'';position:absolute;left:0;right:0;
+  height:1px;background:rgba(220,238,250,.17)}
+.l-spine::before{top:clamp(50px,8vh,90px)}
+.l-spine::after{bottom:clamp(74px,11.5vh,126px)}
+.l-spine-mid{display:flex;flex-direction:column;align-items:center}
+.l-spine-title{writing-mode:vertical-rl;margin-bottom:-.52em;
+  font-family:'Noto Serif SC','Songti SC',serif;font-weight:400;
+  font-size:clamp(15px,1.95vh,22px);letter-spacing:.52em;color:#e8f2f9;opacity:.8;
+  text-shadow:0 0 10px rgba(150,210,240,.3),0 1px 2px rgba(2,14,26,.75)}
+.l-spine-rule{width:1px;height:clamp(24px,4.6vh,50px);background:#dceaf4;opacity:.34;
+  margin-top:clamp(16px,2.8vh,28px)}
+
+/* The mark. A seal, because that is what signs a poem in Chinese — 白文, the
+   character knocked out of the ink rather than drawn in it, and stamped a
+   degree or two off square the way a hand leaves it.
+
+   It is the only warm colour on either screen. That is exactly why it can be
+   26px and still be the last thing you look at, and also why nothing else is
+   allowed to join it: two accents are a palette, one is a signature. */
+.l-spine-seal{position:absolute;left:50%;bottom:clamp(26px,4.6vh,52px);
+  width:clamp(25px,3vh,33px);height:clamp(25px,3vh,33px);
+  transform:translateX(-50%) rotate(-2.2deg);
+  display:flex;align-items:center;justify-content:center;
+  background:#a4392c;border-radius:1.5px;
+  font-family:'Noto Serif SC','Songti SC',serif;font-weight:500;line-height:1;
+  font-size:clamp(15px,1.85vh,21px);color:#f7ece6;opacity:.95;
+  box-shadow:0 2px 12px rgba(164,57,44,.45),inset 0 0 0 1px rgba(255,255,255,.07)}
+
+@media (max-width:900px){
+  /* No margin to build an edge in, and a spine laid over the verse is a stripe. */
+  .l-two{--spine-w:0px}
+  .l-spine{display:none}
+}
 
 /* The verse gets more room than it had in the panel, since it now has a screen
    rather than a hole cut in one. Both faces move together — see POEM_FONTS for
    why they cannot share a number. */
-.l-two .l-poem-f-nothing{--poem-size:clamp(16px,2.5vh,27px)}
-.l-two .l-poem-f-cormorant{--poem-size:clamp(18px,2.8vh,29px)}
-/* Printed, not hidden. In the panel the numbers appeared on hover because they
-   were chrome over a poem; on a tracklist they are the tracklist, and a reader
-   should be able to see which line is 08 without reaching for it. */
-.l-two .l-poem-num{opacity:.3}
-.l-two .l-poem-line:hover .l-poem-num{opacity:.66}
+/* The verse gets more room than it had in the panel but not all it could take:
+   everything on this screen has to clear one window, because the spine's foot
+   and the album's one call to action both live at the bottom of it. See the
+   'tall' measurement for what happens when it still does not. */
+.l-two .l-poem-f-nothing{--poem-size:clamp(15px,2.2vh,25px)}
+.l-two .l-poem-f-cormorant{--poem-size:clamp(17px,2.5vh,27px)}
+.l-two .l-poem-body{gap:clamp(16px,2.75vh,34px)}
+/* Hover only, at Qi's call, and he is right: printed numbers make the screen a
+   tracklist, and the screen wants to be a poem first and a tracklist second.
+   They are still there the moment anyone reaches for a line — and always there
+   on touch, where there is no reaching. Slightly stronger than the panel's,
+   since here they are the only thing that says these lines are playable. */
+.l-two .l-poem-line:hover .l-poem-num{opacity:.6}
+
+/* ---- where the poem ends ----
+
+   The album asks for one thing and it was asking for it in 10px type in a
+   corner. This is the other half of the fix (the first is .l-nav-cta): someone
+   who has just read ten lines is the likeliest person on the site to say yes,
+   and until now the screen they were on ended in nothing at all.
+
+   Set in Cormorant italic — the album's own type — rather than in the poem's
+   hand. The hand is the work; this is not part of the work, and pretending
+   otherwise is how a call to action ends up unreadable AND unconvincing. */
+.l-two-cta{--o:1;display:flex;flex-direction:column;align-items:flex-start;
+  margin-top:clamp(26px,3.5vh,56px)}
+.l-two-cta-rule{width:clamp(28px,4vw,58px);height:1px;background:currentColor;opacity:.3}
+.l-two-cta-line{margin:clamp(13px,1.7vh,22px) 0 clamp(13px,1.7vh,21px);
+  font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:400;
+  font-size:clamp(16px,2.1vh,23px);opacity:.8;
+  text-shadow:0 1px 2px rgba(2,14,26,.7)}
+.landing .l-cta{padding:12px 26px;border:1px solid rgba(255,255,255,.62);
+  background:transparent;color:#fff;cursor:pointer;
+  font-family:'Jost',sans-serif;font-weight:300;font-size:11px;letter-spacing:.4em;
+  text-shadow:0 1px 2px rgba(2,14,26,.6);
+  transition:background .4s,color .4s,border-color .4s}
+.landing .l-cta:hover{background:#fff;color:#0b2438;border-color:#fff;text-shadow:none}
 
 /* ---- VI, the one line that beats ----
 
@@ -2843,23 +3080,21 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    not opaque and a fill-mode animation ending at 1 would silently overrule
    every one of them, forever. */
 @media (prefers-reduced-motion:no-preference){
-  .l-poem-head,.l-poem-row,.l-two-cn{opacity:0}
+  .l-poem-head,.l-poem-row,.l-two-cta,.l-spine{opacity:0}
   .l-two.is-in .l-poem-head{animation:l-in .9s cubic-bezier(.2,.7,.2,1) both}
   .l-two.is-in .l-poem-row{animation:l-in .85s cubic-bezier(.2,.7,.2,1) both;
     animation-delay:calc(var(--i,0) * 55ms)}
-  .l-two.is-in .l-two-cn{animation:l-in 1.3s cubic-bezier(.2,.7,.2,1) .5s both}
+  .l-two.is-in .l-two-cta{animation:l-in .9s cubic-bezier(.2,.7,.2,1) .82s both}
+  .l-two.is-in .l-spine{animation:l-in-spine 1.4s cubic-bezier(.2,.7,.2,1) .45s both}
 }
 @keyframes l-in{
   from{opacity:0;transform:translateY(16px);filter:blur(4px)}
   to{opacity:var(--o,1);transform:none;filter:none}
 }
-/* The vertical title comes in along its own axis, so it keeps its centring. */
-@media (prefers-reduced-motion:no-preference){
-  .l-two.is-in .l-two-cn{animation-name:l-in-cn}
-}
-@keyframes l-in-cn{
-  from{opacity:0;transform:translateY(-50%) translateX(14px)}
-  to{opacity:var(--o,1);transform:translateY(-50%)}
+/* The spine arrives from its own edge rather than from below. */
+@keyframes l-in-spine{
+  from{opacity:0;transform:translateX(18px)}
+  to{opacity:var(--o,1);transform:none}
 }
 
 @media (max-width:560px){
@@ -2870,11 +3105,16 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
      column is fourteen rows rather than ten and the type has to come down to
      pay for the four it did not budget for — 2.5vh of a phone is a comfortable
      size for a line that fits and an overflowing screen for one that doesn't. */
-  .l-two{padding-top:clamp(70px,10vh,110px)}
-  .l-two .l-poem-f-nothing{--poem-size:clamp(15px,2.15vh,22px)}
-  .l-two .l-poem-f-cormorant{--poem-size:clamp(16px,2.4vh,24px)}
-  .l-two .l-poem-body{gap:clamp(16px,2.6vh,30px)}
-  .l-poem-head{font-size:clamp(24px,3.3vh,34px);margin-bottom:clamp(34px,7vh,72px)}
+  .l-two{padding-top:clamp(64px,8.9vh,104px)}
+  .l-two .l-poem-f-nothing{--poem-size:clamp(14px,2vh,21px)}
+  .l-two .l-poem-f-cormorant{--poem-size:clamp(15px,2.25vh,23px)}
+  .l-two .l-poem-body{gap:clamp(14px,2.4vh,28px)}
+  .l-poem-head{font-size:clamp(22px,2.9vh,30px);margin-bottom:clamp(22px,4vh,48px)}
+  .l-two-cta{margin-top:clamp(22px,3.6vh,46px)}
+  .l-two-cta-line{font-size:clamp(15px,1.9vh,20px)}
+  .landing .l-cta{padding:11px 22px;letter-spacing:.3em}
+  .landing .l-mark{font-size:12.5px;letter-spacing:.24em}
+  .landing .l-nav-cta{padding:8px 14px;font-size:10.5px;letter-spacing:.22em}
 }
 
 @media (prefers-reduced-motion: reduce){

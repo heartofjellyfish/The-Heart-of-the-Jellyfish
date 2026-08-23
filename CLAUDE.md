@@ -82,6 +82,36 @@ CLAUDE.md. The veil stops short of opaque in both its gradients so the oil textu
 survives the descent; **a flat colour is what this background must never be, at any
 depth.**
 
+### The spine
+
+The right margin held a line of vertical Chinese, which is the *position* of a spine
+without being one. A spine is an **edge**, and four cheap things make it read as one
+instead of as a decorative vertical:
+
+1. **A width.** It is a band (`--spine-w`, 54–74px), and screen two's right padding
+   includes it so the poem still centres in what is left.
+2. **A lit fold and a board turning away from it.** A hairline at the left, then a
+   gradient darkening to the page edge. The hairline alone reads as a rule and the
+   gradient alone reads as a vignette; only together do they describe a corner.
+3. **Ruling at both ends.** A spine is banded, and the band at the foot is where the
+   publisher's mark goes — which is what tells you the red mark down there is a
+   colophon rather than a stray dot of colour.
+4. **The mark.** A seal, because that is what signs a poem in Chinese: 白文, the
+   character knocked out of the ink rather than drawn in it, stamped a couple of
+   degrees off square the way a hand leaves it.
+
+**The seal is the only warm colour on either screen.** That is exactly why it can be
+26px and still be the last thing you look at, and it is also why nothing else may
+join it — two accents are a palette, one is a signature.
+
+Vertical text has one trap worth knowing: letter-spacing lands *below* the last
+character as well as between them, so the block hangs low in its box by that amount.
+`margin-bottom` is a physical property and still means physical bottom in
+`vertical-rl`, which is the shortest way to take it back.
+
+Gone below 900px: there is no margin to build an edge in, and a spine laid over the
+verse is a stripe.
+
 ### Light, not particles
 
 *(the first pass at this shipped drifting motes and was replaced on 2026-08-22 —
@@ -115,6 +145,22 @@ The clouds do almost nothing per frame, which is their job: they keep the dark f
 being a flat fill without ever becoming something to look at. Same principle as the
 painting itself.
 
+**Bioluminescence** was the follow-up ask (*"黑暗中的闪光"*), and the honest question
+was whether it wanted a 3D model. It does not, and it should not have one: this page
+exists *because* the WebGL canvas came off it (130 kB first load against `/descent`'s
+425 kB), and 300 kB of R3F for an ambient sparkle is that trade run backwards. The
+house rule already covers it — real models for creatures, procedural for light and
+atmosphere — and a flash **is** light.
+
+What separates it from the dot field two commits earlier is **rarity**: six of them,
+on 23–53s near-prime periods, each lit for under three seconds, so you will almost
+never see two at once and most of the time you will see none. *An effect you are not
+sure you saw is worth ten you can count.* They are also soft and sized — a bright
+core inside a 58–130px halo — and they flash **twice**, bright then weak, because a
+single clean fade reads as a dial being turned and a stutter reads as something
+alive. Placed toward the edges, away from the column the verse occupies: meant to be
+caught in the corner of the eye while reading, never read through.
+
 ### Snap, and the one thing that can trap a reader
 
 `scroll-snap-type: y mandatory` is the whole feeling of "two pages". It is also the
@@ -128,6 +174,25 @@ the snap to `proximity`. What makes screen two overflow is how many of the ten l
 had to turn, which depends on the width, the height, which font finished loading and
 whether the player is up; no media query knows all four. (The effect re-runs on
 `barOn` for exactly this reason — the player changes screen two's padding.)
+
+### The hero's primary action
+
+It said `LISTEN NOW`, which is what a released album says. This one is not released —
+these are demos, and saying so is not a disclaimer, it is the offer: you are hearing
+it before it exists. So the idle label is `HEAR THE DEMOS`.
+
+The other half of that is that **once a track is loaded the button stops being "start
+the album" and becomes the transport for whatever is sounding** — `PAUSE` / `RESUME`,
+with the glyph and the `aria-label` following. A hero play button that restarts a
+different track while music is already playing is a bug the size of the hero. The
+label's letters are keyed by label as well as index so they re-enter on a change
+rather than morphing in place, and the pause glyph drops the play triangle's optical
+offset (`[data-glyph=pause]`), since two symmetric bars do not need one.
+
+`TRACKLIST` goes to screen two. It spent the rebuild still calling
+`setPanel('poem')` — a panel that no longer existed — so it opened nothing at all,
+which is exactly what it looked like from outside. Worth remembering as the failure
+mode when a route or a view is deleted: the *caller* compiles fine.
 
 ### The player is one player, for both screens
 
@@ -146,6 +211,23 @@ looking at, and Escape closes it. The split is not layout convenience — a form
 not a place: it has no content to be read, it is answered and dismissed, and it must
 not cost the visitor their position on the way back out. The poem is the opposite of
 all three, which is why it stopped being a dialog you open and dismiss.
+
+### The ask
+
+`PRE-SAVE` is the site's one conversion, and it spent the first pass set as an 11.5px
+link in a corner — the same weight as a wordmark that does nothing. It is now the
+only thing on either screen built like a button, in two places:
+
+- **The nav**, on both screens, with the same rule and the same fill-on-hover as
+  `SIGN UP` in the panel it opens. The two are one action seen twice, and looking
+  alike is how anyone knows that. (The nav's own padding came down from 26px to 18px
+  to pay for the button's height — screen two needed those pixels.)
+- **Where the poem ends.** Someone who has just read ten lines is the likeliest
+  person on the site to say yes, and until now that screen ended in nothing at all.
+  A hairline, one line in the album's own type — *Be there when it surfaces.* — and
+  the button. Set in Cormorant italic rather than the poem's hand on purpose: the
+  hand is the work, this is not part of the work, and blurring that is how a call to
+  action ends up both unreadable and unconvincing.
 
 ### The arrow, and what it replaced
 
@@ -180,9 +262,18 @@ Two things it needs that are easy to lose:
 
 ### Screen two
 
-*Title, then the poem, and nothing else.* A `RELEASING · 12 · 20 · 2026 — PRE-SAVE`
-footer was tried and cut: `PRE-SAVE` is in the fixed nav on both screens already, and
-the date is on screen one in numbers that tick.
+*Title, the poem, the ask.* A `RELEASING · 12 · 20 · 2026 — PRE-SAVE` footer was
+tried and cut for saying in 10px what the ticking countdown on screen one already
+says; what replaced it is a real call to action — see *The ask* below.
+
+**Everything on this screen has to clear one window**, and that is a constraint, not
+a preference: the spine's foot and the album's one call to action both live at its
+bottom, and a screen that overflows drops both below the fold *and* trips the
+`data-tall` fallback out of mandatory snap. Every size on it is therefore in `vh`
+and tuned to fit at 812px with the phone type ramp and at ~840px without. If you add
+anything here, take the height out of something else — the measured budget is the
+poem's size, the title's margin, the CTA's margin, and the section's own padding, in
+that order of how little they hurt.
 
 The panel's markup, unchanged, on a screen: the same fill, the same press-to-seek,
 the same transport in the margin. None of it was ever about being in a dialog. What
@@ -203,8 +294,10 @@ is new around it:
   logically — in `vertical-rl` the inline axis runs *down* the page, so `inline-size`
   is the length of the line and `block-size` is its thickness. Gone below 900px,
   where there is no margin to hang anything in.
-- **The numbers are printed, not revealed.** In the panel they appeared on hover
-  because they were chrome over a poem; on a tracklist they *are* the tracklist.
+- **The numbers appear on hover, not at rest** — Qi's call, and the right one: the
+  screen wants to be a poem first and a tracklist second, and ten printed numerals
+  make it the other way round. They are always visible on touch, where there is no
+  reaching (`@media (hover:none)`), or the poem would hide that it is playable.
 - **Line VI beats.** `HEART_TRACK` — the album is named after it, the heartbeat is
   the album's rhythm, and the hero's "Heart" already swells once a second. On the
   tracklist the same beat lands on the same words. Not literally the same clock: a
