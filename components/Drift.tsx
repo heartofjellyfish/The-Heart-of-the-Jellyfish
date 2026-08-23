@@ -115,9 +115,31 @@ const MAX_NAME = 24;
 const POLL_FAST = 6000;
 const POLL_SLOW = 15000;
 const POLL_IDLE = 30000;
-/** Empty polls before the sea is declared quiet. ~20s and ~2min of nothing. */
+/** Empty polls before the sea is declared quiet. ~30s and ~3min of nothing. */
 const QUIET = 5;
 const ASLEEP = 30;
+
+/**
+ * How often the poll asks for the whole wall instead of only what is new.
+ *
+ * An incremental poll can only ever ADD, so it never learns that something was
+ * taken down: Qi deletes a line of spam and it stays on the screen of everyone
+ * who already had the page open, for as long as they leave the tab open. That
+ * is a hole in the only moderation there is.
+ *
+ * It costs almost nothing to close, because of how the store reads: `read()`
+ * does a single LRANGE of the whole list either way and filters by timestamp in
+ * JS, so a full fetch is the SAME one Redis command as an incremental one. Only
+ * the size of the JSON differs, which is why this is once a minute rather than
+ * every poll.
+ *
+ * **In milliseconds, not in a count of polls**, and that distinction was found
+ * by testing rather than by thinking: the poll backs off to 15s and then 30s
+ * when the water is quiet, so "every tenth poll" stretched to several minutes
+ * exactly when the wall was empty — which is precisely the state a wall is in
+ * after someone deletes the only thing on it.
+ */
+const SWEEP_MS = 60_000;
 
 /**
  * The wall, kept live.
@@ -156,6 +178,8 @@ function useDrift(active: boolean, capacity: number) {
   const first = useRef(true);
   /** Consecutive polls that brought nothing. Drives the backoff. */
   const empty = useRef(0);
+  /** When the last full sweep happened. See SWEEP_MS. */
+  const swept = useRef(0);
 
   /**
    * Merge, newest first, id-deduped.
@@ -200,12 +224,28 @@ function useDrift(active: boolean, capacity: number) {
         timer = setTimeout(tick, POLL_SLOW);
         return;
       }
+      // Once a minute the poll asks for everything, so removals land too.
+      const now = Date.now();
+      const sweep = now - swept.current >= SWEEP_MS;
       try {
-        const res = await fetch(`/api/guestbook?since=${cursor.current}`, { cache: 'no-store' });
+        const from = sweep ? 0 : cursor.current;
+        const res = await fetch(`/api/guestbook?since=${from}`, { cache: 'no-store' });
         if (res.ok) {
           const data = (await res.json()) as { messages?: DriftMessage[]; persistent?: boolean };
           const list = Array.isArray(data.messages) ? data.messages : [];
           if (typeof data.persistent === 'boolean') setPersistent(data.persistent);
+          if (sweep) {
+            swept.current = now;
+            const alive = new Set(list.map((m) => m.id));
+            setMessages((prev) => {
+              /* Keep anything the server still has, and anything of ours it
+                 cannot have heard of yet — an optimistic copy posted in the
+                 gap between this request going out and its answer coming back
+                 would otherwise be swept away a moment after being typed. */
+              const kept = prev.filter((m) => alive.has(m.id) || m.id.startsWith('local-'));
+              return kept.length === prev.length ? prev : kept;
+            });
+          }
           if (list.length) {
             empty.current = 0;
             merge(list, first.current);

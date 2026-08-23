@@ -483,8 +483,32 @@ is ever actually hit, Turnstile in front of the POST is one env var and ~10
 lines, and it belongs *then*.
 
 The undo Qi keeps is `DELETE /api/guestbook?id=…` with `GUESTBOOK_ADMIN_TOKEN`
-in a header — hide, not delete, so the list stays append-only. With the token
-unset the route 404s: an unconfigured admin door should not announce itself.
+in a header. With the token unset the route 404s: an unconfigured admin door
+should not announce itself.
+
+**A delete has to reach pages that are already open, and that needs a second
+kind of poll.** An incremental poll can only ever ADD — it asks for what is
+newer than its cursor — so a message taken down stays on the screen of everyone
+who had the page open, for as long as they leave the tab open. On a site whose
+only moderation is "delete it afterwards", that is most of the moderation
+failing. So once a minute the poll asks for the *whole* wall instead and drops
+anything that is no longer in it.
+
+Two things make that cheap and correct:
+
+- It costs the same **one** Redis command. `read()` does a single `LRANGE` of
+  the whole list either way and filters by timestamp in JS, so only the size of
+  the JSON differs.
+- It is timed in **milliseconds, not in a count of polls** — found by testing,
+  not by thinking. The poll backs off to 15s and then 30s when the water is
+  quiet, so "every tenth poll" stretched to several minutes exactly when the
+  wall was empty, which is the state a wall is in right after someone deletes
+  the only thing on it.
+
+The sweep keeps anything whose id starts with `local-`, or an optimistic copy
+posted in the gap between the request going out and its answer coming back
+would be swept away a moment after being typed. (Verified: post, wait out a
+sweep, still there.)
 
 **Storage is Upstash Redis over its REST API, which is why there is no new
 dependency.** Upstash speaks HTTP, so the store is a `fetch` — no client, no
