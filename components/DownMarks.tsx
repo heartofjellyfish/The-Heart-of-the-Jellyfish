@@ -36,6 +36,8 @@ import React from 'react';
 
 export const DOWN_VARIANTS = [
   { key: '0', label: '0 · current' },
+  { key: '6', label: '6 · current, heavier' },
+  { key: '7', label: '7 · current, tapered' },
   { key: '1', label: '1 · ring' },
   { key: '2', label: '2 · disc' },
   { key: '3', label: '3 · arrow' },
@@ -151,6 +153,46 @@ export function DownMark({ v }: { v: DownVariant }) {
     );
   }
 
+  /* 6 — CURRENT, HEAVIER.
+     Qi likes this one and it is only too thin, so: the same three parts, all of
+     them given mass. The rail goes 1px to 2 and grows a third longer, the
+     chevron 1.25 to 2.4, and the travelling light — which was a 1px sliver and
+     the whole reason this form works — finally has a rail wide enough to be
+     seen falling down.
+
+     The one thing deliberately unchanged is the gap between the shaft and the
+     head. It is not an arrow; it is a line, and a mark arriving at it. */
+  if (v === '6') {
+    return (
+      <span className="dm6">
+        <span className="dm6-rail">
+          <span className="dm6-drop" />
+        </span>
+        <Chev w={34} sw={2.4} />
+      </span>
+    );
+  }
+
+  /* 7 — CURRENT, TAPERED.
+     The other reading of "make it heavier": rather than a line of even weight,
+     a shaft that GATHERS on the way down — a hair at the top, 3px where it
+     meets the head — and no gap, so the three parts resolve into one arrow.
+
+     The taper is a clip-path, which also clips the light travelling inside it,
+     so the drop narrows as it falls. That is the whole argument for this
+     version: the same motion now accelerates *visually* as well as literally,
+     and it ends by handing the light to the chevron. */
+  if (v === '7') {
+    return (
+      <span className="dm7">
+        <span className="dm7-rail">
+          <span className="dm7-drop" />
+        </span>
+        <Chev w={34} sw={2.6} />
+      </span>
+    );
+  }
+
   /* 0 — what ships today. Here to be beaten. */
   return (
     <span className="dm0">
@@ -200,6 +242,49 @@ export const DOWN_CSS = `
 .dm0-drop{position:absolute;left:0;top:0;width:1px;height:44%;
   background:linear-gradient(180deg,transparent,#fff,transparent);
   animation:l-down-drop 3.6s cubic-bezier(.45,0,.55,1) infinite}
+
+/* 6 — current, heavier */
+.dm6{display:flex;flex-direction:column;align-items:center;gap:clamp(10px,1.5vh,16px);
+  color:var(--dm-mark)}
+.dm6 .dm-chev{filter:var(--dm-halo);animation:dm-catch 3.6s ease-in-out infinite}
+.dm6-rail{position:relative;display:block;width:2px;border-radius:1px;
+  height:clamp(44px,7.6vh,82px);overflow:hidden;
+  background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.5) 38%,rgba(255,255,255,.78));
+  box-shadow:0 1px 2px rgba(10,42,70,.5),0 0 9px rgba(10,42,70,.5)}
+.dm6-drop{position:absolute;left:0;right:0;top:0;height:42%;
+  background:linear-gradient(180deg,transparent,#fff,transparent);
+  animation:dm-drop 3.6s cubic-bezier(.45,0,.55,1) infinite}
+.l-down:hover .dm6-rail{background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.7) 38%,#fff)}
+
+/* 7 — current, tapered */
+.dm7{display:flex;flex-direction:column;align-items:center;gap:1px;color:var(--dm-mark)}
+.dm7 .dm-chev{filter:var(--dm-halo);animation:dm-catch 3.6s ease-in-out infinite}
+/* 3px box, clipped to a wedge: ~1px of it at the top, all 3 at the foot. The
+   clip takes the drop with it, so the light narrows as it falls. */
+.dm7-rail{position:relative;display:block;width:3px;
+  height:clamp(46px,8.2vh,88px);overflow:hidden;
+  clip-path:polygon(33% 0%,67% 0%,100% 100%,0% 100%);
+  background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.46) 34%,rgba(255,255,255,.8));
+  filter:drop-shadow(0 1px 2px rgba(10,42,70,.5)) drop-shadow(0 0 8px rgba(10,42,70,.45))}
+.dm7-drop{position:absolute;left:0;right:0;top:0;height:40%;
+  background:linear-gradient(180deg,transparent,#fff,transparent);
+  animation:dm-drop 3.6s cubic-bezier(.45,0,.55,1) infinite}
+.l-down:hover .dm7-rail{background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.66) 34%,#fff)}
+
+/* Shared by 0, 6 and 7 — the light falls, and the head takes it.
+   The drop reaches the foot at ~82% of the cycle, so the catch peaks at 84.
+   Same period for both, or they stop being one gesture. The flash is on filter
+   alone: transform and opacity stay free for hover and for the bob. */
+@keyframes dm-drop{
+  0%{transform:translateY(-140%);opacity:0}
+  20%{opacity:.95}
+  72%{opacity:.95}
+  100%{transform:translateY(320%);opacity:0}
+}
+@keyframes dm-catch{
+  0%,72%,100%{filter:drop-shadow(0 1px 2px rgba(10,42,70,.55)) drop-shadow(0 0 10px rgba(10,42,70,.45))}
+  84%{filter:drop-shadow(0 1px 2px rgba(10,42,70,.55)) drop-shadow(0 0 9px rgba(216,242,255,.95))}
+}
 
 /* 1 — ring */
 .dm1{display:flex;align-items:center;justify-content:center;

@@ -116,7 +116,7 @@ logically, because in `vertical-rl` the inline axis runs down the page: `inline-
 is the length of a rule, `block-size` is its thickness, and inline-start/-end are its
 top and bottom.)
 
-### Light, not particles### Light, not particles
+### Light, not particles
 
 *(the first pass at this shipped drifting motes and was replaced on 2026-08-22 —
 Qi's read was "有点假，小儿科", and he was right)*
