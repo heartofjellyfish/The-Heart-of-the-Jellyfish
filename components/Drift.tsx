@@ -481,7 +481,7 @@ export function Drift({ active }: { active: boolean }) {
         // Two passes, and the first one is why an overlap clears quickly rather
         // than merely eventually: prefer a band at least two away from every
         // neighbour's, and only then settle for merely different.
-        for (const gap of [2, 1]) {
+        for (const gap of [3, 2, 1]) {
           for (let i = 0; i < SPEEDS.length; i++) {
             const cand = (speedTurn.current + i) % SPEEDS.length;
             if (near.every((q) => Math.abs(q.speed - cand) >= gap)) {
@@ -1003,26 +1003,61 @@ export const DRIFT_CSS = `
 .l-three[data-say=riser] .l-say{
   flex-wrap:wrap;gap:.3em .6em;justify-content:center;text-align:center;
   inline-size:min(32ch,calc(100vw - 48px));
+  /* Set here so the glow below can be sized in em and land somewhere
+     predictable — the form otherwise inherits whatever the section has. */
+  font-size:clamp(16px,2.05vh,21px);
   bottom:calc(clamp(46px,8vh,86px) + var(--bar))}
 
 /* The dim light. Inside .l-say, which is its own stacking context at z-index 2,
    so a negative z-index puts it under the composer's type and still over the
    water at z-index 1.
 
-   Inset negatively and hard, because the gradient must reach zero well outside
-   the words: a glow that stops where the text stops is a lozenge, and a
-   lozenge is a box that has been apologised for. Nothing in it has an edge. */
+   **The gradient must reach fully transparent INSIDE its own box**, and getting
+   that wrong is what made the first version read as a banner rather than as a
+   glow. A radial-gradient sized '56% 100%' gives an ellipse whose vertical
+   radius is the box's full height — so at the top and bottom edges the ramp was
+   still at ~.04 alpha and simply stopped, which is a straight horizontal edge,
+   which is the one thing a glow cannot have. Percentages in a radial-gradient
+   resolve per axis, so the rule is: last stop × radius < 50% on BOTH axes.
+   Here 72% × 44% = 32% and 72% × 46% = 33%, comfortably inside a box that the
+   negative insets have already made much bigger than the words.
+
+   It is also nearly as tall as it is wide, on purpose — 一团, a body of light
+   the composer sits inside, not a bar behind a line of text. */
 .l-three[data-say=riser] .l-say::before{content:'';position:absolute;z-index:-1;
-  inset:-3.4em -30% -3.8em;pointer-events:none;
-  background:radial-gradient(56% 100% at 50% 50%,
-    rgba(122,186,232,.17),rgba(122,186,232,.06) 42%,rgba(122,186,232,0) 76%);
-  animation:l-say-breathe 7.4s ease-in-out infinite;
-  transition:opacity .6s ease}
-.l-three[data-say=riser] .l-say:focus-within::before{animation-play-state:paused;opacity:1}
-/* 7.4s, and the number matters only in that it is NOT 1s. The album's beat is
-   60bpm and it belongs to the record; a text field borrowing it would be
-   claiming to be part of the work rather than the way in. */
-@keyframes l-say-breathe{0%,100%{opacity:.62}50%{opacity:1}}
+  inset:-7.5em -8em;pointer-events:none;
+  background:radial-gradient(44% 46% at 50% 50%,
+    rgba(122,186,232,.2),rgba(122,186,232,.075) 40%,rgba(122,186,232,0) 72%);
+  animation:l-say-flicker 9.7s ease-in-out infinite,
+            l-say-flicker-b 6.1s ease-in-out infinite;
+  transition:opacity .5s ease,filter .5s ease}
+
+/* It flickers, and the flicker is TWO animations on near-prime periods rather
+   than one — 9.7s on opacity, 6.1s on brightness. A single loop of any length
+   is findable, and once you have found it a flicker becomes a strobe; two that
+   never come back into phase read as an unstable light and nothing else. This
+   is the same rule the light shafts are built on (17/23/29/37/43s), one screen
+   down. If it ever needs another layer, add another near-prime — do not round.
+
+   Neither period is 1s. The album's beat is 60bpm and it belongs to the record;
+   a text field borrowing it would be claiming to be part of the work rather
+   than the way in. */
+@keyframes l-say-flicker{
+  0%{opacity:.74}  9%{opacity:.97}  17%{opacity:.62}
+  26%{opacity:.9}  34%{opacity:.7}  43%{opacity:1}
+  51%{opacity:.66} 60%{opacity:.88} 68%{opacity:.58}
+  77%{opacity:.93} 85%{opacity:.72} 93%{opacity:.86}
+  100%{opacity:.74}}
+@keyframes l-say-flicker-b{
+  0%{filter:brightness(1)}    13%{filter:brightness(1.16)}
+  29%{filter:brightness(.88)} 47%{filter:brightness(1.1)}
+  61%{filter:brightness(.92)} 78%{filter:brightness(1.13)}
+  100%{filter:brightness(1)}}
+
+/* Steady while you are in it. The one state change on this screen, and the
+   right way round: an unstable light that settles when touched is alive. */
+.l-three[data-say=riser] .l-say:focus-within::before{
+  animation-play-state:paused,paused;opacity:1;filter:brightness(1.12)}
 
 
 .l-three[data-say=riser] input,

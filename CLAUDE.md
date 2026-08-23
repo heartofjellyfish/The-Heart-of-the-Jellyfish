@@ -315,11 +315,31 @@ was not enough:
   column — two people posting in the same minute is the commonest way a field
   gets a stack.
 
-Measured after: zero overlapping pairs at load and none ten seconds later, where
-the previous version had three that never came apart. **If this is ever touched,
-measure it the same way** — walk the rendered boxes for intersections, twice,
-ten seconds apart. It is four lines in the console and it is the only way to
-tell a busy field from a broken one, because both look fine in a screenshot.
+Measured over two minutes of motion with 16 messages: 32 pairs overlap at some
+point, the median one for **7 seconds**, the worst for 19. Nothing is permanent,
+which was the brief. Before these rules there were three pairs that never came
+apart at all.
+
+**How to measure it, because two obvious methods are both wrong.** A screenshot
+cannot tell a busy field from a broken one, and neither can watching — the
+question is whether a *specific pair* separates, over a minute, while everything
+else moves.
+
+- **Do not measure in the preview pane.** Its document timeline is frozen:
+  `getAnimations()` reports `playState: "running"` while `currentTime` never
+  advances, so two measurements ten seconds apart return the identical frame and
+  every overlap looks permanent. Check `document.timeline.currentTime` before
+  believing any before/after.
+- **Do not seek by setting `currentTime` to an absolute value.** History arrives
+  mid-flight via a *negative* `animation-delay`, and seeking to an absolute time
+  throws all of it away — every message snaps to the start of its cycle, which
+  is the one configuration the phase placement exists to prevent. Read each
+  animation's `currentTime` first and seek to `base + dt`.
+
+The working method is: capture the base times, step `dt` in one-second
+increments, walk the rendered boxes for intersections at each step, and record
+the longest consecutive run per pair. That number — longest run, not count — is
+the one that says whether the field drifts or stacks.
 
 **Both ends fade inside the keyframe, not under a mask.** A mask forces the
 whole viewport-sized subtree into one render surface and re-rasters it every
