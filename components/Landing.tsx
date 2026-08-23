@@ -1055,6 +1055,7 @@ function Deepstars({ active }: { active: boolean }) {
         <span
           key={'d' + i}
           className="l-star"
+          data-deep=""
           style={
             {
               ['--x' as string]: s.x.toFixed(2) + '%',
@@ -1313,11 +1314,18 @@ function DeepLight({ active }: { active: boolean }) {
     /* The effect re-runs when `active` flips; the context and program are
        built once and reused, or every crossing of the threshold would compile
        another program into the same context. */
+    const fresh = !ctx.current;
     ctx.current = ctx.current ?? lumenInit(canvas);
     const c = ctx.current;
     if (!c) return; // no WebGL: the drift and the stars still carry the screen
     const rootEl = canvas.closest('.landing') as HTMLElement | null;
+    /* The star channel writes on the star container, NOT the root: a custom
+       property set on the root restyles every var()-reading element on the
+       page, and this page reads vars everywhere. Scoped to .l-stars it
+       restyles the stars and nothing else. */
+    const starsEl = rootEl?.querySelector('.l-stars') as HTMLElement | null;
     let lastBloom = 0;
+    let bloomOn = false;
 
     /* The surge. Dark is the resting state — most of the time the picture
        sits low, wandering a little — and now and then the whole of it opens:
@@ -1452,12 +1460,21 @@ function DeepLight({ active }: { active: boolean }) {
       gl.uniform1f(loc.uGSurf, (0.07 + 0.27 * eS) * (bS + eS * surgePeak));
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       /* The star channel leaves the canvas: the deep field (see Deepstars)
-         reads `--sbloom` off the root. Written at ~6Hz, not per frame — the
-         envelope moves over seconds, and every write restyles a couple of
-         hundred small elements. */
+         reads `--sbloom` off its own container. Written at ~6Hz, not per
+         frame — the envelope moves over seconds, and every write restyles a
+         couple of hundred small elements. `data-bloom` is what lets the
+         deep stars run their animations at all: 220 extra always-running
+         animations were a real cost the whole time nobody could see them —
+         and the crossing paid it. */
       if (now - lastBloom > 160) {
         lastBloom = now;
-        rootEl?.style.setProperty('--sbloom', eStars.toFixed(3));
+        starsEl?.style.setProperty('--sbloom', eStars.toFixed(3));
+        const on = eStars > 0.015;
+        if (on !== bloomOn) {
+          bloomOn = on;
+          if (on) starsEl?.setAttribute('data-bloom', '');
+          else starsEl?.removeAttribute('data-bloom');
+        }
       }
     };
 
@@ -1468,6 +1485,13 @@ function DeepLight({ active }: { active: boolean }) {
       /* 30fps. Nothing here moves fast enough for 60 to buy anything, and the
          halved GPU wake-ups are what a phone notices. */
       if (now - last < 33) return;
+      /* And NOTHING during the crossing. `active` flips at s=0.3, in the
+         middle of the snap — starting draws there put GPU work and style
+         writes inside the one animation on this page that must not drop a
+         frame (Qi felt it drop). The static mount frame carries the fade-in;
+         the light starts breathing only once the descent has landed. */
+      const sv = parseFloat(rootEl?.style.getPropertyValue('--s') || '1');
+      if (sv < 0.97) return;
       last = now;
       draw(now);
     };
@@ -1476,10 +1500,11 @@ function DeepLight({ active }: { active: boolean }) {
       draw(performance.now());
     };
 
-    /* One static frame regardless, so the scroll down has something to fade
-       in before the loop is armed — at this speed a still first frame is
-       indistinguishable from a moving one. */
-    still();
+    /* One static frame at first init, so the scroll down has something to
+       fade in before the loop is armed — at this speed a still first frame
+       is indistinguishable from a moving one. NOT re-run when `active`
+       flips: that flip happens mid-scroll, and size() reads layout. */
+    if (fresh) still();
     window.addEventListener('resize', still);
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (active && !reduce) raf = requestAnimationFrame(frame);
@@ -1487,7 +1512,8 @@ function DeepLight({ active }: { active: boolean }) {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', still);
       /* Leaving mid-surge must not strand the deep field at half-bloom. */
-      rootEl?.style.setProperty('--sbloom', '0');
+      starsEl?.style.setProperty('--sbloom', '0');
+      starsEl?.removeAttribute('data-bloom');
     };
   }, [active]);
 
@@ -4821,6 +4847,17 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   0%,100%{opacity:var(--lo)}
   50%{opacity:var(--hi)}
 }
+/* The deep field sleeps as CSS, not merely as alpha. An opacity animation
+   whose computed value is zero still runs, and still holds its layer — 220
+   of them did, invisibly, and the descent's snap paid for the lot the
+   moment the star container's own opacity left zero mid-scroll. Until
+   DeepLight raises data-bloom on the container (which it only does down on
+   screen two, with the descent settled), these do not animate and are not
+   painted: they cost exactly nothing. */
+.l-star[data-deep]{animation:none;opacity:0}
+.l-stars[data-bloom] .l-star[data-deep]{
+  animation:l-twinkle var(--dur) ease-in-out var(--delay) infinite;
+  opacity:var(--lo)}
 
 /* A fall. The wrap holds position and angle, the child holds the streak and the
    motion, because one element cannot be both rotated by a static transform and

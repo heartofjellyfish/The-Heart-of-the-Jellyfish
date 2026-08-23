@@ -331,6 +331,21 @@ share and its own entrance delay, re-rolled per surge: some surges are all
 phantom and no beam, in some the surface lights first and the shafts
 follow, and who leads is never the same twice.
 
+**The crossing is sacred: this layer does NOTHING while `--s` is moving.**
+Shipping v1 stuttered the descent (Qi felt it immediately), and the cause
+was three costs all armed at the `atTwo` flip — mid-snap: the draw loop
+starting (plus a layout read), `--sbloom` restyling the whole page from the
+root, and 220 deep-star animations running at computed opacity 0, whose
+layers all activated the moment the star container's opacity left zero.
+The fixes are structural, keep them: the loop draws only once `--s ≥ 0.97`
+(the static mount frame carries the fade-in); `--sbloom` is written on
+`.l-stars`, never the root, so a write restyles the stars and nothing
+else; and the deep field is `animation:none` until DeepLight raises
+`data-bloom` on the container — an animation at computed opacity 0 still
+runs and still holds a layer. Anything added to this layer later must
+answer the same question first: what does it cost while the page is
+scrolling?
+
 **`/?lumen=surge` pins the surge at its peak** (all four channels full —
 the brightest the screen can be, brighter than almost any real surge) —
 same species of dev affordance as `?tune=1`, because the real thing spends
