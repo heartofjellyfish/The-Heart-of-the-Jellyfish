@@ -893,6 +893,14 @@ type Fall = {
 
 /** Enough to read as a field, few enough that every one is its own layer. */
 const STAR_COUNT = 96;
+/**
+ * The deep field: a second, fainter population that exists only while the
+ * light surges (see DeepLight — it drives `--sbloom` on the root). At rest
+ * their opacity resolves to zero; when the star channel of a surge comes in,
+ * a hundred and fifty more stars are simply THERE, and then they are not.
+ * Density is the one axis of spectacle the light alone cannot reach.
+ */
+const DEEP_STAR_COUNT = 220;
 
 function rnd(a: number, b: number) {
   return a + Math.random() * (b - a);
@@ -937,13 +945,36 @@ function makeStars(): Star[] {
   return out;
 }
 
+function makeDeepStars(): Star[] {
+  const out: Star[] = [];
+  // Smaller, dimmer, quicker than the resting sky, and placed by the same
+  // odds — the bloom must respect the verse exactly as the rest does.
+  for (let i = 0; i < DEEP_STAR_COUNT * 30 && out.length < DEEP_STAR_COUNT; i++) {
+    const x = rnd(0, 100);
+    const y = rnd(0, 100);
+    if (Math.random() > starOdds(x, y)) continue;
+    out.push({
+      x,
+      y,
+      r: rnd(0.7, 1.9),
+      lo: rnd(0.03, 0.08),
+      hi: rnd(0.18, 0.6),
+      dur: rnd(3.5, 9),
+      delay: rnd(0, 8),
+    });
+  }
+  return out;
+}
+
 function Deepstars({ active }: { active: boolean }) {
   const [stars, setStars] = useState<Star[]>([]);
+  const [deepStars, setDeepStars] = useState<Star[]>([]);
   const [falls, setFalls] = useState<Fall[]>([]);
   const nextId = useRef(0);
 
   useEffect(() => {
     setStars(makeStars());
+    setDeepStars(makeDeepStars());
   }, []);
 
   /* Falls are armed only while the reader is actually down here, and never for
@@ -1015,6 +1046,28 @@ function Deepstars({ active }: { active: boolean }) {
           }
         />
       ))}
+      {/* The deep field. Same element, same animation — the only difference
+          is that both ends of each star's swing are multiplied by --sbloom,
+          which DeepLight's star channel drives on the root. At rest that is
+          zero and none of this exists; in a surge the sky gains a hundred
+          and fifty stars it did not have. */}
+      {deepStars.map((s, i) => (
+        <span
+          key={'d' + i}
+          className="l-star"
+          style={
+            {
+              ['--x' as string]: s.x.toFixed(2) + '%',
+              ['--y' as string]: s.y.toFixed(2) + '%',
+              ['--r' as string]: s.r.toFixed(2) + 'px',
+              ['--lo' as string]: `calc(${s.lo.toFixed(3)} * var(--sbloom, 0))`,
+              ['--hi' as string]: `calc(${s.hi.toFixed(3)} * var(--sbloom, 0))`,
+              ['--dur' as string]: s.dur.toFixed(2) + 's',
+              ['--delay' as string]: (-s.delay).toFixed(2) + 's',
+            } as React.CSSProperties
+          }
+        />
+      ))}
       {falls.map((f) => (
         <span
           key={f.id}
@@ -1040,6 +1093,405 @@ function Deepstars({ active }: { active: boolean }) {
       ))}
     </div>
   );
+}
+
+/* ================================================================== */
+/* The light in the deep — see the CLAUDE.md section of the same name  */
+/* ================================================================== */
+
+/**
+ * Domain-warped fbm, which is the one construction that gives light a
+ * structure with no edges, no objects and no findable period — the same brief
+ * the shafts and the drift answer in CSS, taken as far as CSS cannot go. The
+ * warp offsets (uW/uR/uB) are computed on the CPU per frame rather than from a
+ * time uniform in the shader: float time drifts out of precision after long
+ * enough on the page, and JS doubles do not.
+ *
+ * Everything below the colour ramp is shaping: the ellipse holds the light
+ * down where the verse sits (the same job starOdds does for the stars, done in
+ * the shader because light has no position to reject), the vertical ramp keeps
+ * more of it above the poem than below (the surface is up), and the dither
+ * line breaks the banding that any slow 8-bit gradient otherwise shows.
+ */
+const LUMEN_FRAG = `
+precision highp float;
+uniform vec2 uRes;
+uniform vec2 uSeed;
+uniform vec2 uW1;
+uniform vec2 uW2;
+uniform vec2 uR1;
+uniform vec2 uR2;
+uniform vec2 uB;
+uniform vec2 uA1;
+uniform vec2 uA2;
+uniform vec2 uSun;
+/* Three lights, three throttles. One shared gain made the blue phantoms,
+   the white beams and the white surface arrive and leave as one thing —
+   which no sea has ever done. Each channel's gain is composed on the CPU:
+   its own dark-state wander, its own share and its own entrance delay in
+   every surge. */
+uniform float uGVeil;
+uniform float uGHeart;
+uniform float uGBeam;
+uniform float uSBeam;
+uniform float uGSurf;
+
+float hash(vec2 p){
+  p = fract(p * vec2(127.1, 311.7));
+  p += dot(p, p + 34.23);
+  return fract(p.x * p.y);
+}
+float noise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+    mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float fbm(vec2 p){
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) {
+    v += a * noise(p);
+    p = mat2(1.6, 1.2, -1.2, 1.6) * p + vec2(9.2, 5.7);
+    a *= 0.5;
+  }
+  return v;
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / uRes;
+  vec2 p = (uv - 0.5) * vec2(uRes.x / uRes.y, 1.0) * 2.1 + uSeed;
+  vec2 q = vec2(fbm(p + uW1), fbm(p + vec2(4.7, 2.3) + uW2));
+  vec2 r = vec2(fbm(p + 2.3 * q + uR1), fbm(p + 2.3 * q + vec2(8.3, 2.8) + uR2));
+  float v = fbm(p + 1.9 * r);
+  /* The veil: broad, dim, most of what there is. Squared so the low end dies
+     into the dark instead of greying it. */
+  float veil = smoothstep(0.42, 0.85, v);
+  vec3 col = veil * veil * mix(vec3(0.015, 0.05, 0.08), vec3(0.10, 0.23, 0.30), veil);
+  col *= uGVeil;
+  /* The hearts: rare brighter cores inside the veil, on their own drift so
+     they surface and dissolve somewhere else each time. */
+  float heart = smoothstep(0.68, 0.97, fbm(p * 0.6 + 1.4 * r + uB));
+  /* A step greener than the veil's blue — the one hue the deep owns. The
+     separation is what reads as depth; brightness would only read as haze. */
+  col += heart * heart * vec3(0.11, 0.30, 0.27) * uGHeart;
+  /* The rays: what makes this read as LIGHT rather than as mist. Radial from
+     one sun, up and to the left — the same sun the CSS shafts lean toward —
+     and alive the way the CSS ones cannot be: two angular noises drifting at
+     different speeds interfere, so beams wander, brighten where they align,
+     and die where they don't. No beam has an edge, a width, or a schedule. */
+  float aspect = uRes.x / uRes.y;
+  /* The sun is in the middle distance, and the middle is the point. Near
+     (1.4) its apex sat on the screen and the fan read as a cone; far (7.5)
+     the beams went parallel and the picture lost the one thing that made it
+     read as HOLY — convergence toward a point. Crepuscular rays, the light
+     every sacred painting reaches for, converge visibly toward a sun that
+     is emphatically not in frame. ~2.7 screens up puts the apex well out of
+     the picture and keeps the fan — and the sun itself wanders (uSun, CPU
+     side), so the whole fan sways and breathes as one thing. A fixed sun
+     was the last stiffness left: every beam could move and the LIGHT still
+     stood still. */
+  vec2 sd = vec2((uv.x - uSun.x) * aspect, uv.y - uSun.y);
+  float ang = atan(sd.x, -sd.y);
+  /* Bent a little by the water it came through, so no beam is a ruler. The
+     amplitude is in radians: lateral arm ≈ amplitude × dst. */
+  ang += (fbm(p * 1.2 + uW2) - 0.5) * 0.018;
+  float dst = length(sd);
+  /* Streaks, not weather: the angular frequency is what makes a beam a
+     beam, and it scales with the sun's distance — lateral feature ≈
+     dst/freq ≈ 4% of the frame, along-beam ≈ most of it. Long and thin,
+     which clouds never are. */
+  float b1 = fbm(vec2(ang * 55.0, dst * 1.2) + uA1);
+  float b2 = fbm(vec2(ang * 110.0, dst * 2.1) + uA2);
+  /* The surge opens the sky: more beams, reaching deeper, a step warmer —
+     not merely the same picture turned up. */
+  /* Nothing about the curtain may be even — even is what reads as painted.
+     The clump gathers the beams into a few bright reaches of the width and
+     leaves the rest of it nearly dark; the hem lets every shaft die at its
+     own depth instead of on one line. Both are angular-only noises (constant
+     along a beam) drifting slower than the beams themselves, so the bright
+     reaches migrate across the frame over a surge. */
+  float clump = smoothstep(0.25, 0.70, fbm(vec2(ang * 4.5, 3.7) + uA1 * 0.4));
+  float hem = fbm(vec2(ang * 22.0, 8.9) + uA2 * 0.25);
+  float beams = smoothstep(0.52 - 0.08 * uSBeam, 0.92, b1 * 0.62 + b2 * 0.48);
+  beams *= smoothstep(0.28 - 0.20 * uSBeam, 0.85, uv.y + (hem - 0.5) * 0.55);
+  beams *= 0.2 + 0.8 * clump;
+  vec3 bc = mix(vec3(0.55, 0.72, 0.80), vec3(0.82, 0.86, 0.84), uSBeam * 0.6);
+  col += beams * bc * 0.34 * uGBeam;
+  /* The surface. Every reference for this light has one thing ours lacked:
+     a SOURCE — a rippling, luminous ceiling the beams visibly hang from.
+     Ridged noise (the fold where fbm crosses its middle) is the water-light
+     network every projector lamp throws on a ceiling; it rides the top
+     quarter of the frame, brightest toward the same off-frame sun the beams
+     converge on, and it is the fastest-moving thing on the layer — the
+     surface is where the water actually shows its speed. */
+  float surf = pow(1.0 - abs(2.0 * fbm(p * 2.6 + uA2 * 1.5) - 1.0), 3.0);
+  float band = smoothstep(0.72, 0.99, uv.y);
+  /* Relative to the sun's height, not to fixed distances — the hot patch
+     must follow the sun wherever it wanders. */
+  float dmin = uSun.y - 1.0;
+  float hot = smoothstep(dmin * 1.55, dmin * 1.12, dst);
+  col += surf * band * (0.35 + 0.65 * hot) * uGSurf * vec3(0.72, 0.88, 0.95);
+  /* More above the verse than below it; the surface is up. */
+  col *= 0.72 + 0.5 * smoothstep(0.1, 0.95, uv.y);
+  /* And held down where the verse sits — 45% of itself at the centre of the
+     frame, whole past the ellipse the poem and its air live in. */
+  vec2 e = (uv - vec2(0.5, 0.52)) / vec2(0.42, 0.46);
+  float d = dot(e, e);
+  col *= 0.45 + 0.55 * smoothstep(0.35, 1.4, d);
+  col += (hash(gl_FragCoord.xy) - 0.5) * 0.006;
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+const LUMEN_VERT = 'attribute vec2 aP;void main(){gl_Position=vec4(aP,0.0,1.0);}';
+
+/** Noise units per second: the base speed everything else is a ratio of. */
+const LUMEN_SPEED = 0.011;
+
+type LumenGL = {
+  gl: WebGLRenderingContext;
+  loc: Record<string, WebGLUniformLocation | null>;
+};
+
+function lumenInit(canvas: HTMLCanvasElement): LumenGL | null {
+  const gl = canvas.getContext('webgl', {
+    alpha: false,
+    antialias: false,
+    depth: false,
+    stencil: false,
+    powerPreference: 'low-power',
+  }) as WebGLRenderingContext | null;
+  if (!gl) return null;
+  const mk = (type: number, src: string) => {
+    const s = gl.createShader(type);
+    if (!s) return null;
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    return gl.getShaderParameter(s, gl.COMPILE_STATUS) ? s : null;
+  };
+  const vs = mk(gl.VERTEX_SHADER, LUMEN_VERT);
+  const fs = mk(gl.FRAGMENT_SHADER, LUMEN_FRAG);
+  const prog = gl.createProgram();
+  if (!vs || !fs || !prog) return null;
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return null;
+  gl.useProgram(prog);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const aP = gl.getAttribLocation(prog, 'aP');
+  gl.enableVertexAttribArray(aP);
+  gl.vertexAttribPointer(aP, 2, gl.FLOAT, false, 0, 0);
+  const loc: LumenGL['loc'] = {};
+  for (const n of ['uRes', 'uSeed', 'uW1', 'uW2', 'uR1', 'uR2', 'uB', 'uA1', 'uA2', 'uSun', 'uGVeil', 'uGHeart', 'uGBeam', 'uSBeam', 'uGSurf']) {
+    loc[n] = gl.getUniformLocation(prog, n);
+  }
+  return { gl, loc };
+}
+
+function DeepLight({ active }: { active: boolean }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  const ctx = useRef<LumenGL | null>(null);
+  /** Per-visit: the field is never the same field twice. */
+  const seed = useRef<[number, number, number, number] | null>(null);
+  const t0 = useRef(0);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    if (!seed.current) {
+      seed.current = [
+        Math.random() * 80,
+        Math.random() * 80,
+        Math.random() * Math.PI * 2,
+        Math.random() * Math.PI * 2,
+      ];
+      t0.current = performance.now();
+    }
+    /* The effect re-runs when `active` flips; the context and program are
+       built once and reused, or every crossing of the threshold would compile
+       another program into the same context. */
+    ctx.current = ctx.current ?? lumenInit(canvas);
+    const c = ctx.current;
+    if (!c) return; // no WebGL: the drift and the stars still carry the screen
+    const rootEl = canvas.closest('.landing') as HTMLElement | null;
+    let lastBloom = 0;
+
+    /* The surge. Dark is the resting state — most of the time the picture
+       sits low, wandering a little — and now and then the whole of it opens:
+       gain climbs for a few seconds, holds, and lets go. Attack-hold-release
+       rather than a sine, because a swell that arrives, stays, and leaves is
+       an event, where an oscillation is weather. Scheduling lives in this
+       closure on purpose: the effect re-runs when `active` flips, so every
+       arrival at the poem re-arms an early first surge — the screen shows
+       what it does to whoever has just come down. */
+    let surgeStart = -1;
+    let surgeDur = 1;
+    let surgePeak = 0;
+    let surgeNext = (performance.now() - t0.current) / 1000 + rnd(6, 14);
+    /* The recipe: each surge deals every channel — blue veil, whitish
+       hearts, white beams, the lit surface, and the deep starfield — its
+       own share and its own entrance delay, re-rolled per surge. Some
+       surges are all phantom and no beam; some the surface lights first
+       and the shafts follow; some are mostly a sky of stars arriving. Who
+       leads is never the same twice. Nothing may arrive and leave as one
+       thing (Qi: 错落有致，随机一点). */
+    let share = [1, 1, 1, 1, 1];
+    let delay = [0, 0, 0, 0, 0];
+    /* Lingering, per channel: every displayed level chases its target
+       through an asymmetric follower — quick up, slow down, with its own
+       release. The beams leave crisply (2.6s), the surface close behind;
+       the stars take their time; and the blue veil drags an 11-second tail,
+       so the ghost is still in the dark long after the light that raised it
+       has gone (Qi: 蓝色幽灵可以 linger 更久). The light leaving crisply is
+       what makes the staying read. Order: veil, hearts, beams, surface,
+       stars. */
+    const TAU_IN = [1.2, 1.4, 0.9, 1.1, 1.6];
+    const TAU_OUT = [11, 5, 2.6, 3.8, 7];
+    const disp = [0, 0, 0, 0, 0];
+    let lastDraw = -1;
+    const sstep = (a: number, b: number, x: number) => {
+      const k = Math.min(1, Math.max(0, (x - a) / (b - a)));
+      return k * k * (3 - 2 * k);
+    };
+    /* `?lumen=surge` pins the surge at its peak — the same kind of dev
+       affordance as ?tune=1, because the real thing spends most of its life
+       dark and nobody tuning it should have to wait a minute per look. */
+    const forced =
+      typeof location !== 'undefined' &&
+      new URLSearchParams(location.search).get('lumen') === 'surge';
+    const envAt = (t: number): number[] => {
+      if (forced) {
+        surgePeak = 1.35;
+        return [1, 1, 1, 1, 1];
+      }
+      if (surgeStart < 0 && t >= surgeNext) {
+        surgeStart = t;
+        surgeDur = rnd(14, 26);
+        surgePeak = rnd(1.1, 1.6);
+        share = [rnd(0.35, 1), rnd(0.25, 1), rnd(0.25, 1), rnd(0.15, 1), rnd(0.45, 1)];
+        delay = [rnd(0, 0.35), rnd(0, 0.35), rnd(0, 0.35), rnd(0, 0.35), rnd(0, 0.35)];
+      }
+      if (surgeStart < 0) return [0, 0, 0, 0, 0];
+      const ph = (t - surgeStart) / surgeDur;
+      if (ph >= 1) {
+        surgeStart = -1;
+        /* Mostly dark: the gaps are several times the event, and a third of
+           them are long enough that the next one is never owed. */
+        surgeNext = t + (Math.random() < 0.3 ? rnd(70, 130) : rnd(26, 70));
+        return [0, 0, 0, 0, 0];
+      }
+      return delay.map((d, i) => {
+        const p = Math.min(1, Math.max(0, (ph - d) / (1 - d)));
+        return sstep(0, 0.28, p) * (1 - sstep(0.62, 1, p)) * share[i];
+      });
+    };
+
+    const size = () => {
+      /* A third of the CSS pixels, floored and capped. Everything drawn is
+         soft, so the compositor's upscale is invisible — and it is most of why
+         this layer is cheap. */
+      const w = canvas.clientWidth || window.innerWidth;
+      const h = canvas.clientHeight || window.innerHeight;
+      const rw = Math.round(Math.min(480, Math.max(200, w / 3.2)));
+      const rh = Math.max(1, Math.round((rw * h) / Math.max(1, w)));
+      if (canvas.width !== rw || canvas.height !== rh) {
+        canvas.width = rw;
+        canvas.height = rh;
+        c.gl.viewport(0, 0, rw, rh);
+      }
+    };
+    const draw = (now: number) => {
+      const [sx, sy, p1, p2] = seed.current!;
+      const t = (now - t0.current) / 1000;
+      const s = LUMEN_SPEED;
+      const { gl, loc } = c;
+      gl.uniform2f(loc.uRes, canvas.width, canvas.height);
+      gl.uniform2f(loc.uSeed, sx, sy);
+      gl.uniform2f(loc.uW1, t * s * 0.9, t * s * 0.37);
+      gl.uniform2f(loc.uW2, -t * s * 0.61, t * s * 0.83);
+      gl.uniform2f(loc.uR1, t * s * 0.31, -t * s * 0.52);
+      gl.uniform2f(loc.uR2, -t * s * 0.44, t * s * 0.27);
+      gl.uniform2f(loc.uB, t * s * 0.23, -t * s * 0.34);
+      /* The beams drift an order faster than the field — light answers the
+         surface above it, which moves in seconds where the water moves in
+         minutes. Angular in x, along-the-beam in y. */
+      gl.uniform2f(loc.uA1, sx * 2.3 + t * 0.045, sy * 1.1 + t * 0.013);
+      gl.uniform2f(loc.uA2, sy * 3.1 - t * 0.09, sx * 1.7 + t * 0.08);
+      /* The sun wanders — sideways across the top and nearer/farther in
+         depth — on two pairs of incommensurate periods, so the whole fan
+         sways, spreads, and tightens without ever repeating a path. Phases
+         come off the seed: each visit's sun walks its own walk. */
+      gl.uniform2f(
+        loc.uSun,
+        0.1 + 0.26 * Math.sin(t * 0.074 + sx * 0.7) + 0.12 * Math.sin(t * 0.031 + sy * 1.3),
+        2.7 + 0.35 * Math.sin(t * 0.052 + sx * 1.9) + 0.15 * Math.sin(t * 0.023 + sy * 2.6)
+      );
+      /* Four resting levels, each wandering on its own pair of
+         incommensurate periods (never a metronome — the near-prime
+         reasoning again), so even the dark is out of step with itself; the
+         surge rides on top, channel by channel. */
+      const tgt = envAt(t);
+      const dt = Math.min(0.2, Math.max(0.001, lastDraw < 0 ? 0.033 : (now - lastDraw) / 1000));
+      lastDraw = now;
+      for (let i = 0; i < 5; i++) {
+        const tau = tgt[i] > disp[i] ? TAU_IN[i] : TAU_OUT[i];
+        disp[i] += (tgt[i] - disp[i]) * (1 - Math.exp(-dt / tau));
+      }
+      const [eV, eH, eB, eS, eStars] = disp;
+      const bV = 0.33 + 0.12 * Math.sin(t * 0.05 + p1) * Math.sin(t * 0.021 + p2);
+      const bH = 0.3 + 0.16 * Math.sin(t * 0.059 + p2 * 1.7) * Math.sin(t * 0.013 + p1 * 2.9);
+      const bB = 0.28 + 0.16 * Math.sin(t * 0.043 + p1 * 1.7) * Math.sin(t * 0.017 + p2 * 2.3);
+      const bS = 0.3 + 0.15 * Math.sin(t * 0.037 + p2 * 3.1) * Math.sin(t * 0.027 + p1 * 0.6);
+      gl.uniform1f(loc.uGVeil, bV + eV * surgePeak);
+      gl.uniform1f(loc.uGHeart, bH + eH * surgePeak);
+      gl.uniform1f(loc.uSBeam, eB);
+      gl.uniform1f(loc.uGBeam, (0.6 + 0.75 * eB) * (bB + eB * surgePeak));
+      gl.uniform1f(loc.uGSurf, (0.07 + 0.27 * eS) * (bS + eS * surgePeak));
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      /* The star channel leaves the canvas: the deep field (see Deepstars)
+         reads `--sbloom` off the root. Written at ~6Hz, not per frame — the
+         envelope moves over seconds, and every write restyles a couple of
+         hundred small elements. */
+      if (now - lastBloom > 160) {
+        lastBloom = now;
+        rootEl?.style.setProperty('--sbloom', eStars.toFixed(3));
+      }
+    };
+
+    let raf = 0;
+    let last = 0;
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      /* 30fps. Nothing here moves fast enough for 60 to buy anything, and the
+         halved GPU wake-ups are what a phone notices. */
+      if (now - last < 33) return;
+      last = now;
+      draw(now);
+    };
+    const still = () => {
+      size();
+      draw(performance.now());
+    };
+
+    /* One static frame regardless, so the scroll down has something to fade
+       in before the loop is armed — at this speed a still first frame is
+       indistinguishable from a moving one. */
+    still();
+    window.addEventListener('resize', still);
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (active && !reduce) raf = requestAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', still);
+      /* Leaving mid-surge must not strand the deep field at half-bloom. */
+      rootEl?.style.setProperty('--sbloom', '0');
+    };
+  }, [active]);
+
+  return <canvas ref={ref} className="l-lumen" aria-hidden />;
 }
 
 export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }) {
@@ -2089,6 +2541,11 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           <i />
           <i />
         </div>
+        {/*
+          The light in the deep — the one thing on the stage that is drawn
+          rather than declared. See the note above DeepLight.
+        */}
+        <DeepLight active={atTwo} />
         {/*
           Last of the water layers and the only one made of objects rather than
           of light — which is why it is last, and why it costs nothing but
@@ -4248,7 +4705,12 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    shaft that sways back does not. That is the whole trick: the effect is the
    absence of a period anyone can find. */
 .l-rays{position:absolute;inset:-10% 0 0;z-index:3;pointer-events:none;overflow:hidden;
-  opacity:calc(var(--s) * .95);
+  /* Hands off to the drawn light (.l-lumen) over the same window that layer
+     arrives in: these shafts are the light of the CROSSING, and once the
+     shader's beams are alive down here, five fixed columns standing among
+     them would read as scenery. Four tenths remain — a memory of the
+     surface, not a second sun. */
+  opacity:calc(var(--s) * .95 * (1 - .6 * clamp(0,calc(var(--s) * 1.7 - .6),1)));
   /* Gone well before the poem: this is light in the water above the reader, not
      a wash over the verse. */
   -webkit-mask-image:linear-gradient(180deg,#000 0 46%,transparent 84%);
@@ -4303,6 +4765,22 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   --from:-24vw;--to:34vw}
 .l-drift i:nth-child(2){--y:44%;--w:56vw;--h:52vh;--a:.09;--dur:137s;--delay:-64s;
   --from:62vw;--to:6vw}
+
+/* ---- the light in the deep ----
+
+   A canvas, not gradients, and the blend is the whole contract: the shader
+   renders light on an opaque black ground and screen-blending makes black a
+   no-op, so the layer can only ever add light — never a wash, never a tint of
+   the dark under it. The canvas is its own compositor surface (the same
+   precedent as .l-halo's screen blend), its bitmap is a third of the CSS
+   pixels, and nothing else on the stage is invalidated by its frames.
+
+   Gated on --s in the same window as the stars: this is what the water does
+   once the surface light has gone, not part of the crossing. --lumen is the
+   one knob, for tuning. */
+.l-lumen{position:absolute;inset:0;z-index:3;width:100%;height:100%;
+  pointer-events:none;mix-blend-mode:screen;
+  opacity:calc(clamp(0,calc(var(--s) * 1.7 - .6),1) * var(--lumen,1))}
 
 /* ---- the sky in the deep ----
 
