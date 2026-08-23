@@ -279,11 +279,17 @@ const SPEEDS = [36, 47, 59, 71, 84];
  * How wide a riser is, as a percentage of the viewport, for collision purposes.
  *
  * An estimate, and it has to be an over-estimate: it is the max-inline-size in
- * the stylesheet, and most messages are narrower than that. Guessing high costs
- * a little variety in the speed assignment; guessing low puts two messages on
- * top of each other permanently, which is the thing being prevented.
+ * the stylesheet plus the sway's swing on either side, and most messages are
+ * narrower than that. Guessing high costs a little variety in the speed
+ * assignment; guessing low puts two messages on top of each other permanently,
+ * which is the thing being prevented.
+ *
+ * The sway is the part that is easy to forget, in the code and in the
+ * measurement both: it is a transform on an INNER span, so it moves the text
+ * without moving the <li>'s box. A collision check written against the outer
+ * element is blind to it.
  */
-const BLOCK_W = 26;
+const BLOCK_W = 30;
 
 /**
  * Everything about one line's motion.
@@ -361,6 +367,8 @@ export function Drift({ active }: { active: boolean }) {
   const [name, setName] = useState('');
   const [text, setText] = useState('');
   const [state, setState] = useState<'idle' | 'sending' | 'fast' | 'fail'>('idle');
+  /** Whether the pointer is in the name field. See the placeholder below. */
+  const [signing, setSigning] = useState(false);
   /** When the composer was first rendered. The server's proof that a human typed. */
   const born = useRef(0);
   if (born.current === 0 && typeof window !== 'undefined') born.current = Date.now();
@@ -508,9 +516,16 @@ export function Drift({ active }: { active: boolean }) {
        * neighbour. Fraction of the cycle is the right unit — it maps directly
        * to height on screen, whatever the speed.
        */
-      const pickPhase = (x: number) => {
+      const pickPhase = (x: number, seed: number) => {
         const near = neighbours(x);
-        if (!near.length) return 0;
+        /* Nothing to avoid yet — so scatter, do not default. Returning a
+           constant here was a real bug and a quiet one: the FIRST message
+           placed in each clear stretch of the width got the same phase as
+           every other first message, so a handful of them started life in a
+           row at the same height. An unconstrained message is not one that
+           should be put anywhere in particular; it is one that should be put
+           anywhere at all. */
+        if (!near.length) return (seed % 1000) / 1000;
         let best = 0;
         let bestGap = -1;
         for (let i = 0; i < 16; i++) {
@@ -545,7 +560,7 @@ export function Drift({ active }: { active: boolean }) {
              being measured. Regular beats random here: random phases produce
              visible pile-ups at exactly the rate they produce visible gaps, and
              the pile-up is the thing being fixed. */
-          const at = (pickPhase(x) + (hash(m.id) % 100) / 3200) % 1;
+          const at = (pickPhase(x, hash(m.id)) + (hash(m.id) % 100) / 3200) % 1;
           placed.current.push({ x, speed, at });
           layout.current.set(m.id, look(m, { column, speed, phase: at * SPEEDS[speed] }));
         });
@@ -709,9 +724,16 @@ export function Drift({ active }: { active: boolean }) {
           type="text"
           value={name}
           maxLength={MAX_NAME}
-          placeholder={design === 'riser' ? 'sign it' : 'name'}
+          /* "sign it" is an invitation, and once accepted it is in the way:
+             click in and you should get a caret and nothing else. Done in state
+             rather than with :focus::placeholder because the aria-label is what
+             actually names the field — the placeholder here is copy, not a
+             label, and copy that has served its purpose can leave. */
+          placeholder={design === 'riser' ? (signing ? '' : 'sign it') : 'name'}
           aria-label="Your name, optional"
           autoComplete="nickname"
+          onFocus={() => setSigning(true)}
+          onBlur={() => setSigning(false)}
           onChange={(e) => setName(e.target.value)}
         />
 
@@ -744,7 +766,7 @@ export function Drift({ active }: { active: boolean }) {
               <span className="l-say-go-ink">send it up</span>.
             </>
           ) : design === 'riser' ? (
-            <span className="l-say-go-ink">let go</span>
+            <span className="l-say-go-ink">send</span>
           ) : (
             <span className="l-say-go-ink">SEND</span>
           )}
@@ -992,16 +1014,28 @@ export const DRIFT_CSS = `
        field where everything else is moving, that reads — it just cannot be
        photographed, which is why the screenshots of this design looked worse
        than the design is.
-     · **a caret**, blinking at the album's own 60bpm, which is the one glyph
-       on earth that means "type here".
+     · **one caret**, blinking, which is the one glyph on earth that means
+       "type here". *One* is the load-bearing word: the drawn caret and the
+       browser's real one were two different marks in two different places —
+       the drawn one at the left of a centred prompt, the real one appearing
+       mid-line the moment you typed. Two carets that swap positions do not
+       read as a caret at all. They are the same mark now: the field is
+       left-aligned, the drawn caret sits exactly where the real one will be,
+       and it hands over on focus without moving.
 
    The long fade-in does the rest of the work: the composer sits inside the
    first tenth of the travel, where a riser is still under half its brightness.
    Nothing is being hidden — the bottom of the screen is full of messages, they
    are simply still coming out of the dark down there, which is where they
    should be coming out of. */
+/* Left-aligned, not centred, and that is the caret's doing rather than a
+   typographic preference. A centred field puts the insertion point in the
+   middle of the box when it is empty and walks it outward as you type; the
+   drawn caret can only be in one place. Ragged-right, the two are the same
+   point — start of the line — and typing simply moves it right, which is what
+   a caret is supposed to do. */
 .l-three[data-say=riser] .l-say{
-  flex-wrap:wrap;gap:.3em .6em;justify-content:center;text-align:center;
+  flex-wrap:wrap;gap:.34em .6em;justify-content:flex-start;text-align:left;
   inline-size:min(32ch,calc(100vw - 48px));
   /* Set here so the glow below can be sized in em and land somewhere
      predictable — the form otherwise inherits whatever the section has. */
@@ -1062,7 +1096,7 @@ export const DRIFT_CSS = `
 
 .l-three[data-say=riser] input,
 .l-three[data-say=riser] .l-say-ghost{
-  text-align:center;
+  text-align:left;
   /* Two shadows doing opposite jobs on the same glyphs. The blue spread is what
      makes this read as a message in the water like all the others; the tight
      dark pair is what keeps it readable when one of them crosses behind. Order
@@ -1071,14 +1105,27 @@ export const DRIFT_CSS = `
               0 0 9px rgba(2,10,20,.8),
               0 1px 2px rgba(2,10,20,.9)}
 .l-three[data-say=riser] input{color:rgba(228,242,252,.94)}
-.l-three[data-say=riser] .l-say-text{flex:1 0 100%;caret-color:rgba(196,228,250,.9)}
-.l-three[data-say=riser] .l-say-name{flex:0 0 auto;inline-size:7em;
-  font-size:.74em;opacity:.6}
+.l-three[data-say=riser] .l-say-text{flex:1 0 100%;caret-color:rgba(214,238,254,.95)}
+/* The name sits under the message, and clicking it should give you a caret and
+   nothing else — the word "sign it" is an invitation, and once accepted it is
+   just in the way. Transparent rather than removed, so the box does not resize
+   under the pointer that just landed in it. */
+.l-three[data-say=riser] .l-say-name{flex:0 0 auto;inline-size:8em;
+  font-size:.74em;opacity:.6;caret-color:rgba(214,238,254,.95)}
+.l-three[data-say=riser] .l-say-name:focus{opacity:.85}
+/* Pushed to the far end of the second line, so the name and the send are the
+   two ends of one row rather than a pair of words stuck together. */
+.landing .l-three[data-say=riser] .l-say-go{margin-inline-start:auto}
 .l-three[data-say=riser] .l-say-ghost{position:absolute;left:0;right:0;top:0;
   pointer-events:none;color:rgba(184,212,232,.34);font-style:italic;
   font-family:'Cormorant Garamond',Georgia,serif;
   font-size:clamp(16px,2.05vh,21px);line-height:1.5}
 .l-three[data-say=riser] .l-say:focus-within .l-say-ghost{color:rgba(190,218,238,.42)}
+/* Handover. The drawn caret goes when the real one arrives, and goes by
+   visibility rather than by display — the prompt after it must not shift
+   sideways by a caret's width at the exact moment someone clicks into the
+   field, which is the one moment they are looking straight at it. */
+.l-three[data-say=riser] .l-say:focus-within .l-say-caret{visibility:hidden}
 /* 1s, steps(1) — a real caret's rate, and the album's 60bpm, which are the same
    number. Not a soft pulse: a soft pulse reads as decoration, and the hard
    on/off is the entire reason anyone recognises a caret. */
