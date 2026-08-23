@@ -1110,19 +1110,27 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           }
         />
         {/*
-          The water. All three are driven by --s and are simply not there at 0,
+          The water. All four are driven by --s and are simply not there at 0,
           so screen one is untouched by any of it and nothing below costs a
           frame until someone starts down.
 
-          They are three because sinking reads as three things at once: the
-          light going (l-deep), the light that is left coming from above and
-          behind you (l-surface), and the particles going up past you, which is
-          the only one of the three that says which way you are moving.
+          Four, because being under water reads as four things: the light going
+          (l-deep), the surface receding above you (l-surface), the shafts it
+          still throws down (l-rays), and the body of the water itself moving
+          past (l-drift). All of them are light and volume — large, slow, soft.
+          Nothing here is a discrete object; see the note on l-rays in the CSS
+          for why that is the whole point.
         */}
         <div className="l-deep" aria-hidden />
         <div className="l-surface" aria-hidden />
-        <div className="l-snow" aria-hidden>
+        <div className="l-rays" aria-hidden>
           <i />
+          <i />
+          <i />
+          <i />
+          <i />
+        </div>
+        <div className="l-drift" aria-hidden>
           <i />
           <i />
         </div>
@@ -1131,9 +1139,10 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       <nav className="l-nav">
         <div className="l-nav-left">
           {/*
-            Fades up as the title it stands for scrolls away, so the album is
-            named on both screens without ever being named twice at once. It is
-            the way back to the surface too — there is no other one, and a page
+            The artist, not the album — screen two heads with the album title in
+            its own hand, and the same words twice on one screen is the thing
+            this corner is here to avoid. It fades up as screen one leaves, and
+            it is the way back to the surface: there is no other one, and a page
             that can only be left by scrolling up is a page with no door.
           */}
           {/* Not in the tab order while it is invisible: opacity 0 plus
@@ -1146,11 +1155,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             aria-hidden={atTwo ? undefined : true}
             onClick={() => goTo(0)}
           >
-            {/* Two labels, one of them always display:none. On a phone the full
-                title at this tracking is wider than the nav has room for, and
-                the initials are what a spine would carry anyway. */}
-            <span className="l-mark-long">THE HEART OF THE JELLYFISH</span>
-            <span className="l-mark-short">QI · 琦</span>
+            QI · 琦
           </button>
           {META_PLACEMENT === 'topLeft' && (
             <div className="l-meta">
@@ -1331,13 +1336,17 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         >
           <div className="l-poem">
             {/*
-              The one line of explanation the poem gets, and it is doing real
-              work: without it, ten lines of verse on their own screen are a
-              poem, and the fact that each is a track — and playable — is
-              something you find out by accident. It names the format, not the
-              content, so nothing is spent.
+              The album, in the poem's own hand. Qi's call, twice now.
+
+              The risk it accepts is real and has to be managed by ranking
+              rather than by type: "The heart of the jellyfish." is also line
+              06, so the title and that line are nearly the same string in the
+              same face. What keeps them apart is that the title runs ~1.6x the
+              line size, has ~90px of air under it, and is the only thing on the
+              screen that is not a button. If it ever starts reading as the
+              poem's first line, that ratio is the knob — not the font.
             */}
-            <div className="l-two-eyebrow">TEN SONGS THAT READ AS A POEM</div>
+            <div className="l-poem-head">The Heart of the Jellyfish</div>
             <div
               className={'l-poem-body l-poem-f-' + font}
               style={{ ['--poem-scale' as string]: fontScale } as React.CSSProperties}
@@ -1425,13 +1434,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                     })}
                 </div>
               ))}
-            </div>
-            <div className="l-two-foot">
-              <span>RELEASING · 12 · 20 · 2026</span>
-              <span className="l-two-sep" aria-hidden />
-              <button type="button" className="l-two-sub" onClick={() => setPanel('subscribe')}>
-                PRE-SAVE
-              </button>
             </div>
           </div>
           {/*
@@ -2580,54 +2582,79 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   animation:l-swell 11s ease-in-out infinite}
 @keyframes l-swell{0%,100%{opacity:.62;transform:scale(1)}50%{opacity:1;transform:scale(1.06)}}
 
-/* Marine snow, going UP.
+/* Shafts from the surface.
    
-   This is the only layer that says which way we are moving — everything else
-   would read the same on a page that was merely getting darker. Three layers
-   because depth is parallax: the near one is bigger, brighter and quick, the
-   far one is small, dim and slow, and the eye assembles a volume out of the
-   difference without ever being told.
+   This replaces a field of drifting dots, and the reason is worth keeping: at
+   any size a repeating tile of 1px specks reads as CSS stars, not as water.
+   Particulate is a HIGH-frequency cue and the eye resolves every one of them
+   individually, so the moment the tile repeats — and it always repeats — the
+   illusion is a pattern.
    
-   Each layer is one tile of dots repeated, translated by exactly one tile
-   height, so the loop is seamless with no JS and no canvas. Transform, not
-   background-position: the first is composited, the second repaints. */
-.l-snow{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:hidden;
-  opacity:calc(var(--s) * .9);
-  -webkit-mask-image:linear-gradient(180deg,transparent,#000 15%,#000 85%,transparent);
-          mask-image:linear-gradient(180deg,transparent,#000 15%,#000 85%,transparent)}
-.l-snow i{position:absolute;left:0;right:0;top:calc(-1 * var(--tile));
-  height:calc(100% + var(--tile) * 2);
-  background-repeat:repeat;background-size:var(--tile) var(--tile);
-  animation:l-snowdrift var(--dur) linear infinite;will-change:transform}
-@keyframes l-snowdrift{
-  from{transform:translate3d(0,0,0)}
-  to{transform:translate3d(0,calc(-1 * var(--tile)),0)}
+   Light is the low-frequency cue, and low frequency is what survives being
+   looked at. Nothing below is an object: five shafts, each 12-26vw wide, each
+   soft-edged by a mask rather than by a blur, all leaning the same way because
+   there is one sun and it is up and to the left. They pivot from their own top
+   edge, which is what a shaft does when the surface above it moves.
+   
+   The periods are 17/23/29/37/43s — near-primes, so no two are ever in phase
+   and the group never visibly repeats. 'alternate' rather than a loop, because
+   a shaft that returns to its start position every cycle has a seam, and a
+   shaft that sways back does not. That is the whole trick: the effect is the
+   absence of a period anyone can find. */
+.l-rays{position:absolute;inset:-10% 0 0;z-index:3;pointer-events:none;overflow:hidden;
+  opacity:calc(var(--s) * .95);
+  /* Gone well before the poem: this is light in the water above the reader, not
+     a wash over the verse. */
+  -webkit-mask-image:linear-gradient(180deg,#000 0 46%,transparent 84%);
+          mask-image:linear-gradient(180deg,#000 0 46%,transparent 84%)}
+.l-rays i{position:absolute;top:-14%;height:114%;left:var(--x);
+  transform-origin:50% 0;
+  /* A floor, not a media query: the widths are in vw so they hold their share
+     of the frame, and on a phone that share is 60-100px — narrow enough that a
+     shaft starts reading as a band with edges. Below the floor it stops being
+     light. */
+  width:max(var(--w),112px);
+  background:linear-gradient(180deg,
+    rgba(190,228,250,var(--a)) 0%,
+    rgba(190,228,250,calc(var(--a) * .34)) 46%,
+    transparent 78%);
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 46%,#000 54%,transparent);
+          mask-image:linear-gradient(90deg,transparent,#000 46%,#000 54%,transparent);
+  animation:l-ray var(--dur) ease-in-out infinite alternate;
+  animation-delay:var(--delay)}
+@keyframes l-ray{
+  from{transform:rotate(var(--r1)) scaleX(.88);opacity:.5}
+  to{transform:rotate(var(--r2)) scaleX(1.3);opacity:1}
 }
-.l-snow i:nth-child(1){--tile:230px;--dur:19s;
-  background-image:
-    radial-gradient(2.2px 2.2px at 22% 14%,rgba(228,244,254,.62),transparent),
-    radial-gradient(1.8px 1.8px at 71% 39%,rgba(228,244,254,.46),transparent),
-    radial-gradient(2.4px 2.4px at 44% 68%,rgba(228,244,254,.5),transparent),
-    radial-gradient(1.6px 1.6px at 88% 82%,rgba(228,244,254,.4),transparent),
-    radial-gradient(2px 2px at 9% 91%,rgba(228,244,254,.44),transparent)}
-.l-snow i:nth-child(2){--tile:330px;--dur:34s;
-  background-image:
-    radial-gradient(1.5px 1.5px at 13% 8%,rgba(222,240,252,.5),transparent),
-    radial-gradient(1.2px 1.2px at 57% 21%,rgba(222,240,252,.36),transparent),
-    radial-gradient(1.6px 1.6px at 33% 47%,rgba(222,240,252,.42),transparent),
-    radial-gradient(1.1px 1.1px at 80% 58%,rgba(222,240,252,.3),transparent),
-    radial-gradient(1.5px 1.5px at 63% 79%,rgba(222,240,252,.4),transparent),
-    radial-gradient(1.2px 1.2px at 19% 93%,rgba(222,240,252,.32),transparent)}
-.l-snow i:nth-child(3){--tile:470px;--dur:58s;
-  background-image:
-    radial-gradient(1px 1px at 28% 11%,rgba(214,236,250,.34),transparent),
-    radial-gradient(.9px .9px at 74% 26%,rgba(214,236,250,.26),transparent),
-    radial-gradient(1.1px 1.1px at 47% 44%,rgba(214,236,250,.3),transparent),
-    radial-gradient(.8px .8px at 12% 63%,rgba(214,236,250,.24),transparent),
-    radial-gradient(1px 1px at 86% 74%,rgba(214,236,250,.28),transparent),
-    radial-gradient(.9px .9px at 39% 88%,rgba(214,236,250,.24),transparent)}
+.l-rays i:nth-child(1){--x:2%;--w:18vw;--a:.16;--dur:29s;--delay:-4s;--r1:-4deg;--r2:-1deg}
+.l-rays i:nth-child(2){--x:19%;--w:13vw;--a:.2;--dur:17s;--delay:-11s;--r1:-1deg;--r2:2deg}
+.l-rays i:nth-child(3){--x:38%;--w:26vw;--a:.11;--dur:43s;--delay:-19s;--r1:2deg;--r2:5deg}
+.l-rays i:nth-child(4){--x:63%;--w:15vw;--a:.17;--dur:23s;--delay:-7s;--r1:4deg;--r2:8deg}
+.l-rays i:nth-child(5){--x:80%;--w:21vw;--a:.13;--dur:37s;--delay:-26s;--r1:6deg;--r2:10deg}
 
-/* ---- the wordmark, which is also the way back up ---- */
+/* The body of the water, moving.
+   
+   Two enormous, very soft, very quiet clouds crossing on periods long enough
+   that you never catch one arriving — 96s and 137s, again not multiples. They
+   do almost nothing per frame, which is the point: they keep the dark from
+   being a flat fill without ever becoming something to look at. Same rule as
+   the painting itself — a flat colour is what this background must never be. */
+.l-drift{position:absolute;inset:0;z-index:3;pointer-events:none;overflow:hidden;
+  opacity:calc(var(--s) * .9)}
+.l-drift i{position:absolute;top:var(--y);left:0;width:var(--w);height:var(--h);
+  background:radial-gradient(closest-side,rgba(126,186,222,var(--a)),transparent 74%);
+  animation:l-drift-x var(--dur) ease-in-out infinite alternate;
+  animation-delay:var(--delay)}
+@keyframes l-drift-x{
+  from{transform:translate3d(var(--from),0,0) scale(1)}
+  to{transform:translate3d(var(--to),4vh,0) scale(1.25)}
+}
+.l-drift i:nth-child(1){--y:6%;--w:78vw;--h:66vh;--a:.13;--dur:96s;--delay:-30s;
+  --from:-24vw;--to:34vw}
+.l-drift i:nth-child(2){--y:44%;--w:56vw;--h:52vh;--a:.09;--dur:137s;--delay:-64s;
+  --from:62vw;--to:6vw}
+
+/* ---- the wordmark, which is also the way back up ---- *//* ---- the wordmark, which is also the way back up ---- */
 .landing .l-mark{background:none;border:none;padding:0;color:inherit;cursor:pointer;
   font-family:'Jost',sans-serif;font-weight:300;font-size:inherit;letter-spacing:.3em;
   white-space:nowrap;text-shadow:0 1px 2px rgba(10,42,70,.5);
@@ -2638,11 +2665,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   opacity:calc(var(--s) * .8);pointer-events:none;transition:opacity .25s}
 .landing[data-two] .l-mark{pointer-events:auto}
 .landing[data-two] .l-mark:hover{opacity:1}
-.l-mark-short{display:none}
-@media (max-width:720px){
-  .l-mark-long{display:none}
-  .l-mark-short{display:inline}
-}
+
 
 /* ---- the arrow ----
 
@@ -2655,32 +2678,60 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    piece of motion on this page that points, and the reason the arrow does not
    need the word SCROLL under it.
 
+   Three things make it findable, and it needed all three. It sits at the bottom
+   of the frame, which on this painting is sea and foam — the lightest, busiest
+   part of it, and the worst possible ground for white hairlines:
+
+   - SIZE. A 22px chevron at 1px is the page's own language and was invisible in
+     it. 30px at 1.25 is still a hairline and is an order of magnitude easier to
+     land on.
+   - GROUND. A soft dark bloom behind the whole thing (the ::before), wide and
+     formless enough never to read as a button, which is what lets the white
+     stay white instead of being pushed brighter and brighter.
+   - MOTION. The travelling light is 1px and easy to miss; the bob is the whole
+     mark moving, and movement is what the eye finds without being asked. It
+     starts only once the entrance has landed, so the arrow arrives, settles,
+     and then begins to breathe.
+
    fill-mode backwards, not both: the entrance holds its first frame through the
    delay and then lets go, so the scroll fade below is free to take the opacity
    back. With 'both' the animation would own it forever and the arrow would ride
    all the way down to the poem. */
 .landing .l-down{position:absolute;left:50%;z-index:10;
   bottom:calc(clamp(22px,4vh,40px) + var(--bar));
-  display:flex;flex-direction:column;align-items:center;gap:clamp(7px,1.1vh,11px);
-  background:none;border:none;padding:12px 22px;cursor:pointer;color:#fff;
+  display:flex;flex-direction:column;align-items:center;gap:clamp(8px,1.2vh,13px);
+  background:none;border:none;padding:14px 30px;cursor:pointer;color:#fff;
   transform:translateX(-50%);
   opacity:clamp(0,calc(1 - var(--s) * 3),1);
   transition:bottom .5s cubic-bezier(.2,.8,.2,1);
-  animation:l-down-in 1.2s cubic-bezier(.2,.7,.2,1) 1.15s backwards}
+  /* Two, in sequence: the bob's delay is the entrance's delay plus its
+     duration, so it takes over the transform exactly as the entrance lets go. */
+  animation:l-down-in 1.2s cubic-bezier(.2,.7,.2,1) 1.15s backwards,
+            l-down-bob 3.2s ease-in-out 2.35s infinite}
 @keyframes l-down-in{
   from{opacity:0;transform:translate(-50%,12px)}
   to{opacity:1;transform:translate(-50%,0)}
 }
+@keyframes l-down-bob{
+  0%,100%{transform:translate(-50%,0)}
+  50%{transform:translate(-50%,6px)}
+}
+/* The ground the white sits on. Wide, formless, and centred on the mark rather
+   than on the button box, so it never acquires an edge that could read as a
+   control. */
+.landing .l-down::before{content:'';position:absolute;left:50%;top:50%;
+  width:150px;height:150px;transform:translate(-50%,-50%);pointer-events:none;
+  background:radial-gradient(closest-side,rgba(6,30,52,.34),rgba(6,30,52,.14) 52%,transparent 76%)}
 /* Contrast, not brightness. The arrow sits at the bottom of the frame, which on
    this painting is sea and foam — the lightest, busiest part of it. A hairline
    at the tracking the rest of the page uses simply disappears there, so the rail
    carries a dark seat of its own (box-shadow, since a 1px element has no text to
    put a text-shadow under) and the chevron carries the same two-part shadow the
    hero's labels do. */
-.l-down-rail{position:relative;display:block;width:1px;height:clamp(28px,5.2vh,54px);
+.l-down-rail{position:relative;display:block;width:1px;height:clamp(34px,6.4vh,66px);
   overflow:hidden;
-  background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.45) 55%,rgba(255,255,255,.52));
-  box-shadow:0 0 6px rgba(10,42,70,.5);
+  background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.55) 55%,rgba(255,255,255,.68));
+  box-shadow:0 0 7px rgba(10,42,70,.55);
   transition:background .4s}
 .l-down-drop{position:absolute;left:0;top:0;width:1px;height:44%;
   background:linear-gradient(180deg,transparent,#fff,transparent);
@@ -2691,9 +2742,22 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   72%{opacity:.95}
   100%{transform:translateY(320%);opacity:0}
 }
-.l-down-chev{opacity:.9;
+/* And it catches it. The travelling light reaches the foot of the rail at ~82%
+   of the cycle, and the chevron blooms as it lands — same 3.6s period, so the
+   two are one gesture rather than two loops that happen to share a corner.
+   
+   The flash is on 'filter' alone, deliberately: transform and opacity stay free
+   for the hover, which an infinite animation would otherwise own outright. */
+.l-down-chev{opacity:1;
   filter:drop-shadow(0 1px 2px rgba(10,42,70,.55)) drop-shadow(0 0 10px rgba(10,42,70,.45));
+  animation:l-down-catch 3.6s ease-in-out infinite;
   transition:transform .42s cubic-bezier(.2,.8,.2,1),opacity .42s}
+@keyframes l-down-catch{
+  0%,72%,100%{filter:drop-shadow(0 1px 2px rgba(10,42,70,.55))
+                     drop-shadow(0 0 10px rgba(10,42,70,.45))}
+  84%{filter:drop-shadow(0 1px 2px rgba(10,42,70,.55))
+             drop-shadow(0 0 9px rgba(216,242,255,.95))}
+}
 .l-down:hover .l-down-chev,
 .l-down:focus-visible .l-down-chev{transform:translateY(3px);opacity:1}
 .l-down:hover .l-down-rail,
@@ -2709,30 +2773,16 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   padding:clamp(78px,12vh,120px) clamp(24px,6vw,80px)
           calc(clamp(44px,8vh,92px) + var(--bar))}
 
-/* One line of explanation, doing real work: without it, ten lines of verse on
-   their own screen are a poem, and that each line is also a track — and playable
-   — is something you find out by accident. It names the format, not the content,
-   so nothing is spent. The rule in front of it is the only horizontal line on
-   the screen; it is what makes the line read as a caption rather than as verse. */
-.l-two-eyebrow{--o:.54;font-family:'Jost',sans-serif;font-weight:300;
-  font-size:clamp(9px,1.05vh,10.5px);letter-spacing:.44em;opacity:.54;
-  margin-bottom:clamp(30px,6vh,64px);white-space:nowrap;
-  text-shadow:0 1px 2px rgba(2,14,26,.7)}
-.l-two-eyebrow::before{content:'';display:inline-block;
-  width:clamp(16px,3vw,38px);height:1px;background:currentColor;opacity:.55;
-  vertical-align:middle;margin:0 1.15em 3px 0}
+/* The album, in the poem's own hand — see the note in the markup for the one
+   thing that keeps it from reading as the poem's first line. A wider bloom than
+   the lines get, because the strokes are bigger here and the same 7px would sit
+   inside the letterform instead of around it. Same dark seat. */
+.l-poem-head{--o:.72;font-family:'Nothing You Could Do',cursive;font-weight:400;
+  font-size:clamp(26px,3.7vh,42px);letter-spacing:.01em;line-height:1.2;
+  opacity:.72;margin-bottom:clamp(46px,9.5vh,98px);
+  text-shadow:0 0 11px rgba(186,230,252,.5),0 1px 2px rgba(2,14,26,.8)}
 
-.l-two-foot{--o:.5;display:flex;align-items:center;gap:clamp(11px,1.6vw,20px);
-  margin-top:clamp(32px,7vh,74px);opacity:.5;
-  font-family:'Jost',sans-serif;font-weight:300;font-size:10px;letter-spacing:.34em;
-  text-shadow:0 1px 2px rgba(2,14,26,.7)}
-.l-two-sep{width:clamp(14px,2.4vw,32px);height:1px;background:currentColor;opacity:.5}
-.landing .l-two-sub{background:none;border:none;padding:0 0 2px;color:inherit;cursor:pointer;
-  font-family:'Jost',sans-serif;font-weight:300;font-size:10px;letter-spacing:.34em;
-  border-bottom:1px solid transparent;transition:border-color .4s}
-.landing .l-two-sub:hover{border-bottom-color:currentColor}
-
-/* The Chinese title, set the way it would run on a spine. It is the only thing
+/* The Chinese title, set the way it would run on a spine./* The Chinese title, set the way it would run on a spine. It is the only thing
    on this screen that is neither English nor a control, and it hangs in the
    right margin where a seal would — the one place it can be large and quiet at
    once. Below 900px there is no margin to hang anything in, so it goes.
@@ -2793,12 +2843,11 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    not opaque and a fill-mode animation ending at 1 would silently overrule
    every one of them, forever. */
 @media (prefers-reduced-motion:no-preference){
-  .l-two-eyebrow,.l-poem-row,.l-two-foot,.l-two-cn{opacity:0}
-  .l-two.is-in .l-two-eyebrow{animation:l-in .9s cubic-bezier(.2,.7,.2,1) both}
+  .l-poem-head,.l-poem-row,.l-two-cn{opacity:0}
+  .l-two.is-in .l-poem-head{animation:l-in .9s cubic-bezier(.2,.7,.2,1) both}
   .l-two.is-in .l-poem-row{animation:l-in .85s cubic-bezier(.2,.7,.2,1) both;
     animation-delay:calc(var(--i,0) * 55ms)}
   .l-two.is-in .l-two-cn{animation:l-in 1.3s cubic-bezier(.2,.7,.2,1) .5s both}
-  .l-two.is-in .l-two-foot{animation:l-in .9s cubic-bezier(.2,.7,.2,1) .78s both}
 }
 @keyframes l-in{
   from{opacity:0;transform:translateY(16px);filter:blur(4px)}
@@ -2825,11 +2874,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   .l-two .l-poem-f-nothing{--poem-size:clamp(15px,2.15vh,22px)}
   .l-two .l-poem-f-cormorant{--poem-size:clamp(16px,2.4vh,24px)}
   .l-two .l-poem-body{gap:clamp(16px,2.6vh,30px)}
-  .l-two-eyebrow{margin-bottom:clamp(24px,4.6vh,48px)}
-  .l-two-foot{margin-top:clamp(26px,5.4vh,58px)}
-  .l-two-eyebrow{letter-spacing:.3em;font-size:9px}
-  .l-two-foot{letter-spacing:.24em;gap:10px}
-  .landing .l-two-sub{letter-spacing:.24em}
+  .l-poem-head{font-size:clamp(24px,3.3vh,34px);margin-bottom:clamp(34px,7vh,72px)}
 }
 
 @media (prefers-reduced-motion: reduce){

@@ -58,7 +58,8 @@ screens, the nav, the player, and the panel.
 shore, 1 in the water.** It is written straight to `.landing` as a custom property
 by the scroll effect, and *everything* about the transition reads it — the veil's
 opacity, the parallax and blur on the painting, the light from the surface, the
-marine snow, screen one fading out, the arrow fading out, the wordmark fading in.
+light shafts, the drift, screen one fading out, the arrow fading out, the wordmark
+fading in.
 One source of truth, so no two layers can disagree about how deep we are.
 
 Two rules about it that are easy to undo by accident:
@@ -81,10 +82,38 @@ CLAUDE.md. The veil stops short of opaque in both its gradients so the oil textu
 survives the descent; **a flat colour is what this background must never be, at any
 depth.**
 
-The marine snow drifts **upward**, and it is the only layer that says which way we
-are moving — everything else would read the same on a page that was merely getting
-darker. Three layers, each one tile of dots repeated and translated by exactly one
-tile height, so the loop is seamless with no JS and no canvas.
+### Light, not particles
+
+*(the first pass at this shipped drifting motes and was replaced on 2026-08-22 —
+Qi's read was "有点假，小儿科", and he was right)*
+
+The water above the poem is **five light shafts and two drift clouds**, and the rule
+they are built on is worth keeping because it is the one that decides whether an
+effect looks expensive or cheap:
+
+**Particulate is a high-frequency cue and the eye resolves every speck
+individually.** A repeating tile of 1px dots therefore fails twice — each dot is a
+discrete object to be counted, and the tile's period is findable, so the moment you
+notice it repeat the whole thing collapses into a pattern. Light is low-frequency,
+and low frequency is what survives being looked at.
+
+So: nothing on that layer is an object. The shafts are 12–26vw wide (floored at
+112px, since on a phone a vw-sized shaft narrows until it reads as a band with
+edges), soft-edged by a **mask rather than a blur** — same softness, none of the
+rasterisation cost — and they all lean the same way, because there is one sun and it
+is up and to the left. They pivot from their own top edge, which is what a shaft does
+when the surface above it moves.
+
+**The periods are 17 / 23 / 29 / 37 / 43s, and the clouds are 96 / 137s** — all
+near-primes, so no two are ever in phase and the group never visibly repeats. Every
+one runs `alternate` rather than looping: a shaft that returns to its start position
+each cycle has a seam, one that sways back does not. **The effect is the absence of a
+period anyone can find.** If this ever needs extending, add another near-prime — do
+not round the numbers.
+
+The clouds do almost nothing per frame, which is their job: they keep the dark from
+being a flat fill without ever becoming something to look at. Same principle as the
+painting itself.
 
 ### Snap, and the one thing that can trap a reader
 
@@ -128,10 +157,21 @@ needs no word under it.
 
 Two things it needs that are easy to lose:
 
-- **Contrast, not brightness.** It sits at the bottom of the frame, which on this
-  painting is sea and foam — the lightest, busiest part of it. The rail carries a
-  dark `box-shadow` of its own (a 1px element has no text to seat a text-shadow
-  under) and the chevron carries the same two-part shadow the hero's labels do.
+- **Size, ground, and motion — it needed all three.** It sits at the bottom of the
+  frame, which on this painting is sea and foam: the lightest, busiest part of it and
+  the worst possible ground for a white hairline. A 22px chevron at 1px was the
+  page's own language and was invisible in it, so it is 30px at 1.25 (still a
+  hairline, an order of magnitude easier to find); a soft dark bloom sits behind the
+  whole mark, wide and formless enough never to read as a button, which is what lets
+  the white stay white instead of being pushed brighter and brighter; and the mark
+  bobs, because the travelling light is 1px and easy to miss while movement is what
+  the eye finds without being asked. The rail also carries a dark `box-shadow` of its
+  own — a 1px element has no text to seat a text-shadow under.
+- **The chevron catches the light.** The drop reaches the foot of the rail at ~82% of
+  its cycle and the chevron blooms as it lands, on the same 3.6s period, so the two
+  are one gesture rather than two loops sharing a corner. The flash is on `filter`
+  alone, deliberately: `transform` and `opacity` stay free for the hover, which an
+  infinite animation would otherwise own outright.
 - **`animation-fill-mode: backwards`, not `both`.** Its entrance holds its first
   frame through the delay and then lets go, leaving the scroll fade free to take the
   opacity back. With `both`, the animation would own `opacity` forever and the arrow
@@ -140,15 +180,24 @@ Two things it needs that are easy to lose:
 
 ### Screen two
 
+*Title, then the poem, and nothing else.* A `RELEASING · 12 · 20 · 2026 — PRE-SAVE`
+footer was tried and cut: `PRE-SAVE` is in the fixed nav on both screens already, and
+the date is on screen one in numbers that tick.
+
 The panel's markup, unchanged, on a screen: the same fill, the same press-to-seek,
 the same transport in the margin. None of it was ever about being in a dialog. What
 is new around it:
 
-- An eyebrow — *TEN SONGS THAT READ AS A POEM* — instead of the handwritten album
-  title the panel carried. Ten lines of verse alone on a screen are a poem, and that
-  each line is also a playable track is then something you find out by accident. It
-  names the format, not the content, so nothing is spent. It also retires the
-  title-vs-line-06 collision the panel had to live with.
+- **The album title, in the poem's own hand** — Qi's call, twice now. A letterspaced
+  eyebrow (*TEN SONGS THAT READ AS A POEM*) was tried in its place and cut as
+  redundant. The risk the title carries is real and is managed by ranking, not by
+  type: "The heart of the jellyfish." is also line 06, so title and line are nearly
+  the same string in the same face. What holds them apart is that the title runs
+  ~1.6× the line size, has ~90px of air under it, and is the only thing on the screen
+  that is not a button. **If it ever starts reading as the poem's first line, that
+  ratio is the knob — not the font.** It is also why the nav's wordmark is `QI · 琦`
+  and not the album: the same words twice on one screen is what that corner exists to
+  avoid.
 - The Chinese title set vertically in the right margin, the way it would run on a
   spine. Its rule is an inline-block inside vertical text, so its size is given
   logically — in `vertical-rl` the inline axis runs *down* the page, so `inline-size`
@@ -292,12 +341,12 @@ and for the rest of the page. Rejected along the way: Caveat (reads as a marker 
 Petit Formal Script (a wedding invitation), La Belle Aurore, Shadows Into Light Two,
 The Girl Next Door, Sacramento.
 
-The poem used to be titled in its own hand, at Qi's call — and the risk that
-accepted was real: "The heart of the jellyfish." is also line 06, so title and line
+The poem is titled in its own hand, at Qi's call — and the risk that accepts is
+real: "The heart of the jellyfish." is also line 06, so title and line
 were nearly the same string in the same face, held apart only by a size ratio. The
-two-screen rebuild retired it: screen two opens on a letterspaced eyebrow instead,
-the album title is one screen away in the carve, and the collision is gone rather
-than managed.
+two-screen rebuild moved it onto screen two's head, where it still is — see *Screen
+two* above for the ratio that keeps the two apart, and for why the nav corner gives
+the album name up to it.
 
 **`/?tune=1` opens a live tuner** (top right): vignette strength and spread, poem face
 and size. Dev affordance, renders for nobody else. `?type=1` still works.
