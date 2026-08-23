@@ -19,6 +19,9 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+/* TEMPORARY — five candidate down-marks behind /?down=1, for Qi to choose from.
+   The whole import and everything it touches goes once one wins. */
+import { DOWN_CSS, DOWN_VARIANTS, DownMark, type DownVariant } from './DownMarks';
 
 /**
  * The album *is* the poem — ten titles that read straight through. Punctuation
@@ -590,6 +593,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [peaks, setPeaks] = useState<Record<string, number[]> | null>(null);
   /** `/?tune=1` (or `?type=1`) opens the tuner. Dev affordance; renders for nobody else. */
   const [tuner, setTuner] = useState(false);
+  /** `/?down=1` opens the down-mark bake-off. TEMPORARY; see DownMarks.tsx. */
+  const [downV, setDownV] = useState<DownVariant | null>(null);
   const [font, setFont] = useState<PoemFontKey>(POEM_FONT);
   const [fontScale, setFontScale] = useState(1);
   const [vig, setVig] = useState(VIGNETTE);
@@ -646,6 +651,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     setTuner(q.get('tune') === '1' || q.get('type') === '1');
+    const d = q.get('down');
+    if (d) setDownV((DOWN_VARIANTS.find((v) => v.key === d)?.key ?? '0') as DownVariant);
   }, []);
 
   useEffect(() => {
@@ -1089,6 +1096,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       }
     >
       <style dangerouslySetInnerHTML={{ __html: LANDING_CSS }} />
+      {downV && <style dangerouslySetInnerHTML={{ __html: DOWN_CSS }} />}
 
       {/*
         The two filters that do the relief. Same construction, one difference:
@@ -1361,22 +1369,29 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           <button
             type="button"
             className="l-down"
+            data-v={downV ?? undefined}
             aria-label="Down to the tracklist"
             onClick={() => goTo(1)}
           >
-            <span className="l-down-rail" aria-hidden>
-              <span className="l-down-drop" />
-            </span>
-            <svg className="l-down-chev" width="22" height="9" viewBox="0 0 22 9" aria-hidden>
-              <path
-                d="M1 1l10 7 10-7"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            {downV ? (
+              <DownMark v={downV} />
+            ) : (
+              <>
+                <span className="l-down-rail" aria-hidden>
+                  <span className="l-down-drop" />
+                </span>
+                <svg className="l-down-chev" width="30" height="12" viewBox="0 0 30 12" aria-hidden>
+                  <path
+                    d="M1 1l14 10 14-10"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.25"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </>
+            )}
           </button>
         </section>
 
@@ -1582,6 +1597,23 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           <button type="button" className="l-bar-close" aria-label="Close player" onClick={stop}>
             ✕
           </button>
+        </div>
+      )}
+
+      {/* ---- the down-mark bake-off, /?down=1. TEMPORARY ---- */}
+      {downV && (
+        <div className="dm-pick">
+          <div className="dm-pick-head">DOWN MARK</div>
+          {DOWN_VARIANTS.map((v) => (
+            <button
+              key={v.key}
+              type="button"
+              className={v.key === downV ? 'dm-on' : undefined}
+              onClick={() => setDownV(v.key)}
+            >
+              {v.label}
+            </button>
+          ))}
         </div>
       )}
 
