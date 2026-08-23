@@ -96,11 +96,16 @@ function demoProps(n: number) {
 }
 
 /**
- * Where a demo play is reported from, at the quarters. Not a raw progress
- * stream — the question this site has is "which of the ten does someone stay
- * with", and three marks plus the finish answers it in four events instead of
- * a few hundred. 25 is past the intro, 50 is a real listen, 75 is essentially
- * the whole thing; the four numbers together are a retention curve per track.
+ * Where a demo play is reported: the quarters. Not a raw progress stream, which
+ * would be a few hundred events per listen for a resolution nobody reads.
+ *
+ * The fourth mark, 100, is NOT in this list, because the clock cannot be
+ * trusted to produce it — the last `timeupdate` before a track runs out lands
+ * at 99-point-something as often as not, so a milestone waiting at 100 would
+ * silently under-report every completed listen. It is reported from the `ended`
+ * handler instead, where finishing is a fact rather than an inference. Four
+ * values come out the far end either way, and `demo_progress` broken down by
+ * milestone is one query and one retention curve per track.
  */
 const DEMO_MILESTONES = [25, 50, 75] as const;
 
@@ -1080,6 +1085,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const playTrackRef = useRef<(n: number, from?: PlaySource) => void>(() => {});
   /** Highest quarter already reported for the track now loaded. Reset per track. */
   const milestoneRef = useRef(0);
+  /** Whether the play now loaded has already been ended. See endPlay. */
+  const endedRef = useRef(false);
   /**
    * Screen two is reported once per visit, not once per crossing — someone who
    * scrolls up and back down has not discovered the tracklist twice.
@@ -1092,6 +1099,29 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    * Falls back to 'scroll', which is the honest answer for everyone else.
    */
   const descentViaRef = useRef<'scroll' | 'button' | 'chevron'>('scroll');
+
+  /*
+   * The visit, accumulating. All refs, never state: none of it is rendered, and
+   * a re-render per second of audio would be an absurd price for a number that
+   * is read exactly once, on the way out.
+   *
+   * What these answer that no single click can: how long someone actually
+   * listened (as opposed to how many times they pressed play), how long they
+   * stood in the poem, and how much of the page they touched before leaving.
+   */
+  const openedAtRef = useRef(0);
+  /** Seconds of audio that actually sounded — summed from the clock, so a seek adds nothing. */
+  const listenedRef = useRef(0);
+  const lastCtRef = useRef(0);
+  const tracksPlayedRef = useRef<Set<number>>(new Set());
+  /** Milliseconds spent below the surface, summed over every visit to screen two. */
+  const poemMsRef = useRef(0);
+  /** When the current stay in the poem began, or null if we are up on the shore. */
+  const poemEnterRef = useRef<number | null>(null);
+  const openedSubRef = useRef(false);
+  const subscribedRef = useRef(false);
+  /** The summary is sent once. See the pagehide effect for why that is the honest choice. */
+  const summarySentRef = useRef(false);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -1154,6 +1184,15 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         reachedTwoRef.current = true;
         track('tracklist_reached', { via: descentViaRef.current });
       }
+      // How long the poem is stood in front of, as a sum of stays rather than a
+      // single stretch — the way down and back up is one visit's reading, and
+      // someone who surfaces to press play and returns has not stopped reading.
+      // Only the crossings are timed; the scroll in between costs nothing.
+      if (s > 0.3 && poemEnterRef.current === null) poemEnterRef.current = Date.now();
+      else if (s <= 0.3 && poemEnterRef.current !== null) {
+        poemMsRef.current += Date.now() - poemEnterRef.current;
+        poemEnterRef.current = null;
+      }
       // Two screens should measure two screens. Anything over is the tracklist
       // spilling, and the snap has to give way — see .landing[data-tall].
       setTall(sc.scrollHeight > h * 2 + 2);
@@ -1214,6 +1253,36 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     return () => window.removeEventListener('keydown', onKey);
   }, [panel, closePanel]);
 
+  /**
+   * Every play ends. This is the only event that says where.
+   *
+   * The first cut reported `demo_finished` and `player_closed`, which between
+   * them describe the two tidiest endings and miss the two commonest: people
+   * switch to another track, or they leave. So those plays simply stopped
+   * reporting, and "where does this song lose them" was answered from the small,
+   * unrepresentative set of listeners who pressed a button on the way out.
+   *
+   * `reason` is what separates a song that ran out from a song that was
+   * abandoned at 12%, which is the entire question.
+   */
+  const endPlay = useCallback((reason: 'finished' | 'switched' | 'closed' | 'left') => {
+    const n = curRef.current;
+    // Once per play. A track that runs out ends as 'finished' and is then
+    // walked past by the autoplay, which would otherwise end it a second time
+    // as 'switched' — and every completed listen would be filed twice, once
+    // honestly and once as an abandonment at 100%.
+    if (!n || endedRef.current) return;
+    endedRef.current = true;
+    track('demo_ended', {
+      ...demoProps(n),
+      percent: reason === 'finished' ? 100 : Math.round(pctRef.current),
+      reason,
+    });
+  }, []);
+  /** Same reason playTrackRef exists — the `ended` listener is built once, and for good. */
+  const endPlayRef = useRef(endPlay);
+  endPlayRef.current = endPlay;
+
   /* --- audio ------------------------------------------------------ */
   const peaksRequested = useRef(false);
   const loadPeaks = useCallback(() => {
@@ -1231,6 +1300,14 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     const au = new Audio();
     au.addEventListener('timeupdate', () => {
       const p = au.duration ? (au.currentTime / au.duration) * 100 : 0;
+      // Seconds that actually sounded, summed from the clock's own forward
+      // steps. A seek moves currentTime by more than a tick's worth and a
+      // rewind moves it backwards, so both fall outside the window and add
+      // nothing — which is the point: this is time listened, not time elapsed
+      // and not track length.
+      const d = au.currentTime - lastCtRef.current;
+      if (d > 0 && d < 1.5) listenedRef.current += d;
+      lastCtRef.current = au.currentTime;
       if (Math.abs(p - pctRef.current) > 0.7) {
         pctRef.current = p;
         setPct(p);
@@ -1247,14 +1324,24 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       }
     });
     au.addEventListener('ended', () => {
-      track('demo_finished', demoProps(curRef.current));
+      // The fourth quarter, from the only place it is certain. See DEMO_MILESTONES.
+      if (milestoneRef.current < 100) {
+        milestoneRef.current = 100;
+        track('demo_progress', { ...demoProps(curRef.current), milestone: 100 });
+      }
+      endPlayRef.current('finished');
       if (curRef.current < FILES.length) playTrackRef.current(curRef.current + 1, 'auto');
       else setPlaying(false);
     });
     au.addEventListener('error', () => {
-      // Somebody pressed a line whose demo is not up yet, or the file 404s. Both
-      // are worth knowing and neither is visible in a play count.
-      track('demo_unavailable', demoProps(curRef.current));
+      // The file itself: not up yet, a 404, or a body that will not decode.
+      // Worth knowing and invisible in a play count. A browser REFUSING to play
+      // a file that is perfectly fine is a different event — see the catch in
+      // playTrack — and the two must not share a name.
+      track('demo_unavailable', {
+        ...demoProps(curRef.current),
+        error: au.error ? au.error.code : 0,
+      });
       setMissing(true);
       setPlaying(false);
     });
@@ -1281,18 +1368,58 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         }
         return;
       }
+      // The play being walked away from is closed before the new one opens, so
+      // a listener who tries five songs leaves five endings behind rather than
+      // four silences and one.
+      endPlay('switched');
       au.src = FILES[n - 1];
       curRef.current = n;
       pctRef.current = 0;
       milestoneRef.current = 0;
+      endedRef.current = false;
+      lastCtRef.current = 0;
+      tracksPlayedRef.current.add(n);
       setCur(n);
       setMissing(false);
       setPct(0);
-      track('demo_started', { ...demoProps(n), from });
+      const askedAt = Date.now();
       au
         .play()
-        .then(() => setPlaying(true))
-        .catch(() => {
+        .then(() => {
+          setPlaying(true);
+          /*
+           * Reported here rather than on the press, so `demo_started` means
+           * sound actually began — and can carry how long that took.
+           *
+           * This is the latency that matters on this page. The demos are ~5 MB
+           * each and nothing is preloaded, so on a phone the gap between
+           * pressing a line of the poem and hearing anything is the moment the
+           * page is most likely to be abandoned, and it is completely invisible
+           * from the server side. A press that never becomes sound is not
+           * silence in the data either — see demo_blocked.
+           */
+          if (curRef.current !== n) return; // they moved on before it sounded
+          track('demo_started', { ...demoProps(n), from, ms_to_sound: Date.now() - askedAt });
+        })
+        .catch((err: unknown) => {
+          /*
+           * The browser refused to sound. Its own name for why rides along
+           * rather than being sorted into a guess here, because play() rejects
+           * for several unrelated reasons that look identical from the outside
+           * and the list is longer than it seems: NotAllowedError is an
+           * autoplay policy or the iOS mute switch, AbortError is playback
+           * interrupted (a backgrounded tab pausing media to save power),
+           * NotSupportedError is the file. Report the name and let the data say
+           * which one this site actually has.
+           *
+           * Worth its own event because the visitor sees the same "DEMO
+           * PENDING" either way, and a refusal filed as a missing demo looks
+           * exactly like a track that everybody skipped a second in.
+           */
+          track('demo_blocked', {
+            ...demoProps(n),
+            error: err instanceof DOMException ? err.name : 'unknown',
+          });
           // No demo uploaded yet — the bar still opens, labelled "DEMO PENDING".
           setMissing(true);
           setPlaying(false);
@@ -1330,6 +1457,31 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     }
   }, []);
 
+  /** Where the pointer went down, so a gesture can be reported as a move and not a place. */
+  const seekFromRef = useRef(0);
+
+  /**
+   * A scrub, once, with its direction.
+   *
+   * The direction is the point. Forward is someone skipping — useful, mildly.
+   * Backward is someone rewinding to hear a passage again, which is the
+   * strongest "this bit" signal the page can produce: it is a listener saying
+   * play that part once more, in the one place they can say it. Reported only
+   * on pointer-up, so a drag across the bar is one intention and not a hundred.
+   */
+  const reportSeek = useCallback((control: 'bar' | 'poem_line') => {
+    if (!curRef.current) return;
+    const to = Math.round(pctRef.current);
+    const from = Math.round(seekFromRef.current);
+    track('demo_seeked', {
+      ...demoProps(curRef.current),
+      from_percent: from,
+      percent: to,
+      direction: to < from ? 'back' : 'forward',
+      control,
+    });
+  }, []);
+
   const seekToClientX = useCallback(
     (clientX: number) => {
       const el = seekRef.current;
@@ -1343,6 +1495,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const onSeekDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       draggingRef.current = true;
+      seekFromRef.current = pctRef.current;
       // Capture keeps the drag alive outside the 2px bar. It throws if the
       // pointer isn't active (synthetic events, some browsers) — not fatal.
       try {
@@ -1362,11 +1515,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     // Once, where the finger lifted -- not once per pointermove, which on a drag
     // across the bar is a hundred events describing one intention.
     if (draggingRef.current) {
-      track('demo_seeked', {
-        ...demoProps(curRef.current),
-        percent: Math.round(pctRef.current),
-        control: 'bar',
-      });
+      reportSeek('bar');
     }
     draggingRef.current = false;
     try {
@@ -1461,6 +1610,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       }
       const f = inkFraction(e.clientX);
       if (f === null) return;
+      seekFromRef.current = pctRef.current;
       scrubbingRef.current = true;
       poemInkRef.current?.setAttribute('data-scrubbing', '');
       try {
@@ -1489,11 +1639,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     // Only a real scrub. A press that landed on the number in the margin never
     // started one -- it was the transport, and playTrack has already said so.
     if (scrubbingRef.current) {
-      track('demo_seeked', {
-        ...demoProps(curRef.current),
-        percent: Math.round(pctRef.current),
-        control: 'poem_line',
-      });
+      reportSeek('poem_line');
     }
     scrubbingRef.current = false;
     poemInkRef.current?.removeAttribute('data-scrubbing');
@@ -1534,12 +1680,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
 
   const stop = useCallback(() => {
     // Closing the bar is the one unambiguous "I am done listening" on the page.
-    if (curRef.current) {
-      track('player_closed', {
-        ...demoProps(curRef.current),
-        percent: Math.round(pctRef.current),
-      });
-    }
+    endPlay('closed');
     audioRef.current?.pause();
     curRef.current = 0;
     pctRef.current = 0;
@@ -1558,6 +1699,59 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     },
     [],
   );
+
+  /**
+   * One row per visit, sent on the way out.
+   *
+   * Everything else here is a moment; this is the shape of the whole thing, and
+   * it answers the questions no single click can. `seconds_listened` is the one
+   * that matters most — it is minutes of attention, not presses of a button,
+   * and it is the only honest measure of whether any of this worked.
+   * `poem_seconds` is the same question asked of the second screen.
+   *
+   * Sent on the FIRST time the page is hidden, not on unload. beforeunload does
+   * not fire reliably on a phone — a tab swiped away, a call coming in, and the
+   * page is gone with nothing sent — and by then the browser will not open a
+   * request anyway. visibilitychange is the last moment that is actually
+   * guaranteed.
+   *
+   * The cost of that choice: someone who switches tabs and comes back has their
+   * visit measured up to the switch and no further. That is a real undercount
+   * and it is the right trade — the alternative is a second row for the same
+   * visit, and a summary you have to de-duplicate before you can read it is
+   * worse than one that is slightly short.
+   */
+  useEffect(() => {
+    openedAtRef.current = Date.now();
+    const send = () => {
+      if (summarySentRef.current) return;
+      summarySentRef.current = true;
+      // Close the two things still running: the stay in the poem, and the play.
+      if (poemEnterRef.current !== null) {
+        poemMsRef.current += Date.now() - poemEnterRef.current;
+        poemEnterRef.current = null;
+      }
+      endPlayRef.current('left');
+      track('visit_summary', {
+        seconds_on_page: Math.round((Date.now() - openedAtRef.current) / 1000),
+        seconds_listened: Math.round(listenedRef.current),
+        tracks_played: tracksPlayedRef.current.size,
+        poem_seconds: Math.round(poemMsRef.current / 1000),
+        reached_tracklist: reachedTwoRef.current,
+        opened_subscribe: openedSubRef.current,
+        subscribed: subscribedRef.current,
+      });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') send();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', send);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', send);
+    };
+  }, []);
 
 
   /**
@@ -1803,6 +1997,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             // The top of the funnel this whole page exists to feed. `via` is
             // already here because PRE-SAVE will not stay the only way in.
             track('subscribe_opened', { via: 'nav' });
+            openedSubRef.current = true;
             setPanel('subscribe');
           }}
         >
@@ -2538,6 +2733,10 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                     return;
                   }
                   setSubState('sending');
+                  // Round-trip to our own route, which is mostly MailerLite's
+                  // round-trip. A third party that has got slow is otherwise
+                  // only visible as people giving up on a spinner.
+                  const askedAt = Date.now();
                   try {
                     const res = await fetch('/api/subscribe', {
                       method: 'POST',
@@ -2553,15 +2752,17 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                       track('subscribe_failed', {
                         reason: res.status === 400 ? 'email_rejected' : 'server',
                         status: res.status,
+                        ms: Date.now() - askedAt,
                       });
                       setSubErr(res.status === 400 ? 'email' : 'server');
                       setSubState('error');
                       return;
                     }
-                    track('subscribe_completed');
+                    track('subscribe_completed', { ms: Date.now() - askedAt });
+                    subscribedRef.current = true;
                     setSubState('done');
                   } catch {
-                    track('subscribe_failed', { reason: 'network' });
+                    track('subscribe_failed', { reason: 'network', ms: Date.now() - askedAt });
                     setSubErr('server'); // never reached /api/subscribe at all
                     setSubState('error');
                   }

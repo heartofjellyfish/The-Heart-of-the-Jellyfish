@@ -21,7 +21,7 @@
  * callback after mount: Next splits it into its own chunk and the browser
  * fetches it when it has nothing better to do.
  *
- * Measured 2026-08-23: / went 139 kB → 140 kB First Load JS. The SDK itself
+ * Measured 2026-08-23: / went 139 kB → 141 kB First Load JS. The SDK itself
  * lands in a separate chunk that the first paint never waits for. If that
  * number ever jumps ~60 kB, something has pulled posthog-js into the static
  * graph — a top-level `import posthog from 'posthog-js'` somewhere, most
@@ -77,6 +77,18 @@ const PENDING_MAX = 50;
 export const analyticsEnabled = Boolean(KEY);
 
 /**
+ * ?ph=debug — print every event, with its properties, as it is recorded.
+ *
+ * PostHog's own debug mode logs the event name but collapses the properties,
+ * and the properties are the part worth checking: a milestone that is off by
+ * one, a percent that is NaN, a track number that is 0. Read once, at module
+ * load, so `track` stays a straight function call.
+ */
+const DEBUG =
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).get('ph') === 'debug';
+
+/**
  * Load and initialise the SDK. Idempotent, safe to call from an effect that
  * React's StrictMode runs twice, and safe to call on the server (it no-ops).
  */
@@ -121,6 +133,20 @@ export async function startAnalytics(): Promise<void> {
        */
       person_profiles: 'identified_only',
       /*
+       * Page-load and interaction latency, from Chrome's own web-vitals
+       * library: LCP, FCP, CLS, INP, one batched event per pageview.
+       *
+       * On this page LCP is essentially "how long until the painting is
+       * there", and the painting IS the page — every funnel below it is
+       * conditional on somebody having waited for it. Without this, a slow
+       * first screen shows up only as a bounce rate, i.e. as visitors who look
+       * uninterested rather than as a site that was still blank.
+       *
+       * `network_timing` stays off: it only feeds session replay's waterfall,
+       * which is not on by default here.
+       */
+      capture_performance: { web_vitals: true },
+      /*
        * Session replay is left to the project's own setting in the PostHog
        * dashboard rather than pinned here, because it is the one knob whose
        * right value changes with the month — worth watching in the week a
@@ -129,10 +155,7 @@ export async function startAnalytics(): Promise<void> {
        */
     });
 
-    // ?ph=debug prints every event to the console as it is sent. The only way
-    // to check a change to the taxonomy without waiting on the PostHog UI, and
-    // the only way to see anything at all while the key is unset in dev.
-    if (new URLSearchParams(window.location.search).get('ph') === 'debug') posthog.debug();
+    if (DEBUG) posthog.debug();
 
     client = posthog;
     for (const q of pending.splice(0)) posthog.capture(q.event, q.props);
@@ -148,6 +171,7 @@ export async function startAnalytics(): Promise<void> {
  * caller to know whether analytics is loaded, configured, or blocked.
  */
 export function track(event: string, props?: EventProps): void {
+  if (DEBUG) console.log('%c[qi] ' + event, 'color:#8cb9d4', props ?? {});
   if (!KEY) return;
   if (client) {
     client.capture(event, props);
