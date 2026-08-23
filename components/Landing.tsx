@@ -1507,7 +1507,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           */}
           <div className="l-two-cn" aria-hidden>
             <span className="l-two-cn-rule" />
-            水母之心
+            <span className="l-two-cn-text">水母之心</span>
+            <span className="l-two-cn-rule" />
           </div>
         </section>
       </div>
@@ -2893,9 +2894,20 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   font-family:'Noto Serif SC','Songti SC',serif;font-weight:300;
   font-size:clamp(13px,1.55vh,18px);letter-spacing:.62em;color:#dcecf6;opacity:.32;
   text-shadow:0 0 10px rgba(150,210,240,.35),0 1px 2px rgba(2,14,26,.7)}
+/* One rule at each end, so the title is stopped rather than merely started.
+   Sizes are logical because the box is in vertical-rl: the inline axis runs down
+   the page, so inline-size is the length of a rule and block-size is its
+   thickness, and inline-start/-end are its top and bottom.
+
+   The text needs its own negative margin or the two gaps come out unequal.
+   Letter-spacing lands after the last character as well as between, so the
+   title's box carries .62em of empty run at the bottom that the top does not
+   have — which is invisible until something is sitting under it. */
 .l-two-cn-rule{display:inline-block;inline-size:clamp(24px,6vh,58px);block-size:1px;
-  background:currentColor;opacity:.55;vertical-align:middle;
-  margin-inline-end:clamp(12px,2.6vh,26px)}
+  background:currentColor;opacity:.55;vertical-align:middle}
+.l-two-cn-rule:first-child{margin-inline-end:clamp(12px,2.6vh,26px)}
+.l-two-cn-rule:last-child{margin-inline-start:clamp(12px,2.6vh,26px)}
+.l-two-cn-text{margin-inline-end:-.62em}
 @media (max-width:900px){.l-two-cn{display:none}}
 
 /* The verse gets more room than it had in the panel, since it now has a screen

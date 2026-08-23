@@ -92,8 +92,9 @@ depth.**
 
 ### The Chinese title
 
-It hangs in the right margin: 水母之心 set vertically, with a hairline above it,
-gone below 900px where there is no margin to hang anything in. Bilingual is the
+It hangs in the right margin: 水母之心 set vertically between two hairlines, one at
+each end so the title is stopped rather than merely started. Gone below 900px, where
+there is no margin to hang anything in. Bilingual is the
 album's voice and vertical is Chinese's own setting, not an ornament — that part is
 settled.
 
@@ -106,10 +107,14 @@ second focal point on a screen whose entire job is to hold one poem. Ceremony, n
 architecture. If it ever comes back, it comes back on a screen that has room to be
 an object rather than a page.
 
-Vertical text has one trap worth knowing either way: letter-spacing lands *below*
-the last character as well as between them, so the block hangs low in its box by
-that amount. `margin-bottom` is a physical property and still means physical bottom
-in `vertical-rl`, which is the shortest way to take it back.
+Vertical text has one trap worth knowing: letter-spacing lands *below* the last
+character as well as between them, so the block carries a run of empty at its foot
+that its head does not have. Invisible until something sits under it — which is
+exactly what the second hairline does, and why the title carries a negative
+`margin-inline-end` to make the two gaps equal. (Everything in that box is sized
+logically, because in `vertical-rl` the inline axis runs down the page: `inline-size`
+is the length of a rule, `block-size` is its thickness, and inline-start/-end are its
+top and bottom.)
 
 ### Light, not particles### Light, not particles
 
