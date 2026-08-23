@@ -75,6 +75,14 @@ Two rules about it that are easy to undo by accident:
   worth coalescing. (Same lesson as the tracklist measurement that used to live
   here, and the same reason.)
 
+One thing about it is deliberately **not** interpolated: the blur on the painting.
+A blur radius driven off `--s` re-rasterises a full-bleed image on every frame of
+the scroll — the one moment the page cannot afford it and the one moment anyone
+would notice. It is thresholded on `data-two` with a single bounded transition
+instead, which is cheaper *and* reads better: sharp while you are moving, soft once
+you have arrived. **Interpolate transforms and opacities off `--s`; step anything
+that repaints.**
+
 Screen two is *the same painting seen from further down*, not a second image: the
 figure is still standing where he was one screen ago, as a ghost behind the veil.
 That is the storyboard, not a compromise — see the frame notes in the workspace
@@ -82,37 +90,28 @@ CLAUDE.md. The veil stops short of opaque in both its gradients so the oil textu
 survives the descent; **a flat colour is what this background must never be, at any
 depth.**
 
-### The spine
+### The Chinese title
 
-The right margin held a line of vertical Chinese, which is the *position* of a spine
-without being one. A spine is an **edge**, and four cheap things make it read as one
-instead of as a decorative vertical:
+It hangs in the right margin: 水母之心 set vertically, with a hairline above it,
+gone below 900px where there is no margin to hang anything in. Bilingual is the
+album's voice and vertical is Chinese's own setting, not an ornament — that part is
+settled.
 
-1. **A width.** It is a band (`--spine-w`, 54–74px), and screen two's right padding
-   includes it so the poem still centres in what is left.
-2. **A lit fold and a board turning away from it.** A hairline at the left, then a
-   gradient darkening to the page edge. The hairline alone reads as a rule and the
-   gradient alone reads as a vignette; only together do they describe a corner.
-3. **Ruling at both ends.** A spine is banded, and the band at the foot is where the
-   publisher's mark goes — which is what tells you the red mark down there is a
-   colophon rather than a stray dot of colour.
-4. **The mark.** A seal, because that is what signs a poem in Chinese: 白文, the
-   character knocked out of the ink rather than drawn in it, stamped a couple of
-   degrees off square the way a hand leaves it.
+**It was built out into a literal spine once** — a ruled band with a width, a lit
+fold, banding at both ends and a 白文 seal in the foot compartment — and taken back
+to the line the same day. The reasons are worth keeping, because the build was
+*correct* and still wrong for the screen: the band was furniture the layout had to
+make room for (screen two's right padding had to reserve it), and the seal was a
+second focal point on a screen whose entire job is to hold one poem. Ceremony, not
+architecture. If it ever comes back, it comes back on a screen that has room to be
+an object rather than a page.
 
-**The seal is the only warm colour on either screen.** That is exactly why it can be
-26px and still be the last thing you look at, and it is also why nothing else may
-join it — two accents are a palette, one is a signature.
+Vertical text has one trap worth knowing either way: letter-spacing lands *below*
+the last character as well as between them, so the block hangs low in its box by
+that amount. `margin-bottom` is a physical property and still means physical bottom
+in `vertical-rl`, which is the shortest way to take it back.
 
-Vertical text has one trap worth knowing: letter-spacing lands *below* the last
-character as well as between them, so the block hangs low in its box by that amount.
-`margin-bottom` is a physical property and still means physical bottom in
-`vertical-rl`, which is the shortest way to take it back.
-
-Gone below 900px: there is no margin to build an edge in, and a spine laid over the
-verse is a stripe.
-
-### Light, not particles
+### Light, not particles### Light, not particles
 
 *(the first pass at this shipped drifting motes and was replaced on 2026-08-22 —
 Qi's read was "有点假，小儿科", and he was right)*
@@ -145,21 +144,25 @@ The clouds do almost nothing per frame, which is their job: they keep the dark f
 being a flat fill without ever becoming something to look at. Same principle as the
 painting itself.
 
-**Bioluminescence** was the follow-up ask (*"黑暗中的闪光"*), and the honest question
-was whether it wanted a 3D model. It does not, and it should not have one: this page
-exists *because* the WebGL canvas came off it (130 kB first load against `/descent`'s
-425 kB), and 300 kB of R3F for an ambient sparkle is that trade run backwards. The
-house rule already covers it — real models for creatures, procedural for light and
-atmosphere — and a flash **is** light.
+**Bioluminescent glimmers were tried here and cut** (*"亮晶晶好难看，还变卡了"*).
+Six rare, soft, double-flashing blooms on near-prime periods — a good idea on paper
+and, on the page, both an ornament and a cost. Two things to take from it:
 
-What separates it from the dot field two commits earlier is **rarity**: six of them,
-on 23–53s near-prime periods, each lit for under three seconds, so you will almost
-never see two at once and most of the time you will see none. *An effect you are not
-sure you saw is worth ten you can count.* They are also soft and sized — a bright
-core inside a 58–130px halo — and they flash **twice**, bright then weak, because a
-single clean fade reads as a dial being turned and a stutter reads as something
-alive. Placed toward the edges, away from the column the verse occupies: meant to be
-caught in the corner of the eye while reading, never read through.
+- **An effect whose entire value is being barely noticed is the first thing to cut
+  when it costs frames.** It cannot win that trade by definition.
+- The cost was not the six small elements. It was that each one animated
+  `transform` inside a full-viewport container stacked over a blurred image and three
+  alpha layers, so every frame invalidated the whole stack. **On this page, anything
+  that animates inside the stage has to be promotable and cheap, or it is not worth
+  having.** The shafts and the clouds carry `will-change` for that reason, and the
+  clouds translate without scaling — they are the two largest elements on the page,
+  and a scale on a gradient that size is a re-raster the compositor cannot help with.
+
+The 3D question that came with it has a standing answer: **no.** This page exists
+*because* the WebGL canvas came off it (130 kB first load against `/descent`'s
+425 kB), and 300 kB of R3F for ambient anything is that trade run backwards. The
+house rule already covers it — real models for creatures, procedural for light and
+atmosphere.
 
 ### Snap, and the one thing that can trap a reader
 
@@ -216,18 +219,18 @@ all three, which is why it stopped being a dialog you open and dismiss.
 
 `PRE-SAVE` is the site's one conversion, and it spent the first pass set as an 11.5px
 link in a corner — the same weight as a wordmark that does nothing. It is now the
-only thing on either screen built like a button, in two places:
+only thing on either screen built like a button, and it lives in **one** place: the
+nav, top right, on both screens, with the same rule and the same fill-on-hover as
+`SIGN UP` in the panel it opens. The two are one action seen twice, and looking
+alike is how anyone knows that. (The nav's own padding came down from 26px to 18px
+to pay for the button's height — screen two needed those pixels.)
 
-- **The nav**, on both screens, with the same rule and the same fill-on-hover as
-  `SIGN UP` in the panel it opens. The two are one action seen twice, and looking
-  alike is how anyone knows that. (The nav's own padding came down from 26px to 18px
-  to pay for the button's height — screen two needed those pixels.)
-- **Where the poem ends.** Someone who has just read ten lines is the likeliest
-  person on the site to say yes, and until now that screen ended in nothing at all.
-  A hairline, one line in the album's own type — *Be there when it surfaces.* — and
-  the button. Set in Cormorant italic rather than the poem's hand on purpose: the
-  hand is the work, this is not part of the work, and blurring that is how a call to
-  action ends up both unreadable and unconvincing.
+A second one at the end of the poem — a hairline, *Be there when it surfaces.*, the
+button — was built and cut. It was the right argument (someone who has just read ten
+lines is the likeliest person on the site to say yes) and the wrong screen: the poem
+is the one place on this site that is allowed to end in nothing, and anything set
+after `sea risen.` is answering it. **One ask, always visible, never inside the
+work.**
 
 ### The arrow, and what it replaced
 
@@ -262,18 +265,17 @@ Two things it needs that are easy to lose:
 
 ### Screen two
 
-*Title, the poem, the ask.* A `RELEASING · 12 · 20 · 2026 — PRE-SAVE` footer was
-tried and cut for saying in 10px what the ticking countdown on screen one already
-says; what replaced it is a real call to action — see *The ask* below.
+*The title, and the poem.* Two different footers have been tried under it — a
+`RELEASING · 12 · 20 · 2026 — PRE-SAVE` line, and a full call to action — and both
+were cut. The screen keeps arriving back at the same shape, which is probably the
+answer: it ends on `sea risen.` and nothing follows that.
 
-**Everything on this screen has to clear one window**, and that is a constraint, not
-a preference: the spine's foot and the album's one call to action both live at its
-bottom, and a screen that overflows drops both below the fold *and* trips the
-`data-tall` fallback out of mandatory snap. Every size on it is therefore in `vh`
-and tuned to fit at 812px with the phone type ramp and at ~840px without. If you add
-anything here, take the height out of something else — the measured budget is the
-poem's size, the title's margin, the CTA's margin, and the section's own padding, in
-that order of how little they hurt.
+**Everything on this screen has to clear one window** — a screen that overflows
+trips the `data-tall` fallback out of mandatory snap. With the title and the poem
+the only things on it that is not tight, but every size is in `vh` for it, and it
+was tight the moment a footer went back on. If you add anything here, take the
+height out of something else: the poem's size, then the title's margin, then the
+section's padding, in that order of how little they hurt.
 
 The panel's markup, unchanged, on a screen: the same fill, the same press-to-seek,
 the same transport in the margin. None of it was ever about being in a dialog. What
