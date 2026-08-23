@@ -1849,6 +1849,66 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     };
   }, []);
 
+  /*
+   * The painter's credit, counted.
+   *
+   * Two events rather than one, because a click on this link cannot be read on
+   * its own. The credit is invisible at rest, so three clicks is either a very
+   * good rate or a very bad one depending on how many people ever found the man
+   * at all — `artist_found` is that denominator.
+   *
+   * Both fire at most once per visit. Finding him is a discovery, not a habit:
+   * someone who sweeps the cursor over him six times has not found him six
+   * times, and the second trip to his site is the same fact as the first.
+   *
+   * Neither can fire on a phone, and that is correct rather than a gap. Below
+   * 13/10 the whole layer is display:none — he is off the crop, so there is no
+   * credit on the page to find. Where it does show on touch, `hover:none`
+   * leaves the caption on: nothing is hidden, so nothing is discovered.
+   */
+  const artistFoundRef = useRef(false);
+  const artistClickedRef = useRef(false);
+  const artistTimerRef = useRef<number | null>(null);
+
+  /* A quarter-second on him, not a pass over him. The cursor crosses that
+     silhouette on the way to the play button often enough that an undelayed
+     pointerenter would be counting travel as interest. Anything that leaves
+     before the light has finished coming up (.3s) was never a look. */
+  const artistEnter = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType !== 'mouse' || artistFoundRef.current) return;
+    artistTimerRef.current = window.setTimeout(() => {
+      artistFoundRef.current = true;
+      track('artist_found', { via: 'hover' });
+    }, 250);
+  }, []);
+
+  const artistLeave = useCallback(() => {
+    if (artistTimerRef.current === null) return;
+    clearTimeout(artistTimerRef.current);
+    artistTimerRef.current = null;
+  }, []);
+
+  /* Tabbing to him lights him the same way, and there is no dwell to wait out:
+     landing on a control with the keyboard is already deliberate. A mouse press
+     navigates rather than parking focus here, so a keyboard is effectively the
+     only thing this ever hears from. */
+  const artistFocus = useCallback(() => {
+    if (artistFoundRef.current) return;
+    artistFoundRef.current = true;
+    track('artist_found', { via: 'keyboard' });
+  }, []);
+
+  /* target="_blank", so this page is still standing when the event goes out and
+     no beacon is racing an unload. */
+  const artistClick = useCallback(() => {
+    if (artistClickedRef.current) return;
+    artistClickedRef.current = true;
+    track('artist_clicked');
+  }, []);
+
+  /* A dwell timer outliving the component would fire into nothing. */
+  useEffect(() => artistLeave, [artistLeave]);
+
 
   /**
    * Playing from the poem leaves the poem open — someone may still be reading,
@@ -2161,6 +2221,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
              document, which handles that case without help. */
           tabIndex={atTwo ? -1 : 0}
           aria-hidden={atTwo ? true : undefined}
+          onClick={artistClick}
+          onFocus={artistFocus}
         >
           <svg
             className="l-art-svg"
@@ -2212,7 +2274,16 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               <path className="l-art-glow" d={FIGURE_PATH} />
               <path className="l-art-rim" d={FIGURE_PATH} />
             </g>
-            <path className="l-art-hit" d={FIGURE_PATH} />
+            {/* The dwell listeners go on the hit path rather than on the anchor:
+                the anchor is pointer-events:none and this shape is the only
+                thing in the layer a pointer can be over. Entering *him* is the
+                event, which is the same boundary the CSS :hover uses. */}
+            <path
+              className="l-art-hit"
+              d={FIGURE_PATH}
+              onPointerEnter={artistEnter}
+              onPointerLeave={artistLeave}
+            />
           </svg>
           <span className="l-art-cap">
             <span className="l-art-cap-eyebrow">PAINTING BY</span>

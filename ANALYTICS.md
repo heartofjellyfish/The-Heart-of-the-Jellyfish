@@ -27,6 +27,7 @@ in this file, and it dilutes the charts that matter.
 | How many open the mailing list and never submit? | `subscribe_opened` → `subscribe_dismissed` where `state = idle` |
 | How many come back? | PostHog's **Lifecycle** insight (new / returning / resurrecting / dormant) on `$pageview`. See *Returning visitors* below for what it can and cannot see |
 | Is the site fast enough to have been seen at all? | `$web_vitals` (LCP/FCP/CLS/INP), plus `demo_started.ms_to_sound` and `subscribe_*.ms` |
+| Does anyone find the painter? | `artist_found` for how many ever saw the man light up, `artist_clicked` for how many went to his site. The first is the denominator of the second |
 | Does anyone write on the wall? | Not yet — the guestbook is a separate branch. The contract it should call is below |
 
 ## Events
@@ -63,6 +64,33 @@ sorts; the title makes the table readable.
 | `subscribe_completed` | `ms` | MailerLite took it. The conversion |
 | `subscribe_failed` | `reason: email_format \| email_rejected \| server \| network`, `status`, `ms` | Any of the ways it does not land. The HTTP status rides along because a 503 is a missing key on Vercel and a 502 is MailerLite, and the visitor sees the same sentence for both |
 | `subscribe_dismissed` | `state: idle \| sending \| error` | The panel closes without a signup, from the ✕ **or** Escape. `idle` is a look and a shrug; `error` is someone who tried and was turned away |
+
+### The credit
+
+The front page is somebody else's painting, and the credit for it is worn by the
+man standing in it: hovering his silhouette lights him and names **Sho Peng**,
+and he is a link to [pengsho.com](https://pengsho.com). See `CREDITS.md`.
+
+| Event | Properties | Fired when |
+|---|---|---|
+| `artist_found` | `via: hover \| keyboard` | The cursor has rested on the man for 250 ms, or a keyboard has focused him. **Once per visit** — sweeping over him six times is not six discoveries. The delay is deliberate: the cursor crosses that silhouette on its way to the play button, and an undelayed enter would be counting travel as interest |
+| `artist_clicked` | — | They went to his site. Once per visit |
+
+Read them together, never `artist_clicked` alone. The credit is invisible at
+rest, so three clicks is either an excellent rate or a dismal one depending on
+how many people ever found him — `artist_found` is the only denominator that
+makes the number mean anything.
+
+Both are desktop-only, and that is the truth rather than a gap. Below a 13/10
+aspect ratio the crop takes him off the right-hand edge and the whole layer is
+`display:none`, so on a phone there is no credit on the page to find. Where it
+does survive on touch, `hover:none` leaves the caption permanently on — nothing
+is hidden, so nothing is discovered. **A zero here is not evidence nobody
+cares; check `$device_type` before concluding anything.**
+
+Autocapture also records this click as `$autocapture`, since it is an anchor.
+Ignore that copy — it is keyed on markup and will break the day the caption is
+reworded. `artist_clicked` is the one to query.
 
 ### The visit
 
