@@ -2379,7 +2379,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               <JellyMark className="l-sub-wink" />
             </h2>
             {subState === 'done' ? (
-              <div className="l-sub-thanks">You\u2019re on the list.</div>
+              <div className="l-sub-thanks">Got it. I’ll write soon.</div>
             ) : (
               <form
                 className="l-sub-form"
@@ -2416,7 +2416,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                 {/* The ask, the field and the verb are one sentence on one line --
                     the copy is the label, so there is nothing to read twice. It
                     wraps at the two gaps, never inside a clause. */}
-                <span className="l-sub-say">receive a heartbeat at</span>
+                <span className="l-sub-say">send backstage demos, photos and footage to</span>
                 <input
                   ref={emailRef}
                   type="email"
@@ -2428,7 +2428,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                     if (subState === 'error') setSubState('idle');
                   }}
                 />
-                <span className="l-sub-say">when the album is out,</span>
+                <span className="l-sub-say">while I make it,</span>
                 {/* The full stop is the sentence's, not the button's -- it sits
                     outside the rule so the underlined word stays the word, and it
                     goes away while the ellipsis is spinning. */}
@@ -2437,7 +2437,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                     <span className="l-sub-go-ink">{'\u2026'}</span>
                   ) : (
                     <>
-                      <span className="l-sub-go-ink">yes</span>.
+                      <span className="l-sub-go-ink">come along</span>.
                     </>
                   )}
                 </button>
@@ -3223,7 +3223,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 /* Wide enough that the sentence the form lives in holds one line on a laptop;
    under that it wraps at the flex gaps, which sit between clauses. */
 .l-sub{display:flex;flex-direction:column;align-items:center;text-align:center;
-  gap:20px;margin:auto;max-width:min(780px,92vw)}
+  gap:20px;margin:auto;max-width:min(800px,92vw)}
 .l-sub-title{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
   font-size:clamp(28px,4vw,46px);margin:0}
 /* Sized off the title's em so it stays a mark in the line, not an image beside
@@ -3231,13 +3231,24 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    lives in components/JellyMark.tsx, whose CSS is appended below. */
 .l-sub-wink{width:.57em;height:.66em;vertical-align:-.02em;margin-left:.16em}
 .l-sub-form{display:flex;align-items:baseline;justify-content:center;
-  flex-wrap:wrap;gap:4px 10px;margin-top:4px;font-size:clamp(15px,1.7vw,19px)}
+  flex-wrap:wrap;gap:4px 8px;margin-top:4px;font-size:clamp(15px,1.7vw,19px)}
+/* Each say is one sense unit and never breaks inside itself, so the line can
+   only ever turn between clauses -- the rule the poem lines follow too, see
+   POEM_LINES. Which means a clause has to stay short enough to survive the
+   narrowest phone on its own: nowrap cannot wrap, it can only overflow. */
 .l-sub-say{opacity:.85;white-space:nowrap}
 .l-sub-input{width:min(240px,58vw);padding:0 4px 5px;border:none;
   border-bottom:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;
   font-size:inherit;font-family:inherit;outline:none;text-align:center;
   transition:border-color .3s}
 .l-sub-input:focus{border-bottom-color:rgba(255,255,255,.95)}
+/* Narrow enough that the sentence has to break somewhere. Left to itself the
+   field shares a line with the clause after it and the last word is orphaned;
+   given its own line, the breaks land between clauses, the way they do in the
+   poem. */
+@media (max-width:600px){
+  .l-sub-input{flex:0 0 100%;width:auto}
+}
 .l-sub-input::placeholder{color:rgba(255,255,255,.4)}
 /* .landing-qualified for the same reason .landing button{font:inherit} is: a
    bare .l-sub-go would lose to it on specificity however late it comes. */
