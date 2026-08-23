@@ -1713,9 +1713,18 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           nav — and it was, in the same 11.5px Jost as everything else, in the
           corner. Same rule and same weight as SIGN UP in the panel it opens, on
           purpose: the two are one action seen twice.
+
+          It said PRE-SAVE, and that was a promise the site could not keep:
+          pre-save is a DSP mechanic, and this opens an email form because there
+          is no DSP link yet. FOLLOW is what it actually does, and it is also
+          the panel's own first word — `follow thy heart` — so the button and
+          the thing it opens now say the same word, which is the whole point of
+          them looking alike. Not FOLLOW ME: the left of this nav is already
+          `QI · 琦`, so the subject has been named and saying it twice in one
+          bar is the repetition this corner exists to avoid.
         */}
         <button type="button" className="l-nav-cta" onClick={() => setPanel('subscribe')}>
-          PRE-SAVE
+          FOLLOW
         </button>
       </nav>
 

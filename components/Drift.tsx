@@ -45,16 +45,25 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 export type DriftMessage = { id: string; name: string; text: string; at: number };
 
 /*
- * A note on the class prefix: everything here is `l-riser*`, NOT `l-drift*`.
+ * Everything here is prefixed `l-riser*` / `l-say*`, and that is load-bearing.
  *
- * It was `l-drift`, and `.l-drift` is already taken — it is screen two's pair
- * of slow water clouds, in LANDING_CSS. Because DRIFT_CSS is concatenated after
- * it, this file's rules silently won: the clouds lost their z-index, and under
- * prefers-reduced-motion they were turned into a scrolling flex column. Nothing
- * errored and screen three looked perfect; the damage was one screen up.
+ * This page has ONE flat namespace shared by three stylesheets in three files,
+ * concatenated in that order, so whatever comes last wins — silently. It has
+ * bitten twice, and both times the same way:
  *
- * This page has one flat namespace shared by two large stylesheets in two
- * files. Grep before naming.
+ *   `.l-drift` is screen two's pair of slow water clouds. Taking that class
+ *   cost them their z-index, and under prefers-reduced-motion turned them into
+ *   a scrolling flex column.
+ *
+ *   `@keyframes l-rise` is the HERO's entrance. Taking that name left the whole
+ *   of screen one — title, countdown, both buttons — sitting at opacity 0.
+ *
+ * Screen three looked perfect on both occasions; the damage was on another
+ * screen, which is exactly why a screenshot of the thing being worked on does
+ * not catch it. **Keyframes share the namespace with classes and are the easier
+ * half to forget.** Before naming anything here, diff the names across all
+ * three stylesheets — there is a script for it in CLAUDE.md, and it takes a
+ * second.
  */
 
 /** The buffer. Beyond this the oldest stop being held at all. */
@@ -909,7 +918,7 @@ export const DRIFT_CSS = `
   font-size:max(12.5px,calc(clamp(15px,2.05vh,23px) * var(--scale)));
   line-height:1.42;color:rgb(224,240,250);
   text-shadow:0 0 calc(16px * var(--scale)) rgba(96,172,220,calc(var(--dim) * .5));
-  animation:l-rise var(--dur) linear var(--delay) infinite}
+  animation:l-riser-up var(--dur) linear var(--delay) infinite}
 
 /* Floor to surface, fading at both ends.
    The fade is inside the keyframe rather than done with a mask over the layer:
@@ -919,7 +928,7 @@ export const DRIFT_CSS = `
    message must not pop into existence at the bottom edge or blink out at the
    top. var(--dim) in the middle two stops is what keeps the depth parallax:
    the keyframe fades TO the message's own brightness, not to 1. */
-@keyframes l-rise{
+@keyframes l-riser-up{
   0%{transform:translate3d(0,var(--rise-from,100dvh),0);opacity:0}
   /* Sixteen, not eight. The long fade-in is doing two jobs: things should
      emerge out of the dark rather than switch on at the bottom edge, and it
@@ -939,16 +948,16 @@ export const DRIFT_CSS = `
    as a machine — the same failure as a tile with a findable period, one axis
    over. alternate, so it turns back rather than snapping to its start. */
 .l-riser-in{display:block;will-change:transform;
-  animation:l-rise-sway var(--sway) ease-in-out var(--sway-delay) infinite alternate}
-@keyframes l-rise-sway{
+  animation:l-riser-sway var(--sway) ease-in-out var(--sway-delay) infinite alternate}
+@keyframes l-riser-sway{
   from{transform:translate3d(calc(var(--sway-px) * -1),0,0)}
   to{transform:translate3d(var(--sway-px),0,0)}}
 
 /* Just-arrived. Brighter for one rise, then it is one of the others. A filter,
    so it composites with both transforms instead of fighting either for one. */
-.l-riser.is-fresh{animation:l-rise var(--dur) linear var(--delay) infinite,
-  l-rise-lit 9s ease-out both}
-@keyframes l-rise-lit{
+.l-riser.is-fresh{animation:l-riser-up var(--dur) linear var(--delay) infinite,
+  l-riser-lit 9s ease-out both}
+@keyframes l-riser-lit{
   0%{filter:brightness(1.8) saturate(.9)}
   100%{filter:brightness(1)}}
 
@@ -1259,14 +1268,14 @@ export const DRIFT_CSS = `
     font-size:max(12.5px,calc(clamp(14px,4vw,17px) * var(--scale)))}
   /* Half the sway: the same swing that reads as drift on a desktop is a third
      of a phone's width, and a block sliding that far is being blown, not adrift. */
-  .l-riser-in{animation-name:l-rise-sway-narrow}
+  .l-riser-in{animation-name:l-riser-sway-narrow}
   .l-say{width:calc(100vw - 34px)}
   .l-say-name{inline-size:54px}
   /* nowrap keeps the counter and the two short errors on one line, which is
      what it is for — but the dev-only store warning is a sentence and would
      run off both edges of a phone. */
   .l-say-note{white-space:normal;padding:0 22px}}
-@keyframes l-rise-sway-narrow{
+@keyframes l-riser-sway-narrow{
   from{transform:translate3d(calc(var(--sway-px) * -.45),0,0)}
   to{transform:translate3d(calc(var(--sway-px) * .45),0,0)}}
 `;

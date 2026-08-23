@@ -396,6 +396,44 @@ increments, walk the rendered boxes for intersections at each step, and record
 the longest consecutive run per pair. That number — longest run, not count — is
 the one that says whether the field drifts or stacks.
 
+### One flat namespace, three stylesheets
+
+`LANDING_CSS`, `JELLY_MARK_CSS` and `DRIFT_CSS` are concatenated into a single
+`<style>` in that order, so a name defined twice resolves to whichever came
+last — with no error, no warning, and no sign of it on the screen you are
+working on. It has bitten twice while building screen three:
+
+- **`.l-drift`** was already screen two's pair of slow water clouds. Taking the
+  class cost them their z-index, and under `prefers-reduced-motion` turned them
+  into a scrolling flex column.
+- **`@keyframes l-rise`** was already the hero's entrance. Taking the name left
+  the whole of screen one — title, countdown, both buttons — at `opacity: 0`.
+
+Both times screen three looked perfect and the damage was one or two screens
+away, which is why neither a review nor a screenshot of the new work caught it.
+**Keyframe names share the namespace with class names, and are the easier half
+to forget.**
+
+Run this before naming anything, and after any rename:
+
+```js
+// node -e, from web/
+const fs = require('fs');
+const css = (f, v) => { const s = fs.readFileSync(f, 'utf8');
+  return s.includes(v) ? s.split(v)[1].split('`').slice(0, -1).join('`') : ''; };
+const kf = (c) => new Set([...c.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]));
+const cl = (c) => new Set([...c.matchAll(/\.([a-z][\w-]*)/g)].map((m) => m[1]));
+const L = css('components/Landing.tsx', 'const LANDING_CSS = `');
+const J = css('components/JellyMark.tsx', 'export const JELLY_MARK_CSS = `');
+const D = css('components/Drift.tsx', 'export const DRIFT_CSS = `');
+const hit = (a, b) => [...a].filter((x) => b.has(x));
+console.log('keyframes:', hit(kf(D), new Set([...kf(L), ...kf(J)])));
+console.log('classes  :', hit(cl(D), new Set([...cl(L), ...cl(J)])));
+```
+
+A few class names *should* appear in both — `landing`, `is-in`, `l-down`,
+`l-floor` are shared on purpose. Every keyframe collision is a bug.
+
 ### Testing the store without an Upstash account
 
 The memory fallback is convenient and it is also a trap: it makes every test
@@ -621,7 +659,7 @@ It is a gradient scrim, not a solid bar. A solid one cut ~70px off the bottom of
 painting, which on this canvas is the sand and the near water.
 
 **The poem is a screen; the mailing list is still a panel.** `TRACKLIST` and the
-arrow both scroll to screen two; `PRE-SAVE` opens the signup over whatever you were
+arrow both scroll to screen two; `FOLLOW` opens the signup over whatever you were
 looking at, and Escape closes it. The split is not layout convenience — a form is
 not a place: it has no content to be read, it is answered and dismissed, and it must
 not cost the visitor their position on the way back out. The poem is the opposite of
@@ -629,7 +667,7 @@ all three, which is why it stopped being a dialog you open and dismiss.
 
 ### The ask
 
-`PRE-SAVE` is the site's one conversion, and it spent the first pass set as an 11.5px
+`FOLLOW` is the site's one conversion, and it spent the first pass set as an 11.5px
 link in a corner — the same weight as a wordmark that does nothing. It is now the
 only thing on either screen built like a button, and it lives in **one** place: the
 nav, top right, on both screens, with the same rule and the same fill-on-hover as
@@ -1120,7 +1158,11 @@ React/Next runtime; the page's own code halved, 9.5 kB to 5.7 kB. Deleted (`Medu
 at `/descent`.
 
 **Still not done:** the signup is local-only (`setSent(true)`); it posts nowhere. And
-`PRE-SAVE` opens that signup rather than a DSP pre-save, because there isn't one yet.
+The nav's ask said `PRE-SAVE` until 2026-08-23 and now says `FOLLOW`, because
+pre-save is a DSP mechanic and there is no DSP link — the button opened an email
+form. `FOLLOW` is what it does, and it is the panel's own first word
+(*follow thy heart*), so the button and the thing it opens say the same word.
+Not `FOLLOW ME`: the left of the nav is already `QI · 琦`.
 
 ## Adding a 3D prop (recipe for new sessions)
 
