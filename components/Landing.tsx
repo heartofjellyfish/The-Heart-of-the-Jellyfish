@@ -208,8 +208,33 @@ const VIGNETTE = { strength: 0.14, inner: 0 };
  * instead of doubling the weave.
  */
 const FILM = {
-  /** Grain layer opacity. Past ~.6 it stops being stock and starts being dirt. */
+  /**
+   * Grain layer opacity on screen one, and again once you are under.
+   *
+   * It has to come down with depth, and the reason is main's depth blur rather
+   * than anything about film. Screen two blurs the painting to 3px, which takes
+   * away every piece of detail the grain was sitting on top of — so at the same
+   * .42 the grain stops being a layer over a picture and becomes the only
+   * texture left in the frame. Same number, twice the apparent weight.
+   *
+   * Interpolated on --s rather than switched at data-two, because opacity is
+   * free to animate continuously and a hard step would be visible against a
+   * background that is itself still moving.
+   */
   grain: 0.42,
+  grainTwo: 0.27,
+  /**
+   * Whether the strip moves, per screen. A single frame of film has static
+   * grain, so screen one is off: it is a photograph, and it should sit as still
+   * as one. Screen two turns it on, which is the point — everything down there
+   * is already moving, and the grain waking up is what stops the descent from
+   * reading as screen one with the lights off.
+   *
+   * This one cannot interpolate. It is an animation, so it snaps at data-two,
+   * the same threshold main's depth blur crosses.
+   */
+  weave: false,
+  weaveTwo: true,
   /** One grain, in DEVICE pixels. 1 vanishes on a 3x phone, 3 is sandpaper. */
   grainPx: 1.6,
   /**
@@ -796,13 +821,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [white, setWhite] = useState(INSET_WHITE);
   const [amp, setAmp] = useState(BEAT_AMP);
   const [film, setFilm] = useState(FILM);
-  /**
-   * Whether the strip moves. A single frame of film has static grain, so off is
-   * the literal reading of the reference; on, the grain is redrawn several times
-   * a second and the still becomes a still being *projected*. It is the one
-   * switch here that changes what the page is rather than how it is graded.
-   */
-  const [weave, setWeave] = useState(true);
+  const [weave, setWeave] = useState(FILM.weave);
+  const [weaveTwo, setWeaveTwo] = useState(FILM.weaveTwo);
   /** Grain over the type too, so the screen is one photographed object. */
   const [grainOverAll, setGrainOverAll] = useState(false);
   const grainUrl = useGrainTile(GRAIN_TILE);
@@ -1292,6 +1312,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           ['--white' as string]: white,
           ['--amp' as string]: amp,
           ['--grain' as string]: film.grain,
+          ['--grain-two' as string]: film.grainTwo,
           ['--grain-size' as string]: (GRAIN_TILE * film.grainPx) / dpr + 'px',
           ['--halo' as string]: film.halo,
           ['--halo-blur' as string]: film.haloBlur + 'vmin',
@@ -1421,9 +1442,9 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       */}
       {grainUrl && (
         <div
-          className={
-            'l-grain' + (weave ? ' l-grain-weave' : '') + (grainOverAll ? ' l-grain-top' : '')
-          }
+          className={'l-grain' + (grainOverAll ? ' l-grain-top' : '')}
+          data-weave-one={weave ? '' : undefined}
+          data-weave-two={weaveTwo ? '' : undefined}
           style={{ backgroundImage: `url(${grainUrl})` }}
         />
       )}
@@ -1944,9 +1965,34 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             <button
               type="button"
               className="l-tuner-btn"
-              onClick={() => setFilm((f) => ({ ...f, grain: 0, halo: 0, contrast: 1, saturate: 1 }))}
+              onClick={() =>
+                setFilm((f) => ({ ...f, grain: 0, grainTwo: 0, halo: 0, contrast: 1, saturate: 1 }))
+              }
             >
               BYPASS
+            </button>
+          </div>
+
+          <div className="l-tuner-head">UNDER WATER</div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0}
+              max={0.9}
+              step={0.01}
+              value={film.grainTwo}
+              aria-label="Grain amount on screen two"
+              onChange={(e) => setFilm((f) => ({ ...f, grainTwo: Number(e.target.value) }))}
+            />
+            <span className="l-tuner-val">grain {film.grainTwo.toFixed(2)}</span>
+          </div>
+          <div className="l-tuner-row">
+            <button
+              type="button"
+              className={'l-tuner-btn' + (weaveTwo ? ' l-tuner-on' : '')}
+              onClick={() => setWeaveTwo((v) => !v)}
+            >
+              WEAVE
             </button>
           </div>
 
@@ -2319,7 +2365,11 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-grain{position:absolute;inset:-8%;z-index:2;pointer-events:none;
   background-repeat:repeat;background-size:var(--grain-size,256px);
   image-rendering:pixelated;
-  mix-blend-mode:soft-light;opacity:var(--grain,0)}
+  mix-blend-mode:soft-light;
+  /* Lerped on --s: screen one's weight at the surface, screen two's once down.
+     Opacity is the one property that can ride the scroll continuously without
+     re-rasterising anything, so this costs the descent nothing. */
+  opacity:calc(var(--grain,0) * (1 - var(--s)) + var(--grain-two,0) * var(--s))}
 
 /* Over the type as well, so the screen is one photographed object rather than
    titles laid on a photograph. Above the poem panel, below the tuner — a tuner
@@ -2331,7 +2381,14 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    about 11 Hz, fast enough to read as shimmer and slow enough to be free —
    nothing here repaints, it only re-composites one layer, and the offsets are
    deliberately non-round so no two land on the same tile phase. */
-.l-grain-weave{animation:l-grain-jitter .55s steps(1,end) infinite}
+/* Three rules, read top to bottom as one sentence: weave at the surface if
+   screen one asked for it, never once we are under, unless screen two asked for
+   it too. Specificity settles it without depending on source order —
+   .landing[data-two] .l-grain beats .l-grain[data-weave-one], and adding
+   [data-weave-two] beats that in turn. */
+.l-grain[data-weave-one]{animation:l-grain-jitter .55s steps(1,end) infinite}
+.landing[data-two] .l-grain{animation:none}
+.landing[data-two] .l-grain[data-weave-two]{animation:l-grain-jitter .55s steps(1,end) infinite}
 
 @keyframes l-grain-jitter{
   0%  {transform:translate3d(0,0,0)}
@@ -2345,7 +2402,8 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 /* A field of noise flickering at 11 Hz is precisely what this setting is for.
    The grain stays — it is part of the picture — only the shimmer stops. */
 @media (prefers-reduced-motion: reduce){
-  .l-grain-weave{animation:none}
+  .l-grain[data-weave-one],
+  .landing[data-two] .l-grain[data-weave-two]{animation:none}
 }
 
 /* Narrower than 13:10 the painting is 16:9 against a portrait window, so a cover
