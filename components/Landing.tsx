@@ -2276,7 +2276,13 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   --poem-ink:rgba(2,14,26,.85);
   --poem-halo:rgba(186,230,252,.55)}
 .l-poem-body{display:flex;flex-direction:column;
-  gap:clamp(18px,3.2vh,38px)}          /* the space between stanzas */
+  gap:clamp(18px,3.2vh,38px);          /* the space between stanzas */
+  /* Reaches left over the number gutter without moving anything in it: the
+     padding grows the box, the negative margin puts the content back where it
+     was. It matters because this box is what the hover reveal hangs off, and
+     the numbers themselves hang OUTSIDE the text column — without this, moving
+     the cursor onto a number leaves the box that is showing it. */
+  padding-left:3.2em;margin-left:-3.2em}
 .l-poem-stanza{display:flex;flex-direction:column;gap:clamp(1px,.35vh,5px)}
 
 .landing .l-poem-line{position:relative;display:block;width:100%;text-align:left;
@@ -2316,7 +2322,23 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
      lights up the way the verse does it starts competing with it. */
   text-shadow:0 1px 2px rgba(2,14,26,.7);
   opacity:0;transition:opacity .3s}
-.l-poem-line:hover .l-poem-num{opacity:.5}
+/* All ten at once, from a cursor on any one line — and all ten gone the moment
+   it leaves. Qi's call, and it is the right unit: the numbering is not a
+   property of the line you happen to be over, it is the fact that these ten
+   lines are also ten tracks. Revealing them one at a time asks the reader to
+   discover that ten times.
+
+   Hung off the body rather than off :has(.l-poem-line:hover), which would be
+   the literal reading: the body's box IS the poem's column, and taking the
+   whole column means the numbers do not flicker off and on every time the
+   cursor crosses the gap between two stanzas.
+
+   .42, where a single number used to be .5 — ten of them at once is far more
+   ink than one, and the point of the reveal is to be answerable, not to turn
+   the poem into a tracklist. :focus-within so a keyboard gets the same answer
+   as a cursor. */
+.l-poem-body:hover .l-poem-num,
+.l-poem-body:focus-within .l-poem-num{opacity:.42}
 /* No cursor to hover with — show them, or the poem hides that it is playable. */
 @media (hover:none){.l-poem-num{opacity:.38}}
 
@@ -2921,10 +2943,8 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-two .l-poem-f-cormorant{--poem-size:clamp(18px,2.8vh,29px)}
 /* Hover only, at Qi's call, and he is right: printed numbers make the screen a
    tracklist, and the screen wants to be a poem first and a tracklist second.
-   They are still there the moment anyone reaches for a line — and always there
-   on touch, where there is no reaching. Slightly stronger than the panel's,
-   since here they are the only thing that says these lines are playable. */
-.l-two .l-poem-line:hover .l-poem-num{opacity:.6}
+   They are still there the moment anyone reaches for the poem — see the reveal
+   on .l-poem-body — and always there on touch, where there is no reaching. */
 
 /* ---- how screen two arrives ----
 

@@ -301,10 +301,20 @@ is new around it:
   logically — in `vertical-rl` the inline axis runs *down* the page, so `inline-size`
   is the length of the line and `block-size` is its thickness. Gone below 900px,
   where there is no margin to hang anything in.
-- **The numbers appear on hover, not at rest** — Qi's call, and the right one: the
-  screen wants to be a poem first and a tracklist second, and ten printed numerals
-  make it the other way round. They are always visible on touch, where there is no
-  reaching (`@media (hover:none)`), or the poem would hide that it is playable.
+- **The numbers appear on hover, not at rest, and all ten at once** — Qi's call
+  twice over, and right both times. Printed, they make the screen a tracklist when
+  it wants to be a poem first; revealed one at a time, they ask the reader to
+  discover ten separate times that these lines are also tracks. **The numbering is
+  not a property of the line you happen to be over.** So a cursor anywhere in the
+  poem brings all ten up together and leaving takes all ten away — hung off
+  `.l-poem-body:hover` rather than `:has(.l-poem-line:hover)`, so they do not
+  flicker as the cursor crosses the gap between stanzas, and with the body's box
+  reaching left over the number gutter (padding plus an equal negative margin, so
+  nothing moves) because the numbers hang *outside* the text column and would
+  otherwise turn themselves off. `.42`, not the `.5` a single number used to get:
+  ten at once is far more ink than one. `:focus-within` gives a keyboard the same
+  answer, and `@media (hover:none)` keeps them on for touch, where there is no
+  reaching and the poem would otherwise hide that it is playable.
 - **Nothing on this screen moves.** Line VI once carried a 60bpm bloom on its halo,
   on the argument that the album is named after it and the hero's "Heart" already
   swells once a second. Cut: the hero's beat is one word inside a display setting,
