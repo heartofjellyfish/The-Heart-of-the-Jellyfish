@@ -112,6 +112,23 @@ git push origin main → GitHub heartofjellyfish/The-Heart-of-the-Jellyfish → 
 
 Default branch is `main`. No PR workflow — push directly.
 
+## The jellyfish mark
+
+`components/JellyMark.tsx` is the jellyfish off the hero painting, redrawn as vector and animated
+to swim. It is self-contained and reusable — import the component, give the wrapper a width and a
+height, and append `JELLY_MARK_CSS` to the route's own style block:
+
+```tsx
+<JellyMark className="l-sub-wink" />                                  /* .l-sub-wink{width;height} */
+<style dangerouslySetInnerHTML={{ __html: ROUTE_CSS + JELLY_MARK_CSS }} />
+```
+
+It is drawn rather than typed because 🪼 is Emoji 14 (2021) and falls to a tofu box on older
+fonts. The file's comments carry the two findings that cost the most to arrive at: why the bell
+has to be a single path (two translucent shapes sharing an edge always show the join, and
+overlapping them stacks the alpha instead), and why the two largest motions sit on the HTML box
+rather than on groups inside the SVG (transforms on SVG children are not composited).
+
 ## Adding 3D assets
 
 Drop the GLB at `public/models/<name>/model.glb`. For anything > 5 MB, gate loading on the depth ref so first paint stays fast — see `WreckGate` pattern in `components/OceanScene.tsx`. Add the credit line to `CREDITS.md` if the source requires it.

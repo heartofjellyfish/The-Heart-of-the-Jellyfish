@@ -19,6 +19,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { JellyMark, JELLY_MARK_CSS } from './JellyMark';
 
 /**
  * The album *is* the poem — ten titles that read straight through. Punctuation
@@ -707,57 +708,6 @@ function CarveFilter({
 }
 
 /**
- * The jellyfish off the hero painting, redrawn as vector: a low translucent
- * bell, the ochre spots, a few tentacles adrift. It stands where the ";)" used
- * to, so the "heart" in the line reads as this creature's rather than the
- * greeting card's -- and being ours, it needs no emoji font, so it is the same
- * animal on every phone and every desktop instead of a tofu box on the ones
- * whose font predates Emoji 14. Decoration, hence aria-hidden.
- *
- * The bell pulses on the album's own rhythm -- see .l-jelly-bell.
- */
-function JellyMark() {
-  return (
-    <svg viewBox="0 0 64 74" aria-hidden focusable="false">
-      <defs>
-        <linearGradient id="l-jelly-bell-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity=".97" />
-          <stop offset="55%" stopColor="#eaf3f9" stopOpacity=".9" />
-          <stop offset="100%" stopColor="#c3dcec" stopOpacity=".72" />
-        </linearGradient>
-      </defs>
-      {/* Behind the bell, so the skirt covers where they attach. */}
-      <g stroke="#e7f2f8" strokeLinecap="round" fill="none">
-        <path d="M22 39 C19 50 25 56 21 68" strokeWidth="1.8" opacity=".55" />
-        <path d="M33 40 C31 52 38 58 33 72" strokeWidth="2" opacity=".6" />
-        <path d="M44 39 C43 50 48 55 44 66" strokeWidth="1.7" opacity=".5" />
-        <path d="M27 39 C26 48 30 53 27 61" strokeWidth="1.2" opacity=".35" />
-        <path d="M38 39 C38 47 41 51 39 58" strokeWidth="1.1" opacity=".32" />
-      </g>
-      <g className="l-jelly-bell">
-        <path
-          d="M4 34 C4 8 60 8 60 34 C57 41 52 41 49 35 C46 41 41 41 38 35 C35 41 30 41 27 35 C24 41 19 41 16 35 C13 41 8 41 4 34Z"
-          fill="url(#l-jelly-bell-fill)"
-        />
-        {/* The lit rim the oil painting gives it, kept inside the dome edge. */}
-        <path d="M13 26 C14 20 21 17 30 17.5" stroke="#fff" strokeWidth="1.5"
-          strokeLinecap="round" fill="none" opacity=".7" />
-        <g fill="#dfa63e" opacity=".95">
-          <circle cx="18" cy="25" r="2" />
-          <circle cx="28" cy="20" r="2.2" />
-          <circle cx="39" cy="23" r="1.9" />
-          <circle cx="48" cy="27" r="1.8" />
-          <circle cx="22" cy="32" r="1.7" />
-          <circle cx="33" cy="30" r="2" />
-          <circle cx="44" cy="32" r="1.6" />
-          <circle cx="53" cy="30" r="1.3" />
-        </g>
-      </g>
-    </svg>
-  );
-}
-
-/**
  * One tile of grain, as a data URL, made on the client.
  *
  * Generated rather than shipped because true white noise does not compress: a
@@ -1338,7 +1288,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         } as React.CSSProperties
       }
     >
-      <style dangerouslySetInnerHTML={{ __html: LANDING_CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: LANDING_CSS + JELLY_MARK_CSS }} />
 
       {/*
         The two filters that do the relief. Same construction, one difference:
@@ -2204,9 +2154,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           <div className="l-sub">
             <h2 className="l-sub-title">
               follow thy heart{' '}
-              <span className="l-sub-wink">
-                <JellyMark />
-              </span>
+              <JellyMark className="l-sub-wink" />
             </h2>
             {subState === 'done' ? (
               <div className="l-sub-thanks">You\u2019re on the list.</div>
@@ -3057,20 +3005,9 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-sub-title{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
   font-size:clamp(28px,4vw,46px);margin:0}
 /* Sized off the title's em so it stays a mark in the line, not an image beside
-   it. The box is fixed rather than intrinsic -- an SVG with no width collapses
-   differently across browsers. */
-.l-sub-wink{display:inline-block;width:.57em;height:.66em;vertical-align:-.02em;
-  margin-left:.16em}
-.l-sub-wink svg{display:block;width:100%;height:100%;overflow:visible}
-/* One beat: the quick squeeze up, the slow drift back down -- a bell swimming,
-   which is also the heartbeat the whole site keeps time to. */
-.l-jelly-bell{transform-origin:32px 36px;animation:l-jelly-pulse 3.6s ease-in-out infinite}
-@keyframes l-jelly-pulse{
-  0%,100%{transform:scale(1,1)}
-  16%{transform:scale(.94,1.09)}
-  38%{transform:scale(1.03,.96)}
-}
-@media (prefers-reduced-motion:reduce){.l-jelly-bell{animation:none}}
+   it. Everything else about the creature -- how it is drawn and how it swims --
+   lives in components/JellyMark.tsx, whose CSS is appended below. */
+.l-sub-wink{width:.57em;height:.66em;vertical-align:-.02em;margin-left:.16em}
 .l-sub-form{display:flex;align-items:baseline;justify-content:center;
   flex-wrap:wrap;gap:4px 10px;margin-top:4px;font-size:clamp(15px,1.7vw,19px)}
 .l-sub-say{opacity:.85;white-space:nowrap}
