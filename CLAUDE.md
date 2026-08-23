@@ -353,9 +353,17 @@ most of its life dark and nobody tuning it should wait a minute per look.
 
 The contracts that keep it cheap and honest:
 
-- **Opaque black canvas + `mix-blend-mode: screen`** (same precedent as
-  `.l-halo`). Screen makes black a no-op, so the layer can only ever *add*
-  light — it cannot wash, tint, or flatten the dark under it, at any bug.
+- **Premultiplied additive alpha, NOT `mix-blend-mode: screen`.** The
+  shader writes alpha = its brightest channel, so ordinary source-over
+  compositing equals screen-blending on that channel, and the layer can
+  only ever *add* light — it cannot wash, tint, or flatten the dark under
+  it, at any bug. It shipped first as an opaque black canvas under
+  mix-blend-mode:screen and that stuttered and flashed the descent: a
+  blend mode isolates the whole stage into a render surface, and building
+  that surface mid-scroll is a white flash. Never put a blend mode back on
+  this element. (Related backstop: `.landing` now carries a `color-mix`
+  background that follows `--s` from sky to abyss, so a missed raster tile
+  flashes depth-coloured instead of the body's pale sky.)
 - **The bitmap is a third of the CSS pixels** (200–480 wide). Everything
   drawn is soft, so the compositor's upscale is invisible; measured GPU cost
   is microseconds a frame. The canvas is its own compositor surface — its

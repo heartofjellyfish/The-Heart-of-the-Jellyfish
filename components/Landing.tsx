@@ -1240,7 +1240,12 @@ void main(){
   float d = dot(e, e);
   col *= 0.45 + 0.55 * smoothstep(0.35, 1.4, d);
   col += (hash(gl_FragCoord.xy) - 0.5) * 0.006;
-  gl_FragColor = vec4(col, 1.0);
+  col = clamp(col, 0.0, 1.0);
+  /* Premultiplied, alpha = the brightest channel: source-over then gives
+     dst*(1-a)+col, which on that channel is exactly what screen-blending
+     gave (c + d - cd), without a blend mode in the CSS. Valid premultiplied
+     color too — every channel <= alpha by construction. */
+  gl_FragColor = vec4(col, max(col.r, max(col.g, col.b)));
 }
 `;
 
@@ -1256,7 +1261,15 @@ type LumenGL = {
 
 function lumenInit(canvas: HTMLCanvasElement): LumenGL | null {
   const gl = canvas.getContext('webgl', {
-    alpha: false,
+    /* Transparent, premultiplied — the shader writes alpha = its brightest
+       channel, which composites through the ordinary source-over path and
+       equals screen-blending exactly on that channel. The first version
+       used an opaque canvas under mix-blend-mode:screen; the blend forced
+       the whole stage into an isolation group, and creating/re-rendering
+       that surface mid-scroll is what flashed white during the descent. No
+       blend mode, no group, no flash — and cheaper to composite. */
+    alpha: true,
+    premultipliedAlpha: true,
     antialias: false,
     depth: false,
     stencil: false,
@@ -3587,6 +3600,15 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
 const LANDING_CSS = `
 html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .landing{position:fixed;inset:0;overflow:hidden;color:#fff;
+  /* The safety net under every tile. When the rasteriser misses a frame
+     mid-scroll, what shows through is whatever is behind the stage — and
+     behind the stage was the body's pale sky, which at depth reads as half
+     the page flashing white. This backstop follows the descent, so a
+     missed tile is sky-coloured at the shore and abyss-coloured in the
+     deep: invisible either way. (Plain dark first, for engines without
+     color-mix.) */
+  background:#123043;
+  background:color-mix(in oklab, #8cb9d4 calc(100% - var(--s,0) * 100%), #08131f);
   font-family:'Cormorant Garamond',serif;
   /* Fallbacks. The live values come from LITS via an inline style on this
      element, so /?tune=1 can swap them without a rebuild. Everything that means
@@ -4794,18 +4816,21 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 
 /* ---- the light in the deep ----
 
-   A canvas, not gradients, and the blend is the whole contract: the shader
-   renders light on an opaque black ground and screen-blending makes black a
-   no-op, so the layer can only ever add light — never a wash, never a tint of
-   the dark under it. The canvas is its own compositor surface (the same
-   precedent as .l-halo's screen blend), its bitmap is a third of the CSS
-   pixels, and nothing else on the stage is invalidated by its frames.
+   A canvas, not gradients, and the compositing is the whole contract: the
+   shader writes premultiplied light with alpha = its brightest channel, so
+   ordinary source-over equals screen-blending on that channel and the layer
+   can only ever add light — never a wash, never a tint of the dark under
+   it. Deliberately NOT mix-blend-mode:screen: a blend mode isolates the
+   whole stage into a render surface, and building that surface mid-scroll
+   flashed white during the descent. The canvas is its own compositor
+   surface, its bitmap is a third of the CSS pixels, and nothing else on
+   the stage is invalidated by its frames.
 
    Gated on --s in the same window as the stars: this is what the water does
    once the surface light has gone, not part of the crossing. --lumen is the
    one knob, for tuning. */
 .l-lumen{position:absolute;inset:0;z-index:3;width:100%;height:100%;
-  pointer-events:none;mix-blend-mode:screen;
+  pointer-events:none;
   opacity:calc(clamp(0,calc(var(--s) * 1.7 - .6),1) * var(--lumen,1))}
 
 /* ---- the sky in the deep ----
