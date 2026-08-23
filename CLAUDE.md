@@ -226,6 +226,173 @@ holding each at its own peak instead. A still sky, not a dead one.
 Whether they are stars seen up through the surface or something alive at that
 depth is left open, and should stay open. Both readings are the record.
 
+**The deep field (2026-08-23).** A second population of ~150 smaller,
+fainter, quicker stars whose trough AND peak are both multiplied by
+`--sbloom`, which the star channel of DeepLight's surge writes on the root
+(at ~6Hz, not per frame — the envelope moves over seconds and every write
+restyles a couple of hundred elements). At rest `--sbloom` is 0 and none of
+them exist; in a surge the sky gains a hundred and fifty stars it did not
+have, and loses them again — density as spectacle, the one axis the light
+alone cannot reach (Qi's call: 疏密明亮也可以造成奇观). Placed by the same
+`starOdds`, animated by the same keyframes, opacity-only like everything on
+this layer. Under reduced motion DeepLight's loop never runs, `--sbloom`
+stays 0, and the deep field simply never exists — the still sky stays the
+resting 96. Leaving the screen mid-surge resets the var so the bloom is
+never stranded half-lit.
+
+### The light in the deep (2026-08-23)
+
+Screen two also carries **a slow field of deep-water light** — nebulous,
+never twice the same, passing behind the verse. It is the one thing on the
+stage that is *drawn* rather than declared: a hand-written WebGL fragment
+shader (`DeepLight` / `.l-lumen` in Landing.tsx), domain-warped fbm, ~4 kB of
+code and no library. The brief was light that is 迷离、随机、不可捉摸 —
+continuous structure with no edges and no findable period — and that is the
+one thing layered CSS gradients cannot do: a gradient is a shape, and a shape
+that moves is an object. This does not reopen the standing "no" to 3D here;
+that no was to 300 kB of R3F, and the house rule has always allowed
+procedural for light and atmosphere.
+
+The field alone read as mist, not light — Qi's first note, and he was right.
+What makes it *light* is **the rays**: beams from one sun up and to the left
+(the same sun the CSS shafts lean toward), built from two angular noises
+drifting at different speeds, so beams wander, brighten where the two align,
+and die where they don't. No beam has an edge, a width, or a schedule —
+which is what the CSS shafts, swaying on fixed periods, could never do.
+**The CSS `.l-rays` now hand off to this layer** over the same `--s` window
+the canvas arrives in, dropping to four tenths at depth: they are the light
+of the crossing, and five fixed columns standing among moving beams would
+read as scenery.
+
+Two corrections that took a round each, both worth keeping:
+
+- **The sun is in the middle distance (~2.7 screens up), and the middle is
+  the point — it took a round in each ditch to find.** Near (1.4) its apex
+  sat on the screen and the fan read as a cone with a fixed angle — Qi's
+  second note. Pushed far (7.5) the beams went parallel and Qi preferred
+  the cone: parallel light had lost the one thing that made the picture
+  read as HOLY, convergence toward a point. Crepuscular rays — the light
+  sacred painting reaches for — converge visibly toward a sun that is
+  emphatically not in frame. Middle distance keeps the fan and keeps the
+  apex out of the picture.
+- **The angular frequency is what makes a beam a beam, and it must scale
+  with the sun's distance.** Lateral feature size is `dst / freq`: the same
+  freq that drew beams under a near sun drew *clouds* under a far one.
+  Beams are long and thin (lateral ≈ 4% of the frame, along-beam ≈ most of
+  it); clouds never are. The bend on `ang` is in radians, so at dst 7.5
+  every 0.001 of amplitude is most of a hundredth of the frame of arm —
+  small numbers, big arms.
+- **The light needs a source, and the source is a surface.** Qi answered the
+  fourth round with three reference images — sea surface from below, an
+  ocean-projector lamp on a ceiling, a cathedral shot down a fish tunnel —
+  and their common term was the thing ours lacked: a rippling, luminous
+  ceiling the beams visibly hang from. Beams from nowhere read as an
+  effect; beams from a surface read as light. It is ridged noise (the fold
+  where fbm crosses its middle — the water-light network every projector
+  lamp throws), riding the top quarter of the frame, brightest toward the
+  same off-frame sun the beams converge on, and the fastest-moving thing on
+  the layer: the surface is where water shows its speed.
+- **Nothing about the curtain may be even** — Qi's third note ("太均匀了"),
+  and the tell was three uniformities at once: every beam the same
+  brightness, the same coverage across the width, and dying on one hem
+  line. Two angular-only noises fix all three: a *clump* term gathers the
+  beams into a few bright reaches of the width and leaves the rest nearly
+  dark, and a *hem* term lets every shaft die at its own depth. Both are
+  constant along a beam and drift slower than the beams, so the bright
+  reaches migrate over a surge. Even is what reads as painted.
+
+**The surge is the drama Qi asked for** ("时暗时亮，暗的时候占大部分，
+亮的时候像奇观一样神圣"). Dark is the resting state — gain wanders around a
+third — and every 26–130s (a third of the gaps long, never owed) the whole
+picture opens for 14–26s: gain climbs past 1.5, beams widen, reach deeper,
+and warm half a step toward white. Attack-hold-release (28% / hold / from
+62%), not a sine: a swell that arrives, stays, and leaves is an event, an
+oscillation is weather. The scheduler lives in the effect's closure on
+purpose — every arrival at the poem re-arms an early first surge (6–14s), so
+the screen shows what it does to whoever has just come down.
+
+**The sun itself wanders** — sideways across the top and nearer/farther in
+depth, on two pairs of incommensurate periods, phases off the seed. A fixed
+sun was the last stiffness left: every beam could move and the LIGHT still
+stood still. The surface hot-spot follows it (distances are computed
+relative to the sun's height, not as fixed numbers — the first version
+hard-coded them and the patch would have detached from the sun).
+
+**Every channel chases its target through an asymmetric follower** — quick
+up, slow down, each with its own release constant. The beams leave crisply
+(2.6s), the surface close behind, the stars take their time (7s), and the
+blue veil drags an ~11s tail: the ghost is still in the dark long after the
+light that raised it has gone (Qi: 蓝色幽灵可以 linger 更久). The light
+leaving crisply is what makes the staying read — soften the beam release
+and the whole contrast dies.
+
+**Four channels, four throttles** (Qi: 错落有致，随机一点). One shared gain
+made the blue veil, the whitish hearts, the beams and the lit surface
+arrive and leave as one thing, which no sea has ever done. Each channel now
+has its own dark-state wander (own incommensurate periods — even the dark
+is out of step with itself), and each surge deals every channel its own
+share and its own entrance delay, re-rolled per surge: some surges are all
+phantom and no beam, in some the surface lights first and the shafts
+follow, and who leads is never the same twice.
+
+**The crossing is sacred: this layer does NOTHING while `--s` is moving.**
+Shipping v1 stuttered the descent (Qi felt it immediately), and the cause
+was three costs all armed at the `atTwo` flip — mid-snap: the draw loop
+starting (plus a layout read), `--sbloom` restyling the whole page from the
+root, and 220 deep-star animations running at computed opacity 0, whose
+layers all activated the moment the star container's opacity left zero.
+The fixes are structural, keep them: the loop draws only once `--s ≥ 0.97`
+(the static mount frame carries the fade-in); `--sbloom` is written on
+`.l-stars`, never the root, so a write restyles the stars and nothing
+else; and the deep field is `animation:none` until DeepLight raises
+`data-bloom` on the container — an animation at computed opacity 0 still
+runs and still holds a layer. Anything added to this layer later must
+answer the same question first: what does it cost while the page is
+scrolling?
+
+**`/?lumen=surge` pins the surge at its peak** (all four channels full —
+the brightest the screen can be, brighter than almost any real surge) —
+same species of dev affordance as `?tune=1`, because the real thing spends
+most of its life dark and nobody tuning it should wait a minute per look.
+
+The contracts that keep it cheap and honest:
+
+- **Premultiplied additive alpha, NOT `mix-blend-mode: screen`.** The
+  shader writes alpha = its brightest channel, so ordinary source-over
+  compositing equals screen-blending on that channel, and the layer can
+  only ever *add* light — it cannot wash, tint, or flatten the dark under
+  it, at any bug. It shipped first as an opaque black canvas under
+  mix-blend-mode:screen and that stuttered and flashed the descent: a
+  blend mode isolates the whole stage into a render surface, and building
+  that surface mid-scroll is a white flash. Never put a blend mode back on
+  this element. (Related backstop: `.landing` now carries a `color-mix`
+  background that follows `--s` from sky to abyss, so a missed raster tile
+  flashes depth-coloured instead of the body's pale sky.)
+- **The bitmap is a third of the CSS pixels** (200–480 wide). Everything
+  drawn is soft, so the compositor's upscale is invisible; measured GPU cost
+  is microseconds a frame. The canvas is its own compositor surface — its
+  frames invalidate nothing else on the stage.
+- **30fps cap, and the loop is armed only while `atTwo`** (and never under
+  `prefers-reduced-motion` — those readers get one still frame, same answer
+  as the stars held at their peak). One static frame is drawn at mount so the
+  scroll down fades in a field, not a blank; at this speed a still first
+  frame is indistinguishable from a moving one.
+- **The drift offsets are computed on the CPU per frame**, not from a time
+  uniform: shader float time drifts out of precision on a long stay, JS
+  doubles do not. The breath is two incommensurate sine periods multiplied —
+  the same no-findable-period reasoning as the shafts' near-prime durations.
+- **The verse's space is kept by shading, not masking**: an ellipse in the
+  shader holds the light to 45% of itself where the poem sits (the analog of
+  `starOdds`, done in-shader because light has no position to reject). A
+  dither line in the shader breaks the banding every slow 8-bit gradient
+  otherwise shows; the film grain above finishes the job.
+- **Seeded per visit** — the field is never the same field twice.
+- `--lumen` on `.l-lumen` is the one tuning knob (a multiplier on the
+  layer's opacity, default 1).
+
+If WebGL is unavailable the component renders nothing and the drift and the
+stars carry the screen alone — the layer is an addition, never a dependency.
+
 ### Screen three — the drift (2026-08-23)
 
 *(Qi's brief: 一个实时的弹幕之类的聊天室, 不用审核 — a live danmaku, no moderation)*
@@ -638,6 +805,7 @@ content, so nothing is lost. (The global `.landing *{animation:none}` would
 otherwise strand every line at `translate3d(0)` — flush left, stacked on top of
 each other, which is exactly what it looks like when that rule does not land.)
 
+
 ### Snap, and the one thing that can trap a reader
 
 `scroll-snap-type: y mandatory` is the whole feeling of "two pages". It is also the
@@ -822,7 +990,132 @@ is the current weak point: on a 1440-wide retina screen the browser paints it at
 device pixels, a 1.7× upscale, and it reads soft. Quality isn't the lever — it's encoded
 at q92 — resolution is. A replacement wants to be ~3840×2160 for the same crop.
 
-#### One layer, cover everywhere — only the crop moves
+#### The painter's credit is the man in the painting (2026-08-23)
+
+The painting is **Sho Peng**'s (pengsho.com), and the figure standing on the
+shore is a link to him. Nothing shows at rest. Hover or focus him and a light
+comes up behind his outline while *PAINTING BY / SHO PENG* fades in on the sky in
+front of his face; clicking opens the artist's site in a new tab. On touch,
+where there is no hover to find it with, the caption is simply on at .6 — the
+same answer the poem's track numbers give, for the same reason.
+
+There is no outbound arrow after the name, and the omission is deliberate: a
+mark that announces a link is UI, and that line is a signature on a painting.
+The wording carries the whole job instead — *painting **by*** — which is also
+what keeps a name set beside a man's head from reading as **his** name. **The
+figure is not the painter, and not Qi**; if that line is ever reworded, the
+`by` is the part that cannot go.
+
+**The credit is attached to him, not to the page.** That is the whole design
+argument: this site has no footer and should not grow one, and a credit badge
+laid over an oil painting is the thing screen one has now refused four separate
+times. It also means the credit is only there when *he* is — below 13/10 the
+crop follows the jellyfish and he is off the right-hand edge, and the layer
+leaves the document entirely. There is currently **no credit at all on portrait
+screens**; that is a known, deliberate gap, not an oversight.
+
+#### The box that makes it free
+
+`.l-art` reproduces, in CSS, the rectangle `object-fit: cover` paints `.l-bg`
+into:
+
+```
+width  = max(100cqw, 100cqh × 1.77683)      // cover = the larger of the two scales
+left   = (100cqw − width) × var(--bg-px)    // object-position places the overflow
+```
+
+Once that box **is** the painting's rectangle, an `<svg viewBox="0 0 1672 941">`
+inside it makes every coordinate in it a *painting pixel* — so the traced
+outline lands on him at every window size with nothing measured, no resize
+listener, and no second copy of the crop rules to drift out of sync. This is why
+`--bg-pos` was split into `--bg-px` / `--bg-py` as bare fractions: two things
+now need those numbers, and one number they could disagree about is one too
+many. `.l-art-plane` exists only to carry `.l-bg`'s parallax transform (same
+transform, same origin — change one and you change both) and to be the query
+container the box above measures against.
+
+#### Three things that were wrong first, and are load-bearing now
+
+- **It cannot live in `.l-stage`.** `.l-scroll` is fixed over the whole window
+  at z-index 10 to catch the wheel, so anything inside the stage is unhoverable
+  by construction — and nothing inside the stage can climb over it either, since
+  the stage is its own stacking context at z-index 0. The layer is a sibling of
+  the scroller at z-index 12. That is only safe because the one thing in it that
+  takes a pointer is the path, and no control on this page stands where he does.
+- **The glow is masked to the outside of him.** A blurred stroke straddles the
+  edge, and the inside half is paint on the painting: it flattened his hair into
+  a white smear and the whole figure read as a sticker cut out and laid back
+  down. Masked to the outside it is a backlight instead. SVG applies the filter
+  before the mask, so what gets cut is the blurred result, not the stroke.
+- **Two strokes, because half of him stands on sand.** A wide soft light reads
+  against the sky and does nothing at all against a ground nearly as bright as
+  the light, so the legs and feet would not answer at all. A narrow rim
+  (`.l-art-rim`) carries enough density per pixel to show on either. One
+  falloff, not two effects — which is also why they share a `<g>`.
+
+**One mask and one animated property, on that group.** Each stroke had its own
+mask and its own animated opacity first, and both are a cost rather than a
+style: a mask forces its subtree into its own render surface, so that was two
+surfaces to rasterise where one does, and two properties to animate where one
+does. The strokes now carry their relative strengths as static opacities (`.78`
+and `.62` — the mix between them, and nothing else) and `.l-art-light` carries
+the fade, so turning the light up and down is a single alpha on a single
+already-rasterised surface, on hover and during the breath alike. At rest that
+alpha is 0 and a fully transparent subtree is not painted, so the two blurs cost
+nothing for the whole time nobody is looking at him. **On this page the price of
+an effect is how many render surfaces it makes, not how many shapes are in it** —
+same lesson as the mask that was taken back off the star field.
+
+`opacity` alone does not un-link a link: at `--s` 1 the anchor was invisible and
+still catching clicks over the poem. It fades out by s = .294 and
+`.landing[data-two]` then hides it with `visibility`, which is the one property
+that takes it out of the paint, the tab order and the a11y tree together. Those
+two numbers are paired — move one and move the other.
+
+**The outline** is 110 points, ~1 kB, traced off `hero.webp` itself by
+[scripts/trace-figure.py](scripts/trace-figure.py) — colour segmentation the
+painting happens to make easy (sky is the only thing here with more blue than
+red; sand the only thing both warm and not skin, *and only below the horizon* —
+applied to the whole frame that rule also ate the shadow under his brow), then a
+Moore-neighbour boundary walk and Douglas-Peucker.
+
+**Every rule in it needed a second axis, and both times the missing one was
+brightness.** Colour alone put a tab of sand on the back of his heel and shaved
+the point off his fringe, and neither showed until the glow traced them:
+
+- **Sand is warm *and* not skin**, but only below the horizon — applied to the
+  whole frame that rule also ate the shadow under his brow. Its warmth floor is
+  `R-B > 30`, not the 45 it started at: plain sand is 50–75 and his clothes
+  17–22, so 45 looked like slack in a wide gap, but the shadow *he casts* is
+  still sand at 43 with a floor of 32. Too cool to be ground, too warm to be
+  sky, and so by elimination him. **The gap that decides it is clothes-to-
+  shaded-sand, 22 to 32 — not clothes-to-sand.**
+- **Sky is cool *and* bright.** `R-B < -35` is right about ordinary sky and
+  wrong about the tip of his fringe, which is painted a blue-black: R-B −13 to
+  −70, indistinguishable from sky on colour and nothing like it on value. The
+  floor at `V > 140` costs nothing — across 32,292 pixels of open sky in this
+  frame not one is darker than 140, and the fringe tip runs 53–120.
+
+**And the opening is a vertical line, not a square** (`open_v`). What it has to
+remove is the horizon seam — rows 580–585, a six-row band of sky-to-sand blend
+that is neither and so comes out as figure right across the frame; a vertical
+erosion of radius 3 deletes any horizontal band six rows or thinner and a body
+700 rows tall does not notice. A *square* opening of the same radius also
+deletes anything narrower than the kernel in **either** direction, and the
+fringe comes to a point: 38 pixels, gone, and with them the only thing telling
+the glow where the hair ended. It read on the page as a band of light cutting
+straight through his hair. A cut-out PNG would have cost
+~25× that and bought a mask with no hit area. **Replacing the painting makes the
+path silently wrong** — it will still draw and still take clicks, just not on
+anybody. Re-run the script.
+
+One breath of the glow fires five seconds after arrival and never again, because
+nothing else on the page says he is a link and nothing should. `backwards`, not
+`both`: with `both` the animation owns `opacity` forever after it ends and the
+hover transition is silently outranked — the same trap as the down-mark's
+entrance.
+
+### One layer, cover everywhere — only the crop moves
 
 ```
 wide  (≥13:10)   object-position: center 45%

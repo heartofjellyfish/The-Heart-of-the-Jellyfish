@@ -21,6 +21,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { JellyMark, JELLY_MARK_CSS } from './JellyMark';
 import { Drift, DRIFT_CSS } from './Drift';
+import { track } from '@/lib/analytics';
 
 /**
  * The album *is* the poem — ten titles that read straight through. Punctuation
@@ -87,6 +88,29 @@ const FILES = [
 ];
 
 /**
+ * Every demo event carries the number AND the title. The number is what sorts
+ * and joins; the title is what makes a PostHog table readable without anyone
+ * holding the running order in their head. Redundant on purpose.
+ */
+function demoProps(n: number) {
+  return { track: n, title: TITLES[n - 1] };
+}
+
+/**
+ * Where a demo play is reported: the quarters. Not a raw progress stream, which
+ * would be a few hundred events per listen for a resolution nobody reads.
+ *
+ * The fourth mark, 100, is NOT in this list, because the clock cannot be
+ * trusted to produce it — the last `timeupdate` before a track runs out lands
+ * at 99-point-something as often as not, so a milestone waiting at 100 would
+ * silently under-report every completed listen. It is reported from the `ended`
+ * handler instead, where finishing is a fact rather than an inference. Four
+ * values come out the far end either way, and `demo_progress` broken down by
+ * milestone is one query and one retention curve per track.
+ */
+const DEMO_MILESTONES = [25, 50, 75] as const;
+
+/**
  * Which tracks have a demo in `public/audio/`. All ten, as of the 2026-08-21
  * bounces. Kept as a list rather than assumed, so pulling a track back to
  * unreleased is one edit: drop its number and the poem panel dims that line,
@@ -124,6 +148,35 @@ const PLAY_LABELS = {
  * change the artwork — nothing else references it.
  */
 const HERO_IMAGE = '/images/hero.webp';
+
+/**
+ * The painting's natural size, and the man standing in it.
+ *
+ * The figure is the album's only human and the only thing on this page that is
+ * somebody else's work, so the credit lives **on him** rather than in a footer
+ * this site does not have. He is a link; hovering him lights his outline and
+ * names the painter, and that is the whole affordance. Nothing shows at rest —
+ * a badge over an oil painting is the thing this page has refused four times.
+ *
+ * FIGURE_PATH is his silhouette traced off `hero.webp` itself, in the painting's
+ * own pixel coordinates, which is why it can be dropped into a viewBox of
+ * ART_W x ART_H and land exactly on him at any size. It came out of a colour
+ * segmentation the painting happens to make easy — sky is the only thing here
+ * with more blue than red, sand the only thing both warm and not skin — then a
+ * Moore-neighbour boundary walk and Douglas-Peucker down to 110 points
+ * (`scripts/trace-figure.py`). 1 kB, versus ~25 kB for a cut-out PNG that would
+ * have bought a mask and no hit area.
+ *
+ * If the painting is ever replaced, this is stale and silently wrong: it will
+ * still draw and still take clicks, just not on anybody. Re-run the script.
+ */
+const ART_W = 1672;
+const ART_H = 941;
+const FIGURE_PATH =
+  'M1220,129L1238,131L1254,139L1269,158L1270,164L1283,187L1299,206L1309,214L1321,218L1328,225L1335,226L1346,232L1357,243L1365,262L1371,284L1371,293L1383,371L1386,432L1382,455L1377,465L1377,519L1375,526L1375,538L1371,550L1367,555L1367,609L1365,614L1367,625L1367,713L1369,721L1369,741L1371,744L1371,754L1370,764L1357,775L1357,787L1355,791L1358,813L1363,819L1363,830L1358,837L1353,839L1348,839L1322,849L1300,854L1273,852L1270,849L1269,840L1282,833L1292,831L1298,826L1312,822L1317,814L1314,810L1297,809L1288,813L1251,814L1243,809L1244,802L1250,801L1253,798L1266,797L1276,794L1291,788L1302,780L1308,770L1310,749L1312,744L1297,734L1287,711L1280,686L1272,645L1265,625L1259,574L1258,544L1253,538L1243,531L1241,520L1241,510L1246,502L1252,486L1254,447L1253,432L1255,427L1254,392L1251,380L1249,314L1256,286L1262,276L1264,265L1270,255L1270,252L1262,245L1259,245L1250,251L1241,251L1235,246L1224,244L1219,239L1212,239L1210,237L1208,223L1197,215L1191,201L1186,198L1181,205L1177,199L1177,169L1187,149L1198,136Z';
+
+/** Whose painting it is. */
+const ARTIST = { name: 'Sho Peng', href: 'https://pengsho.com' };
 
 /**
  * Where the poem breaks. Four stanzas, uneven on purpose — the movements are not
@@ -430,6 +483,17 @@ const WAVE_BARS = 160;
 
 
 type Panel = 'poem' | 'subscribe' | null;
+
+/**
+ * Which control started a demo. The hero button and the poem line play the same
+ * audio, but they are two different offers — one is "meet the album", the other
+ * is "I have read this line and want to hear it" — and knowing which one people
+ * actually use is the whole argument for keeping both.
+ *
+ * 'auto' is the track after, started by the previous one ending: it is a play
+ * nobody asked for, so it must never be counted as one of the ones they did.
+ */
+type PlaySource = 'hero' | 'poem' | 'keyboard' | 'auto';
 
 /* Mirrors the check in app/api/subscribe/route.ts. Duplicated on purpose: the
    server must not trust the client, and the client should not need a round trip
@@ -839,6 +903,14 @@ type Fall = {
 
 /** Enough to read as a field, few enough that every one is its own layer. */
 const STAR_COUNT = 96;
+/**
+ * The deep field: a second, fainter population that exists only while the
+ * light surges (see DeepLight — it drives `--sbloom` on the root). At rest
+ * their opacity resolves to zero; when the star channel of a surge comes in,
+ * a hundred and fifty more stars are simply THERE, and then they are not.
+ * Density is the one axis of spectacle the light alone cannot reach.
+ */
+const DEEP_STAR_COUNT = 220;
 
 function rnd(a: number, b: number) {
   return a + Math.random() * (b - a);
@@ -883,13 +955,36 @@ function makeStars(): Star[] {
   return out;
 }
 
+function makeDeepStars(): Star[] {
+  const out: Star[] = [];
+  // Smaller, dimmer, quicker than the resting sky, and placed by the same
+  // odds — the bloom must respect the verse exactly as the rest does.
+  for (let i = 0; i < DEEP_STAR_COUNT * 30 && out.length < DEEP_STAR_COUNT; i++) {
+    const x = rnd(0, 100);
+    const y = rnd(0, 100);
+    if (Math.random() > starOdds(x, y)) continue;
+    out.push({
+      x,
+      y,
+      r: rnd(0.7, 1.9),
+      lo: rnd(0.03, 0.08),
+      hi: rnd(0.18, 0.6),
+      dur: rnd(3.5, 9),
+      delay: rnd(0, 8),
+    });
+  }
+  return out;
+}
+
 function Deepstars({ active }: { active: boolean }) {
   const [stars, setStars] = useState<Star[]>([]);
+  const [deepStars, setDeepStars] = useState<Star[]>([]);
   const [falls, setFalls] = useState<Fall[]>([]);
   const nextId = useRef(0);
 
   useEffect(() => {
     setStars(makeStars());
+    setDeepStars(makeDeepStars());
   }, []);
 
   /* Falls are armed only while the reader is actually down here, and never for
@@ -961,6 +1056,29 @@ function Deepstars({ active }: { active: boolean }) {
           }
         />
       ))}
+      {/* The deep field. Same element, same animation — the only difference
+          is that both ends of each star's swing are multiplied by --sbloom,
+          which DeepLight's star channel drives on the root. At rest that is
+          zero and none of this exists; in a surge the sky gains a hundred
+          and fifty stars it did not have. */}
+      {deepStars.map((s, i) => (
+        <span
+          key={'d' + i}
+          className="l-star"
+          data-deep=""
+          style={
+            {
+              ['--x' as string]: s.x.toFixed(2) + '%',
+              ['--y' as string]: s.y.toFixed(2) + '%',
+              ['--r' as string]: s.r.toFixed(2) + 'px',
+              ['--lo' as string]: `calc(${s.lo.toFixed(3)} * var(--sbloom, 0))`,
+              ['--hi' as string]: `calc(${s.hi.toFixed(3)} * var(--sbloom, 0))`,
+              ['--dur' as string]: s.dur.toFixed(2) + 's',
+              ['--delay' as string]: (-s.delay).toFixed(2) + 's',
+            } as React.CSSProperties
+          }
+        />
+      ))}
       {falls.map((f) => (
         <span
           key={f.id}
@@ -986,6 +1104,443 @@ function Deepstars({ active }: { active: boolean }) {
       ))}
     </div>
   );
+}
+
+/* ================================================================== */
+/* The light in the deep — see the CLAUDE.md section of the same name  */
+/* ================================================================== */
+
+/**
+ * Domain-warped fbm, which is the one construction that gives light a
+ * structure with no edges, no objects and no findable period — the same brief
+ * the shafts and the drift answer in CSS, taken as far as CSS cannot go. The
+ * warp offsets (uW/uR/uB) are computed on the CPU per frame rather than from a
+ * time uniform in the shader: float time drifts out of precision after long
+ * enough on the page, and JS doubles do not.
+ *
+ * Everything below the colour ramp is shaping: the ellipse holds the light
+ * down where the verse sits (the same job starOdds does for the stars, done in
+ * the shader because light has no position to reject), the vertical ramp keeps
+ * more of it above the poem than below (the surface is up), and the dither
+ * line breaks the banding that any slow 8-bit gradient otherwise shows.
+ */
+const LUMEN_FRAG = `
+precision highp float;
+uniform vec2 uRes;
+uniform vec2 uSeed;
+uniform vec2 uW1;
+uniform vec2 uW2;
+uniform vec2 uR1;
+uniform vec2 uR2;
+uniform vec2 uB;
+uniform vec2 uA1;
+uniform vec2 uA2;
+uniform vec2 uSun;
+/* Three lights, three throttles. One shared gain made the blue phantoms,
+   the white beams and the white surface arrive and leave as one thing —
+   which no sea has ever done. Each channel's gain is composed on the CPU:
+   its own dark-state wander, its own share and its own entrance delay in
+   every surge. */
+uniform float uGVeil;
+uniform float uGHeart;
+uniform float uGBeam;
+uniform float uSBeam;
+uniform float uGSurf;
+
+float hash(vec2 p){
+  p = fract(p * vec2(127.1, 311.7));
+  p += dot(p, p + 34.23);
+  return fract(p.x * p.y);
+}
+float noise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+    mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float fbm(vec2 p){
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) {
+    v += a * noise(p);
+    p = mat2(1.6, 1.2, -1.2, 1.6) * p + vec2(9.2, 5.7);
+    a *= 0.5;
+  }
+  return v;
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / uRes;
+  vec2 p = (uv - 0.5) * vec2(uRes.x / uRes.y, 1.0) * 2.1 + uSeed;
+  vec2 q = vec2(fbm(p + uW1), fbm(p + vec2(4.7, 2.3) + uW2));
+  vec2 r = vec2(fbm(p + 2.3 * q + uR1), fbm(p + 2.3 * q + vec2(8.3, 2.8) + uR2));
+  float v = fbm(p + 1.9 * r);
+  /* The veil: broad, dim, most of what there is. Squared so the low end dies
+     into the dark instead of greying it. */
+  float veil = smoothstep(0.42, 0.85, v);
+  vec3 col = veil * veil * mix(vec3(0.015, 0.05, 0.08), vec3(0.10, 0.23, 0.30), veil);
+  col *= uGVeil;
+  /* The hearts: rare brighter cores inside the veil, on their own drift so
+     they surface and dissolve somewhere else each time. */
+  float heart = smoothstep(0.68, 0.97, fbm(p * 0.6 + 1.4 * r + uB));
+  /* A step greener than the veil's blue — the one hue the deep owns. The
+     separation is what reads as depth; brightness would only read as haze. */
+  col += heart * heart * vec3(0.11, 0.30, 0.27) * uGHeart;
+  /* The rays: what makes this read as LIGHT rather than as mist. Radial from
+     one sun, up and to the left — the same sun the CSS shafts lean toward —
+     and alive the way the CSS ones cannot be: two angular noises drifting at
+     different speeds interfere, so beams wander, brighten where they align,
+     and die where they don't. No beam has an edge, a width, or a schedule. */
+  float aspect = uRes.x / uRes.y;
+  /* The sun is in the middle distance, and the middle is the point. Near
+     (1.4) its apex sat on the screen and the fan read as a cone; far (7.5)
+     the beams went parallel and the picture lost the one thing that made it
+     read as HOLY — convergence toward a point. Crepuscular rays, the light
+     every sacred painting reaches for, converge visibly toward a sun that
+     is emphatically not in frame. ~2.7 screens up puts the apex well out of
+     the picture and keeps the fan — and the sun itself wanders (uSun, CPU
+     side), so the whole fan sways and breathes as one thing. A fixed sun
+     was the last stiffness left: every beam could move and the LIGHT still
+     stood still. */
+  vec2 sd = vec2((uv.x - uSun.x) * aspect, uv.y - uSun.y);
+  float ang = atan(sd.x, -sd.y);
+  /* Bent a little by the water it came through, so no beam is a ruler. The
+     amplitude is in radians: lateral arm ≈ amplitude × dst. */
+  ang += (fbm(p * 1.2 + uW2) - 0.5) * 0.018;
+  float dst = length(sd);
+  /* Streaks, not weather: the angular frequency is what makes a beam a
+     beam, and it scales with the sun's distance — lateral feature ≈
+     dst/freq ≈ 4% of the frame, along-beam ≈ most of it. Long and thin,
+     which clouds never are. */
+  float b1 = fbm(vec2(ang * 55.0, dst * 1.2) + uA1);
+  float b2 = fbm(vec2(ang * 110.0, dst * 2.1) + uA2);
+  /* The surge opens the sky: more beams, reaching deeper, a step warmer —
+     not merely the same picture turned up. */
+  /* Nothing about the curtain may be even — even is what reads as painted.
+     The clump gathers the beams into a few bright reaches of the width and
+     leaves the rest of it nearly dark; the hem lets every shaft die at its
+     own depth instead of on one line. Both are angular-only noises (constant
+     along a beam) drifting slower than the beams themselves, so the bright
+     reaches migrate across the frame over a surge. */
+  float clump = smoothstep(0.25, 0.70, fbm(vec2(ang * 4.5, 3.7) + uA1 * 0.4));
+  float hem = fbm(vec2(ang * 22.0, 8.9) + uA2 * 0.25);
+  float beams = smoothstep(0.52 - 0.08 * uSBeam, 0.92, b1 * 0.62 + b2 * 0.48);
+  beams *= smoothstep(0.28 - 0.20 * uSBeam, 0.85, uv.y + (hem - 0.5) * 0.55);
+  beams *= 0.2 + 0.8 * clump;
+  vec3 bc = mix(vec3(0.55, 0.72, 0.80), vec3(0.82, 0.86, 0.84), uSBeam * 0.6);
+  col += beams * bc * 0.34 * uGBeam;
+  /* The surface. Every reference for this light has one thing ours lacked:
+     a SOURCE — a rippling, luminous ceiling the beams visibly hang from.
+     Ridged noise (the fold where fbm crosses its middle) is the water-light
+     network every projector lamp throws on a ceiling; it rides the top
+     quarter of the frame, brightest toward the same off-frame sun the beams
+     converge on, and it is the fastest-moving thing on the layer — the
+     surface is where the water actually shows its speed. */
+  float surf = pow(1.0 - abs(2.0 * fbm(p * 2.6 + uA2 * 1.5) - 1.0), 3.0);
+  float band = smoothstep(0.72, 0.99, uv.y);
+  /* Relative to the sun's height, not to fixed distances — the hot patch
+     must follow the sun wherever it wanders. */
+  float dmin = uSun.y - 1.0;
+  float hot = smoothstep(dmin * 1.55, dmin * 1.12, dst);
+  col += surf * band * (0.35 + 0.65 * hot) * uGSurf * vec3(0.72, 0.88, 0.95);
+  /* More above the verse than below it; the surface is up. */
+  col *= 0.72 + 0.5 * smoothstep(0.1, 0.95, uv.y);
+  /* And held down where the verse sits — 45% of itself at the centre of the
+     frame, whole past the ellipse the poem and its air live in. */
+  vec2 e = (uv - vec2(0.5, 0.52)) / vec2(0.42, 0.46);
+  float d = dot(e, e);
+  col *= 0.45 + 0.55 * smoothstep(0.35, 1.4, d);
+  col += (hash(gl_FragCoord.xy) - 0.5) * 0.006;
+  col = clamp(col, 0.0, 1.0);
+  /* Premultiplied, alpha = the brightest channel: source-over then gives
+     dst*(1-a)+col, which on that channel is exactly what screen-blending
+     gave (c + d - cd), without a blend mode in the CSS. Valid premultiplied
+     color too — every channel <= alpha by construction. */
+  gl_FragColor = vec4(col, max(col.r, max(col.g, col.b)));
+}
+`;
+
+const LUMEN_VERT = 'attribute vec2 aP;void main(){gl_Position=vec4(aP,0.0,1.0);}';
+
+/** Noise units per second: the base speed everything else is a ratio of. */
+const LUMEN_SPEED = 0.011;
+
+type LumenGL = {
+  gl: WebGLRenderingContext;
+  loc: Record<string, WebGLUniformLocation | null>;
+};
+
+function lumenInit(canvas: HTMLCanvasElement): LumenGL | null {
+  const gl = canvas.getContext('webgl', {
+    /* Transparent, premultiplied — the shader writes alpha = its brightest
+       channel, which composites through the ordinary source-over path and
+       equals screen-blending exactly on that channel. The first version
+       used an opaque canvas under mix-blend-mode:screen; the blend forced
+       the whole stage into an isolation group, and creating/re-rendering
+       that surface mid-scroll is what flashed white during the descent. No
+       blend mode, no group, no flash — and cheaper to composite. */
+    alpha: true,
+    premultipliedAlpha: true,
+    antialias: false,
+    depth: false,
+    stencil: false,
+    powerPreference: 'low-power',
+  }) as WebGLRenderingContext | null;
+  if (!gl) return null;
+  const mk = (type: number, src: string) => {
+    const s = gl.createShader(type);
+    if (!s) return null;
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    return gl.getShaderParameter(s, gl.COMPILE_STATUS) ? s : null;
+  };
+  const vs = mk(gl.VERTEX_SHADER, LUMEN_VERT);
+  const fs = mk(gl.FRAGMENT_SHADER, LUMEN_FRAG);
+  const prog = gl.createProgram();
+  if (!vs || !fs || !prog) return null;
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return null;
+  gl.useProgram(prog);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const aP = gl.getAttribLocation(prog, 'aP');
+  gl.enableVertexAttribArray(aP);
+  gl.vertexAttribPointer(aP, 2, gl.FLOAT, false, 0, 0);
+  const loc: LumenGL['loc'] = {};
+  for (const n of ['uRes', 'uSeed', 'uW1', 'uW2', 'uR1', 'uR2', 'uB', 'uA1', 'uA2', 'uSun', 'uGVeil', 'uGHeart', 'uGBeam', 'uSBeam', 'uGSurf']) {
+    loc[n] = gl.getUniformLocation(prog, n);
+  }
+  return { gl, loc };
+}
+
+function DeepLight({ active }: { active: boolean }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  const ctx = useRef<LumenGL | null>(null);
+  /** Per-visit: the field is never the same field twice. */
+  const seed = useRef<[number, number, number, number] | null>(null);
+  const t0 = useRef(0);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    if (!seed.current) {
+      seed.current = [
+        Math.random() * 80,
+        Math.random() * 80,
+        Math.random() * Math.PI * 2,
+        Math.random() * Math.PI * 2,
+      ];
+      t0.current = performance.now();
+    }
+    /* The effect re-runs when `active` flips; the context and program are
+       built once and reused, or every crossing of the threshold would compile
+       another program into the same context. */
+    const fresh = !ctx.current;
+    ctx.current = ctx.current ?? lumenInit(canvas);
+    const c = ctx.current;
+    if (!c) return; // no WebGL: the drift and the stars still carry the screen
+    const rootEl = canvas.closest('.landing') as HTMLElement | null;
+    /* The star channel writes on the star container, NOT the root: a custom
+       property set on the root restyles every var()-reading element on the
+       page, and this page reads vars everywhere. Scoped to .l-stars it
+       restyles the stars and nothing else. */
+    const starsEl = rootEl?.querySelector('.l-stars') as HTMLElement | null;
+    let lastBloom = 0;
+    let bloomOn = false;
+
+    /* The surge. Dark is the resting state — most of the time the picture
+       sits low, wandering a little — and now and then the whole of it opens:
+       gain climbs for a few seconds, holds, and lets go. Attack-hold-release
+       rather than a sine, because a swell that arrives, stays, and leaves is
+       an event, where an oscillation is weather. Scheduling lives in this
+       closure on purpose: the effect re-runs when `active` flips, so every
+       arrival at the poem re-arms an early first surge — the screen shows
+       what it does to whoever has just come down. */
+    let surgeStart = -1;
+    let surgeDur = 1;
+    let surgePeak = 0;
+    let surgeNext = (performance.now() - t0.current) / 1000 + rnd(6, 14);
+    /* The recipe: each surge deals every channel — blue veil, whitish
+       hearts, white beams, the lit surface, and the deep starfield — its
+       own share and its own entrance delay, re-rolled per surge. Some
+       surges are all phantom and no beam; some the surface lights first
+       and the shafts follow; some are mostly a sky of stars arriving. Who
+       leads is never the same twice. Nothing may arrive and leave as one
+       thing (Qi: 错落有致，随机一点). */
+    let share = [1, 1, 1, 1, 1];
+    let delay = [0, 0, 0, 0, 0];
+    /* Lingering, per channel: every displayed level chases its target
+       through an asymmetric follower — quick up, slow down, with its own
+       release. The beams leave crisply (2.6s), the surface close behind;
+       the stars take their time; and the blue veil drags an 11-second tail,
+       so the ghost is still in the dark long after the light that raised it
+       has gone (Qi: 蓝色幽灵可以 linger 更久). The light leaving crisply is
+       what makes the staying read. Order: veil, hearts, beams, surface,
+       stars. */
+    const TAU_IN = [1.2, 1.4, 0.9, 1.1, 1.6];
+    const TAU_OUT = [11, 5, 2.6, 3.8, 7];
+    const disp = [0, 0, 0, 0, 0];
+    let lastDraw = -1;
+    const sstep = (a: number, b: number, x: number) => {
+      const k = Math.min(1, Math.max(0, (x - a) / (b - a)));
+      return k * k * (3 - 2 * k);
+    };
+    /* `?lumen=surge` pins the surge at its peak — the same kind of dev
+       affordance as ?tune=1, because the real thing spends most of its life
+       dark and nobody tuning it should have to wait a minute per look. */
+    const forced =
+      typeof location !== 'undefined' &&
+      new URLSearchParams(location.search).get('lumen') === 'surge';
+    const envAt = (t: number): number[] => {
+      if (forced) {
+        surgePeak = 1.35;
+        return [1, 1, 1, 1, 1];
+      }
+      if (surgeStart < 0 && t >= surgeNext) {
+        surgeStart = t;
+        surgeDur = rnd(14, 26);
+        surgePeak = rnd(1.1, 1.6);
+        share = [rnd(0.35, 1), rnd(0.25, 1), rnd(0.25, 1), rnd(0.15, 1), rnd(0.45, 1)];
+        delay = [rnd(0, 0.35), rnd(0, 0.35), rnd(0, 0.35), rnd(0, 0.35), rnd(0, 0.35)];
+      }
+      if (surgeStart < 0) return [0, 0, 0, 0, 0];
+      const ph = (t - surgeStart) / surgeDur;
+      if (ph >= 1) {
+        surgeStart = -1;
+        /* Mostly dark: the gaps are several times the event, and a third of
+           them are long enough that the next one is never owed. */
+        surgeNext = t + (Math.random() < 0.3 ? rnd(70, 130) : rnd(26, 70));
+        return [0, 0, 0, 0, 0];
+      }
+      return delay.map((d, i) => {
+        const p = Math.min(1, Math.max(0, (ph - d) / (1 - d)));
+        return sstep(0, 0.28, p) * (1 - sstep(0.62, 1, p)) * share[i];
+      });
+    };
+
+    const size = () => {
+      /* A third of the CSS pixels, floored and capped. Everything drawn is
+         soft, so the compositor's upscale is invisible — and it is most of why
+         this layer is cheap. */
+      const w = canvas.clientWidth || window.innerWidth;
+      const h = canvas.clientHeight || window.innerHeight;
+      const rw = Math.round(Math.min(480, Math.max(200, w / 3.2)));
+      const rh = Math.max(1, Math.round((rw * h) / Math.max(1, w)));
+      if (canvas.width !== rw || canvas.height !== rh) {
+        canvas.width = rw;
+        canvas.height = rh;
+        c.gl.viewport(0, 0, rw, rh);
+      }
+    };
+    const draw = (now: number) => {
+      const [sx, sy, p1, p2] = seed.current!;
+      const t = (now - t0.current) / 1000;
+      const s = LUMEN_SPEED;
+      const { gl, loc } = c;
+      gl.uniform2f(loc.uRes, canvas.width, canvas.height);
+      gl.uniform2f(loc.uSeed, sx, sy);
+      gl.uniform2f(loc.uW1, t * s * 0.9, t * s * 0.37);
+      gl.uniform2f(loc.uW2, -t * s * 0.61, t * s * 0.83);
+      gl.uniform2f(loc.uR1, t * s * 0.31, -t * s * 0.52);
+      gl.uniform2f(loc.uR2, -t * s * 0.44, t * s * 0.27);
+      gl.uniform2f(loc.uB, t * s * 0.23, -t * s * 0.34);
+      /* The beams drift an order faster than the field — light answers the
+         surface above it, which moves in seconds where the water moves in
+         minutes. Angular in x, along-the-beam in y. */
+      gl.uniform2f(loc.uA1, sx * 2.3 + t * 0.045, sy * 1.1 + t * 0.013);
+      gl.uniform2f(loc.uA2, sy * 3.1 - t * 0.09, sx * 1.7 + t * 0.08);
+      /* The sun wanders — sideways across the top and nearer/farther in
+         depth — on two pairs of incommensurate periods, so the whole fan
+         sways, spreads, and tightens without ever repeating a path. Phases
+         come off the seed: each visit's sun walks its own walk. */
+      gl.uniform2f(
+        loc.uSun,
+        0.1 + 0.26 * Math.sin(t * 0.074 + sx * 0.7) + 0.12 * Math.sin(t * 0.031 + sy * 1.3),
+        2.7 + 0.35 * Math.sin(t * 0.052 + sx * 1.9) + 0.15 * Math.sin(t * 0.023 + sy * 2.6)
+      );
+      /* Four resting levels, each wandering on its own pair of
+         incommensurate periods (never a metronome — the near-prime
+         reasoning again), so even the dark is out of step with itself; the
+         surge rides on top, channel by channel. */
+      const tgt = envAt(t);
+      const dt = Math.min(0.2, Math.max(0.001, lastDraw < 0 ? 0.033 : (now - lastDraw) / 1000));
+      lastDraw = now;
+      for (let i = 0; i < 5; i++) {
+        const tau = tgt[i] > disp[i] ? TAU_IN[i] : TAU_OUT[i];
+        disp[i] += (tgt[i] - disp[i]) * (1 - Math.exp(-dt / tau));
+      }
+      const [eV, eH, eB, eS, eStars] = disp;
+      const bV = 0.33 + 0.12 * Math.sin(t * 0.05 + p1) * Math.sin(t * 0.021 + p2);
+      const bH = 0.3 + 0.16 * Math.sin(t * 0.059 + p2 * 1.7) * Math.sin(t * 0.013 + p1 * 2.9);
+      const bB = 0.28 + 0.16 * Math.sin(t * 0.043 + p1 * 1.7) * Math.sin(t * 0.017 + p2 * 2.3);
+      const bS = 0.3 + 0.15 * Math.sin(t * 0.037 + p2 * 3.1) * Math.sin(t * 0.027 + p1 * 0.6);
+      gl.uniform1f(loc.uGVeil, bV + eV * surgePeak);
+      gl.uniform1f(loc.uGHeart, bH + eH * surgePeak);
+      gl.uniform1f(loc.uSBeam, eB);
+      gl.uniform1f(loc.uGBeam, (0.6 + 0.75 * eB) * (bB + eB * surgePeak));
+      gl.uniform1f(loc.uGSurf, (0.07 + 0.27 * eS) * (bS + eS * surgePeak));
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      /* The star channel leaves the canvas: the deep field (see Deepstars)
+         reads `--sbloom` off its own container. Written at ~6Hz, not per
+         frame — the envelope moves over seconds, and every write restyles a
+         couple of hundred small elements. `data-bloom` is what lets the
+         deep stars run their animations at all: 220 extra always-running
+         animations were a real cost the whole time nobody could see them —
+         and the crossing paid it. */
+      if (now - lastBloom > 160) {
+        lastBloom = now;
+        starsEl?.style.setProperty('--sbloom', eStars.toFixed(3));
+        const on = eStars > 0.015;
+        if (on !== bloomOn) {
+          bloomOn = on;
+          if (on) starsEl?.setAttribute('data-bloom', '');
+          else starsEl?.removeAttribute('data-bloom');
+        }
+      }
+    };
+
+    let raf = 0;
+    let last = 0;
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      /* 30fps. Nothing here moves fast enough for 60 to buy anything, and the
+         halved GPU wake-ups are what a phone notices. */
+      if (now - last < 33) return;
+      /* And NOTHING during the crossing. `active` flips at s=0.3, in the
+         middle of the snap — starting draws there put GPU work and style
+         writes inside the one animation on this page that must not drop a
+         frame (Qi felt it drop). The static mount frame carries the fade-in;
+         the light starts breathing only once the descent has landed. */
+      const sv = parseFloat(rootEl?.style.getPropertyValue('--s') || '1');
+      if (sv < 0.97) return;
+      last = now;
+      draw(now);
+    };
+    const still = () => {
+      size();
+      draw(performance.now());
+    };
+
+    /* One static frame at first init, so the scroll down has something to
+       fade in before the loop is armed — at this speed a still first frame
+       is indistinguishable from a moving one. NOT re-run when `active`
+       flips: that flip happens mid-scroll, and size() reads layout. */
+    if (fresh) still();
+    window.addEventListener('resize', still);
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (active && !reduce) raf = requestAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', still);
+      /* Leaving mid-surge must not strand the deep field at half-bloom. */
+      starsEl?.style.setProperty('--sbloom', '0');
+      starsEl?.removeAttribute('data-bloom');
+    };
+  }, [active]);
+
+  return <canvas ref={ref} className="l-lumen" aria-hidden />;
 }
 
 export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }) {
@@ -1061,7 +1616,53 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const curRef = useRef(0);
   const pctRef = useRef(0);
   /** Lets the `ended` listener advance a track without capturing a stale closure. */
-  const playTrackRef = useRef<(n: number) => void>(() => {});
+  const playTrackRef = useRef<(n: number, from?: PlaySource) => void>(() => {});
+  /** Highest quarter already reported for the track now loaded. Reset per track. */
+  const milestoneRef = useRef(0);
+  /** Whether the play now loaded has already been ended. See endPlay. */
+  const endedRef = useRef(false);
+  /**
+   * Screen two is reported once per visit, not once per crossing — someone who
+   * scrolls up and back down has not discovered the tracklist twice.
+   */
+  const reachedTwoRef = useRef(false);
+  /**
+   * How the descent was started, read by the scroll handler when it fires
+   * `tracklist_reached`. The scroll itself cannot tell a smooth programmatic
+   * scroll from a finger, so whoever called goTo leaves a note here first.
+   * Falls back to 'scroll', which is the honest answer for everyone else.
+   */
+  const descentViaRef = useRef<'scroll' | 'button' | 'chevron'>('scroll');
+
+  /*
+   * The visit, accumulating. All refs, never state: none of it is rendered, and
+   * a re-render per second of audio would be an absurd price for a number that
+   * is read exactly once, on the way out.
+   *
+   * What these answer that no single click can: how long someone actually
+   * listened (as opposed to how many times they pressed play), how long they
+   * stood in the poem, and how much of the page they touched before leaving.
+   */
+  /** Milliseconds the page has actually been looked at, summed over every stay. */
+  const visibleMsRef = useRef(0);
+  /** When the current stay began, or null while the tab is in the background. */
+  const visibleEnterRef = useRef<number | null>(null);
+  /** Seconds of audio that actually sounded — summed from the clock, so a seek adds nothing. */
+  const listenedRef = useRef(0);
+  const lastCtRef = useRef(0);
+  const tracksPlayedRef = useRef<Set<number>>(new Set());
+  /** Milliseconds spent below the surface, summed over every visit to screen two. */
+  const poemMsRef = useRef(0);
+  /** When the current stay in the poem began, or null if we are up on the shore. */
+  const poemEnterRef = useRef<number | null>(null);
+  const openedSubRef = useRef(false);
+  const subscribedRef = useRef(false);
+  /** Whether this page was ever actually looked at. See the pagehide effect. */
+  const everSeenRef = useRef(false);
+  /** The last summary sent, so an identical one is not sent twice. */
+  const lastSummaryRef = useRef('');
+  /** atTwo, readable from an event listener without re-subscribing on every change. */
+  const atTwoRef = useRef(false);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -1116,7 +1717,25 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       const s = Math.min(1, Math.max(0, sc.scrollTop / h));
       root.style.setProperty('--s', s.toFixed(4));
       setAtTwo(s > 0.3);
-      /* The second screen height, on its own axis. --s stops at 1 because the
+      // The funnel's second step, and the only one the page cannot infer from a
+      // click: most people arrive at the tracklist by scrolling, not by pressing
+      // anything. Same threshold as the type reveal, so "reached" means the same
+      // thing to us as it does to the visitor.
+      if (s > 0.3 && !reachedTwoRef.current) {
+        reachedTwoRef.current = true;
+        track('tracklist_reached', { via: descentViaRef.current });
+      }
+      // How long the poem is stood in front of, as a sum of stays rather than a
+      // single stretch — the way down and back up is one visit's reading, and
+      // someone who surfaces to press play and returns has not stopped reading.
+      // Only the crossings are timed; the scroll in between costs nothing.
+      atTwoRef.current = s > 0.3;
+      if (s > 0.3 && poemEnterRef.current === null) poemEnterRef.current = Date.now();
+      else if (s <= 0.3 && poemEnterRef.current !== null) {
+        poemMsRef.current += Date.now() - poemEnterRef.current;
+        poemEnterRef.current = null;
+      }
+      /* The third screen height, on its own axis. --s stops at 1 because the
          descent it drives — the veil, the parallax, the light — is finished by
          the time the poem is on screen; there is nothing left for it to say
          about the floor. Screen three gets its own 0..1 rather than stretching
@@ -1125,8 +1744,9 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       const s3 = Math.min(1, Math.max(0, sc.scrollTop / h - 1));
       root.style.setProperty('--s3', s3.toFixed(4));
       setAtThree(s3 > 0.3);
-      // Three screens should measure three screens. Anything over is the
-      // tracklist spilling, and the snap has to give way — see [data-tall].
+      // Three screens should measure three screens now the floor is one of
+      // them. Anything over is the tracklist spilling, and the snap has to give
+      // way — see .landing[data-tall].
       setTall(sc.scrollHeight > h * 3 + 2);
     };
     read();
@@ -1148,22 +1768,72 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    * visitor has asked for less motion — in which case a page that animates its
    * way down is exactly what they said no to.
    */
-  const goTo = useCallback((screen: 0 | 1 | 2) => {
+  const goTo = useCallback((screen: 0 | 1, via?: 'button' | 'chevron') => {
     const sc = scrollRef.current;
     if (!sc) return;
+    if (screen === 1 && via) descentViaRef.current = via;
+    // Going back up is its own small signal: it is the only door out of screen
+    // two, so it separates "read the poem and left" from "read it and returned".
+    if (screen === 0) track('surfaced');
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     sc.scrollTo({ top: screen * sc.clientHeight, behavior: reduce ? 'auto' : 'smooth' });
   }, []);
+
+  /**
+   * Closing the panel, from the X or from Escape. It exists as one function
+   * because the abandonment has to be reported the same either way -- a funnel
+   * that only counts the visitors who reach for the mouse is measuring mice.
+   *
+   * `state` is what the form had got to: 'idle' is a look and a shrug, 'error'
+   * is someone who tried and was turned away, and those two want very different
+   * fixes. 'done' is not a dismissal at all and says nothing.
+   */
+  const closePanel = useCallback(() => {
+    if (panel === 'subscribe' && subState !== 'done') {
+      track('subscribe_dismissed', { state: subState });
+    }
+    setPanel(null);
+  }, [panel, subState]);
 
   /* --- Esc closes whatever panel is open -------------------------- */
   useEffect(() => {
     if (!panel) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setPanel(null);
+      if (e.key === 'Escape') closePanel();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [panel]);
+  }, [panel, closePanel]);
+
+  /**
+   * Every play ends. This is the only event that says where.
+   *
+   * The first cut reported `demo_finished` and `player_closed`, which between
+   * them describe the two tidiest endings and miss the two commonest: people
+   * switch to another track, or they leave. So those plays simply stopped
+   * reporting, and "where does this song lose them" was answered from the small,
+   * unrepresentative set of listeners who pressed a button on the way out.
+   *
+   * `reason` is what separates a song that ran out from a song that was
+   * abandoned at 12%, which is the entire question.
+   */
+  const endPlay = useCallback((reason: 'finished' | 'switched' | 'closed' | 'left') => {
+    const n = curRef.current;
+    // Once per play. A track that runs out ends as 'finished' and is then
+    // walked past by the autoplay, which would otherwise end it a second time
+    // as 'switched' — and every completed listen would be filed twice, once
+    // honestly and once as an abandonment at 100%.
+    if (!n || endedRef.current) return;
+    endedRef.current = true;
+    track('demo_ended', {
+      ...demoProps(n),
+      percent: reason === 'finished' ? 100 : Math.round(pctRef.current),
+      reason,
+    });
+  }, []);
+  /** Same reason playTrackRef exists — the `ended` listener is built once, and for good. */
+  const endPlayRef = useRef(endPlay);
+  endPlayRef.current = endPlay;
 
   /* --- audio ------------------------------------------------------ */
   const peaksRequested = useRef(false);
@@ -1182,16 +1852,48 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     const au = new Audio();
     au.addEventListener('timeupdate', () => {
       const p = au.duration ? (au.currentTime / au.duration) * 100 : 0;
+      // Seconds that actually sounded, summed from the clock's own forward
+      // steps. A seek moves currentTime by more than a tick's worth and a
+      // rewind moves it backwards, so both fall outside the window and add
+      // nothing — which is the point: this is time listened, not time elapsed
+      // and not track length.
+      const d = au.currentTime - lastCtRef.current;
+      if (d > 0 && d < 1.5) listenedRef.current += d;
+      lastCtRef.current = au.currentTime;
       if (Math.abs(p - pctRef.current) > 0.7) {
         pctRef.current = p;
         setPct(p);
       }
+      // Reported off the clock rather than off `ended`, so a listener who leaves
+      // at 60% still counts as having got halfway. Guarded by the highest mark
+      // already sent, which is also what stops a scrub backwards and forwards
+      // from sending 50 five times.
+      for (const m of DEMO_MILESTONES) {
+        if (p >= m && milestoneRef.current < m) {
+          milestoneRef.current = m;
+          track('demo_progress', { ...demoProps(curRef.current), milestone: m });
+        }
+      }
     });
     au.addEventListener('ended', () => {
-      if (curRef.current < FILES.length) playTrackRef.current(curRef.current + 1);
+      // The fourth quarter, from the only place it is certain. See DEMO_MILESTONES.
+      if (milestoneRef.current < 100) {
+        milestoneRef.current = 100;
+        track('demo_progress', { ...demoProps(curRef.current), milestone: 100 });
+      }
+      endPlayRef.current('finished');
+      if (curRef.current < FILES.length) playTrackRef.current(curRef.current + 1, 'auto');
       else setPlaying(false);
     });
     au.addEventListener('error', () => {
+      // The file itself: not up yet, a 404, or a body that will not decode.
+      // Worth knowing and invisible in a play count. A browser REFUSING to play
+      // a file that is perfectly fine is a different event — see the catch in
+      // playTrack — and the two must not share a name.
+      track('demo_unavailable', {
+        ...demoProps(curRef.current),
+        error: au.error ? au.error.code : 0,
+      });
       setMissing(true);
       setPlaying(false);
     });
@@ -1200,7 +1902,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   }, []);
 
   const playTrack = useCallback(
-    (n: number) => {
+    (n: number, from: PlaySource = 'hero') => {
       if (n < 1 || n > FILES.length) return;
       loadPeaks();
       const au = ensureAudio();
@@ -1208,22 +1910,68 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         if (au.paused) {
           au.play().catch(() => {});
           setPlaying(true);
+          track('demo_resumed', { ...demoProps(n), percent: Math.round(pctRef.current) });
         } else {
           au.pause();
           setPlaying(false);
+          // Where they stopped, not that they stopped. A pause at 8% and a pause
+          // at 90% are opposite verdicts on the same track.
+          track('demo_paused', { ...demoProps(n), percent: Math.round(pctRef.current) });
         }
         return;
       }
+      // The play being walked away from is closed before the new one opens, so
+      // a listener who tries five songs leaves five endings behind rather than
+      // four silences and one.
+      endPlay('switched');
       au.src = FILES[n - 1];
       curRef.current = n;
       pctRef.current = 0;
+      milestoneRef.current = 0;
+      endedRef.current = false;
+      lastCtRef.current = 0;
+      tracksPlayedRef.current.add(n);
       setCur(n);
       setMissing(false);
       setPct(0);
+      const askedAt = Date.now();
       au
         .play()
-        .then(() => setPlaying(true))
-        .catch(() => {
+        .then(() => {
+          setPlaying(true);
+          /*
+           * Reported here rather than on the press, so `demo_started` means
+           * sound actually began — and can carry how long that took.
+           *
+           * This is the latency that matters on this page. The demos are ~5 MB
+           * each and nothing is preloaded, so on a phone the gap between
+           * pressing a line of the poem and hearing anything is the moment the
+           * page is most likely to be abandoned, and it is completely invisible
+           * from the server side. A press that never becomes sound is not
+           * silence in the data either — see demo_blocked.
+           */
+          if (curRef.current !== n) return; // they moved on before it sounded
+          track('demo_started', { ...demoProps(n), from, ms_to_sound: Date.now() - askedAt });
+        })
+        .catch((err: unknown) => {
+          /*
+           * The browser refused to sound. Its own name for why rides along
+           * rather than being sorted into a guess here, because play() rejects
+           * for several unrelated reasons that look identical from the outside
+           * and the list is longer than it seems: NotAllowedError is an
+           * autoplay policy or the iOS mute switch, AbortError is playback
+           * interrupted (a backgrounded tab pausing media to save power),
+           * NotSupportedError is the file. Report the name and let the data say
+           * which one this site actually has.
+           *
+           * Worth its own event because the visitor sees the same "DEMO
+           * PENDING" either way, and a refusal filed as a missing demo looks
+           * exactly like a track that everybody skipped a second in.
+           */
+          track('demo_blocked', {
+            ...demoProps(n),
+            error: err instanceof DOMException ? err.name : 'unknown',
+          });
           // No demo uploaded yet — the bar still opens, labelled "DEMO PENDING".
           setMissing(true);
           setPlaying(false);
@@ -1250,6 +1998,40 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     au.currentTime = c * au.duration;
     pctRef.current = c * 100;
     setPct(c * 100);
+    // Quarters that were jumped over are marked as spent WITHOUT reporting them.
+    // Dragging to the end is not listening to the end, and if the marks were
+    // left for the clock to hit on the way past, one scrub would file 25, 50 and
+    // 75 in the same tick and every retention curve would read as a flat line.
+    // Only ever raised, so a scrub backwards cannot resurrect a mark already
+    // sent and send it twice.
+    for (const m of DEMO_MILESTONES) {
+      if (pctRef.current >= m && milestoneRef.current < m) milestoneRef.current = m;
+    }
+  }, []);
+
+  /** Where the pointer went down, so a gesture can be reported as a move and not a place. */
+  const seekFromRef = useRef(0);
+
+  /**
+   * A scrub, once, with its direction.
+   *
+   * The direction is the point. Forward is someone skipping — useful, mildly.
+   * Backward is someone rewinding to hear a passage again, which is the
+   * strongest "this bit" signal the page can produce: it is a listener saying
+   * play that part once more, in the one place they can say it. Reported only
+   * on pointer-up, so a drag across the bar is one intention and not a hundred.
+   */
+  const reportSeek = useCallback((control: 'bar' | 'poem_line') => {
+    if (!curRef.current) return;
+    const to = Math.round(pctRef.current);
+    const from = Math.round(seekFromRef.current);
+    track('demo_seeked', {
+      ...demoProps(curRef.current),
+      from_percent: from,
+      percent: to,
+      direction: to < from ? 'back' : 'forward',
+      control,
+    });
   }, []);
 
   const seekToClientX = useCallback(
@@ -1265,6 +2047,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const onSeekDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       draggingRef.current = true;
+      seekFromRef.current = pctRef.current;
       // Capture keeps the drag alive outside the 2px bar. It throws if the
       // pointer isn't active (synthetic events, some browsers) — not fatal.
       try {
@@ -1281,6 +2064,11 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     [seekToClientX],
   );
   const onSeekUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    // Once, where the finger lifted -- not once per pointermove, which on a drag
+    // across the bar is a hundred events describing one intention.
+    if (draggingRef.current) {
+      reportSeek('bar');
+    }
     draggingRef.current = false;
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
@@ -1369,11 +2157,12 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       // and handed the transport: it is the only control left in the panel once
       // the line itself means position.
       if ((e.target as HTMLElement).closest('.l-poem-num')) {
-        playTrackRef.current(curRef.current);
+        playTrackRef.current(curRef.current, 'poem');
         return;
       }
       const f = inkFraction(e.clientX);
       if (f === null) return;
+      seekFromRef.current = pctRef.current;
       scrubbingRef.current = true;
       poemInkRef.current?.setAttribute('data-scrubbing', '');
       try {
@@ -1399,6 +2188,11 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   );
 
   const onLineUp = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    // Only a real scrub. A press that landed on the number in the margin never
+    // started one -- it was the transport, and playTrack has already said so.
+    if (scrubbingRef.current) {
+      reportSeek('poem_line');
+    }
     scrubbingRef.current = false;
     poemInkRef.current?.removeAttribute('data-scrubbing');
     try {
@@ -1422,7 +2216,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       if (!au) return;
       if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
-        playTrackRef.current(curRef.current);
+        playTrackRef.current(curRef.current, 'keyboard');
         return;
       }
       if (!au.duration || !isFinite(au.duration)) return;
@@ -1437,6 +2231,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   );
 
   const stop = useCallback(() => {
+    // Closing the bar is the one unambiguous "I am done listening" on the page.
+    endPlay('closed');
     audioRef.current?.pause();
     curRef.current = 0;
     pctRef.current = 0;
@@ -1456,6 +2252,178 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     [],
   );
 
+  /**
+   * One row per visit, sent on the way out.
+   *
+   * Everything else here is a moment; this is the shape of the whole thing, and
+   * it answers the questions no single click can. `seconds_listened` is the one
+   * that matters most — it is minutes of attention, not presses of a button,
+   * and it is the only honest measure of whether any of this worked.
+   * `poem_seconds` is the same question asked of the second screen.
+   *
+   * Sent on the FIRST time the page is hidden, not on unload. beforeunload does
+   * not fire reliably on a phone — a tab swiped away, a call coming in, and the
+   * page is gone with nothing sent — and by then the browser will not open a
+   * request anyway. visibilitychange is the last moment that is actually
+   * guaranteed.
+   *
+   * The cost of that choice: someone who switches tabs and comes back has their
+   * visit measured up to the switch and no further. That is a real undercount
+   * and it is the right trade — the alternative is a second row for the same
+   * visit, and a summary you have to de-duplicate before you can read it is
+   * worse than one that is slightly short.
+   */
+  useEffect(() => {
+    /** A running total that is not disturbed by reading it. */
+    const accrued = (base: number, since: number | null) =>
+      base + (since === null ? 0 : Date.now() - since);
+
+    const open = () => {
+      everSeenRef.current = true;
+      if (visibleEnterRef.current === null) visibleEnterRef.current = Date.now();
+      // Reading stops when the tab does. If they were in the poem when they
+      // left, the clock starts again where it stopped, not from zero.
+      if (atTwoRef.current && poemEnterRef.current === null) poemEnterRef.current = Date.now();
+    };
+    const close = () => {
+      visibleMsRef.current = accrued(visibleMsRef.current, visibleEnterRef.current);
+      visibleEnterRef.current = null;
+      poemMsRef.current = accrued(poemMsRef.current, poemEnterRef.current);
+      poemEnterRef.current = null;
+    };
+
+    /**
+     * The visit so far. Sent whenever the page goes away, which may be more
+     * than once — and every send carries the running totals, never a delta.
+     *
+     * The first cut sent this exactly once, on the first hide, and that was
+     * wrong in a way only real traffic showed: a visit that was backgrounded
+     * one second in filed `seconds_on_page: 1, reached_tracklist: false` and
+     * then went on for minutes, reaching the tracklist, with the record already
+     * closed and lying. There is no event for "the visitor is finished", so
+     * pretending the first hide is one produces a number that is not merely
+     * approximate, it is wrong in the visits that went best.
+     *
+     * So: snapshot on every hide, cumulative, and the last one per session is
+     * the true one. `final` marks the send from pagehide, which is the real
+     * navigation away. Deduplicated on content, so a tab flicked back and forth
+     * with nothing happening in between does not file the same row five times.
+     */
+    const send = (final: boolean) => {
+      // A page opened into a background tab and closed without ever being
+      // looked at is not a visit — a link cmd-clicked out of a chat, three tabs
+      // opened and two closed unread. Left in, each files a row of zeroes and
+      // drags down every average on the dashboard. It is also the line PostHog
+      // itself draws: no $pageview until the tab is visible.
+      if (!everSeenRef.current) return;
+      const props = {
+        seconds_on_page: Math.round(accrued(visibleMsRef.current, visibleEnterRef.current) / 1000),
+        seconds_listened: Math.round(listenedRef.current),
+        tracks_played: tracksPlayedRef.current.size,
+        poem_seconds: Math.round(accrued(poemMsRef.current, poemEnterRef.current) / 1000),
+        reached_tracklist: reachedTwoRef.current,
+        opened_subscribe: openedSubRef.current,
+        subscribed: subscribedRef.current,
+      };
+      const sig = JSON.stringify(props);
+      if (sig === lastSummaryRef.current) return;
+      lastSummaryRef.current = sig;
+      track('visit_summary', { ...props, final });
+    };
+
+    if (document.visibilityState === 'visible') open();
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        open();
+        return;
+      }
+      close();
+      /*
+       * Deliberately no endPlay here. Audio keeps sounding in a hidden tab, and
+       * on a page whose whole offer is "hear the demos" the listener who
+       * switches away and leaves it playing is the best one there is — ending
+       * their play as `left` at 12% would file the most engaged visit on the
+       * site as the least.
+       */
+      send(false);
+    };
+
+    const onPageHide = () => {
+      close();
+      // The page is actually going now. Whatever was sounding stops with it.
+      endPlayRef.current('left');
+      send(true);
+    };
+
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
+    };
+  }, []);
+
+  /*
+   * The painter's credit, counted.
+   *
+   * Two events rather than one, because a click on this link cannot be read on
+   * its own. The credit is invisible at rest, so three clicks is either a very
+   * good rate or a very bad one depending on how many people ever found the man
+   * at all — `artist_found` is that denominator.
+   *
+   * Both fire at most once per visit. Finding him is a discovery, not a habit:
+   * someone who sweeps the cursor over him six times has not found him six
+   * times, and the second trip to his site is the same fact as the first.
+   *
+   * Neither can fire on a phone, and that is correct rather than a gap. Below
+   * 13/10 the whole layer is display:none — he is off the crop, so there is no
+   * credit on the page to find. Where it does show on touch, `hover:none`
+   * leaves the caption on: nothing is hidden, so nothing is discovered.
+   */
+  const artistFoundRef = useRef(false);
+  const artistClickedRef = useRef(false);
+  const artistTimerRef = useRef<number | null>(null);
+
+  /* A quarter-second on him, not a pass over him. The cursor crosses that
+     silhouette on the way to the play button often enough that an undelayed
+     pointerenter would be counting travel as interest. Anything that leaves
+     before the light has finished coming up (.3s) was never a look. */
+  const artistEnter = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType !== 'mouse' || artistFoundRef.current) return;
+    artistTimerRef.current = window.setTimeout(() => {
+      artistFoundRef.current = true;
+      track('artist_found', { via: 'hover' });
+    }, 250);
+  }, []);
+
+  const artistLeave = useCallback(() => {
+    if (artistTimerRef.current === null) return;
+    clearTimeout(artistTimerRef.current);
+    artistTimerRef.current = null;
+  }, []);
+
+  /* Tabbing to him lights him the same way, and there is no dwell to wait out:
+     landing on a control with the keyboard is already deliberate. A mouse press
+     navigates rather than parking focus here, so a keyboard is effectively the
+     only thing this ever hears from. */
+  const artistFocus = useCallback(() => {
+    if (artistFoundRef.current) return;
+    artistFoundRef.current = true;
+    track('artist_found', { via: 'keyboard' });
+  }, []);
+
+  /* target="_blank", so this page is still standing when the event goes out and
+     no beacon is racing an unload. */
+  const artistClick = useCallback(() => {
+    if (artistClickedRef.current) return;
+    artistClickedRef.current = true;
+    track('artist_clicked');
+  }, []);
+
+  /* A dwell timer outliving the component would fire into nothing. */
+  useEffect(() => artistLeave, [artistLeave]);
+
 
   /**
    * Playing from the poem leaves the poem open — someone may still be reading,
@@ -1467,7 +2435,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    * Audio outlives the view it was started from either way: navigating never
    * silences a track as a side effect.
    */
-  const playFromPoem = (n: number) => playTrack(n);
+  const playFromPoem = (n: number) => playTrack(n, 'poem');
 
   /* The hero's primary action. See PLAY_LABELS: it is "start the album" until
      something is loaded and the transport for that thing afterwards. */
@@ -1594,8 +2562,10 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           off the art, and it has no business surviving into the deep.
 
           It carries the same crop as .l-bg or the glow drifts off the thing that
-          is glowing — hence --bg-pos, which both read and the media queries set
-          in one place.
+          is glowing — hence --bg-px / --bg-py, which both read and the media
+          queries set in one place. The painter's credit reads them too, and
+          that is why they are bare fractions rather than an object-position
+          pair: it has to do arithmetic on them.
         */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="l-halo" src={HERO_IMAGE} alt="" aria-hidden="true" />
@@ -1610,6 +2580,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             } as React.CSSProperties
           }
         />
+
         {/*
           The water. All of it is driven by --s and is simply not there at 0,
           so screen one is untouched by any of it and nothing below costs a
@@ -1635,6 +2606,11 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           <i />
           <i />
         </div>
+        {/*
+          The light in the deep — the one thing on the stage that is drawn
+          rather than declared. See the note above DeepLight.
+        */}
+        <DeepLight active={atTwo} />
         {/*
           Last of the water layers and the only one made of objects rather than
           of light — which is why it is last, and why it costs nothing but
@@ -1723,7 +2699,17 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           `QI · 琦`, so the subject has been named and saying it twice in one
           bar is the repetition this corner exists to avoid.
         */}
-        <button type="button" className="l-nav-cta" onClick={() => setPanel('subscribe')}>
+        <button
+          type="button"
+          className="l-nav-cta"
+          onClick={() => {
+            // The top of the funnel this whole page exists to feed. `via` is
+            // already here because the nav will not stay the only way in.
+            track('subscribe_opened', { via: 'nav' });
+            openedSubRef.current = true;
+            setPanel('subscribe');
+          }}
+        >
           FOLLOW
         </button>
       </nav>
@@ -1735,6 +2721,127 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         with one scrolling child is the version of that with no position:fixed
         children inside a transformed ancestor waiting to go wrong on iOS.
       */}
+      {/*
+        The painter's credit, worn by the man he painted.
+
+        It is a sibling of the scroller rather than a layer of .l-stage, and
+        that is not a style choice: .l-scroll is fixed over the whole window at
+        z-index 10 to catch the wheel, so anything inside the stage is
+        unhoverable by construction, and nothing inside the stage can climb out
+        of it either -- it is its own stacking context at z-index 0. So the
+        credit lives out here at 12, above the scroller and below the nav. That
+        is safe only because the one thing in it that takes a pointer is the man
+        himself, and no control on this page is standing where he is.
+
+        Between the nav and the scroller, and that is tab order rather than
+        paint order -- an explicit z-index means it can sit anywhere in the
+        document and still be on top. After the scroller, where it started, a
+        keyboard reached the painter only after all ten lines of screen two;
+        before the nav it was the first thing on the page, ahead of the one ask.
+        Here it is what it is: part of screen one, after screen one's own ask
+        and before screen one's actions.
+
+        Two boxes, and the outer one is the rest of the trick: .l-art-plane
+        carries the painting's own parallax so this layer sinks with it, and
+        .l-art reproduces -- in pure CSS -- the rectangle object-fit:cover paints
+        .l-bg into. Once that box is the painting's rectangle, an SVG with the
+        painting's own viewBox puts every coordinate below in *painting pixels*,
+        and the outline sits on him at every window size with nothing measured
+        and no resize listener. See the CSS for the two lines of arithmetic.
+
+        The path is the hit area as well as the glow, so the pointer only
+        becomes a pointer over the man himself -- not over the rectangle around
+        him, three quarters of which is empty sky.
+      */}
+      <div className="l-art-plane">
+        <a
+          className="l-art"
+          href={ARTIST.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          /* Leaving for someone else's site should not cost this one its
+             place, and the label has to say where it goes: the visible
+             caption is two lines of display type and reads as a signature,
+             not as a destination. */
+          aria-label={`Painting by ${ARTIST.name} — opens the artist's site in a new tab`}
+          /* Same rule as the wordmark opposite: an element that is only
+             invisible is still a place a keyboard can land, and a focus ring
+             on nothing is worse than no control. Below 13/10 the crop leaves
+             him out of frame entirely and the CSS takes the layer out of the
+             document, which handles that case without help. */
+          tabIndex={atTwo ? -1 : 0}
+          aria-hidden={atTwo ? true : undefined}
+          onClick={artistClick}
+          onFocus={artistFocus}
+        >
+          <svg
+            className="l-art-svg"
+            viewBox={`0 0 ${ART_W} ${ART_H}`}
+            preserveAspectRatio="none"
+            aria-hidden
+          >
+            {/*
+              Everything the blurred stroke would put *inside* him is thrown
+              away. Half a soft stroke lying over the man is paint on the
+              painting: it flattens his hair into a white smear and the figure
+              starts to read as a sticker cut out and laid back down. Masked to
+              the outside it is a backlight instead, and the brushwork is
+              untouched. Order matters and SVG gets it right -- filter, then
+              mask -- so what is cut is the blurred result, not the stroke.
+            */}
+            <mask
+              id="l-art-outside"
+              maskUnits="userSpaceOnUse"
+              x="0"
+              y="0"
+              width={ART_W}
+              height={ART_H}
+            >
+              <rect width={ART_W} height={ART_H} fill="#fff" />
+              <path d={FIGURE_PATH} fill="#000" />
+            </mask>
+            {/*
+              One mask on the group, and one opacity animated on the group --
+              not two of each, one per path. A mask forces its subtree into its
+              own render surface, so two masked paths are two surfaces to
+              rasterise where one will do, and two independently animated
+              properties where one will do. The paths carry their relative
+              strengths as static opacities and the group carries the fade, so
+              turning the light up and down is a single alpha on a single
+              surface. Same reason the star field on screen two has no mask at
+              all: on this page the cost of an effect is how many surfaces it
+              makes, not how many shapes are in it.
+
+              The second, tighter stroke is there because half of him is
+              standing on sand. A wide soft light reads beautifully against the
+              sky and does nothing at all against a ground already nearly as
+              bright as the light, so the legs and the feet would simply not
+              answer. A narrow rim carries enough density per pixel to show on
+              either. The two are one falloff, not two effects -- which is the
+              other reason they share a group.
+            */}
+            <g className="l-art-light" mask="url(#l-art-outside)">
+              <path className="l-art-glow" d={FIGURE_PATH} />
+              <path className="l-art-rim" d={FIGURE_PATH} />
+            </g>
+            {/* The dwell listeners go on the hit path rather than on the anchor:
+                the anchor is pointer-events:none and this shape is the only
+                thing in the layer a pointer can be over. Entering *him* is the
+                event, which is the same boundary the CSS :hover uses. */}
+            <path
+              className="l-art-hit"
+              d={FIGURE_PATH}
+              onPointerEnter={artistEnter}
+              onPointerLeave={artistLeave}
+            />
+          </svg>
+          <span className="l-art-cap">
+            <span className="l-art-cap-eyebrow">PAINTING BY</span>
+            <span className="l-art-cap-name">{ARTIST.name}</span>
+          </span>
+        </a>
+      </div>
+
       <div className="l-scroll" ref={scrollRef}>
         <section className="l-screen l-one">
           <div className="l-hero">
@@ -1831,7 +2938,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               {/* Was setPanel('poem') and stayed that way through the rebuild —
                   the panel it opened no longer exists, so it opened nothing.
                   It is the same destination it always was, one screen down. */}
-              <button type="button" className="l-act-second" onClick={() => goTo(1)}>
+              <button type="button" className="l-act-second" onClick={() => goTo(1, 'button')}>
                 <svg width="12" height="10" viewBox="0 0 12 10" aria-hidden>
                   <path d="M0 .5h12M0 5h12M0 9.5h8" stroke="currentColor" strokeWidth="1" fill="none" />
                 </svg>
@@ -1879,7 +2986,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             type="button"
             className="l-down"
             aria-label="Down to the tracklist"
-            onClick={() => goTo(1)}
+            onClick={() => goTo(1, 'chevron')}
           >
             {/* Two marks and nothing else — no rail, no ring, no container. See
                 the CSS for why the pair is drawn identical and separated only
@@ -2451,7 +3558,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             type="button"
             className="l-panel-close"
             aria-label="Close"
-            onClick={() => setPanel(null)}
+            onClick={closePanel}
           >
             ✕
           </button>
@@ -2462,20 +3569,34 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               <JellyMark className="l-sub-wink" />
             </h2>
             {subState === 'done' ? (
-              <div className="l-sub-thanks">You\u2019re on the list.</div>
+              <div className="l-sub-thanks">Got it. I’ll write soon.</div>
             ) : (
               <form
                 className="l-sub-form"
                 onSubmit={async (e) => {
                   e.preventDefault();
+                  // Reported on the press, before the address is judged, so the
+                  // funnel step means "answered the form" -- and so a wave of
+                  // submits with no completes reads as our validation being
+                  // wrong rather than as nobody being interested.
+                  //
+                  // The address itself is never sent to PostHog. MailerLite is
+                  // the only place a subscriber's email exists, which keeps one
+                  // list to honour an unsubscribe against instead of two.
+                  track('subscribe_submitted');
                   const email = emailRef.current?.value.trim() ?? '';
                   if (!EMAIL_RE.test(email)) {
+                    track('subscribe_failed', { reason: 'email_format' });
                     setSubErr('email');
                     setSubState('error');
                     emailRef.current?.focus();
                     return;
                   }
                   setSubState('sending');
+                  // Round-trip to our own route, which is mostly MailerLite's
+                  // round-trip. A third party that has got slow is otherwise
+                  // only visible as people giving up on a spinner.
+                  const askedAt = Date.now();
                   try {
                     const res = await fetch('/api/subscribe', {
                       method: 'POST',
@@ -2485,12 +3606,23 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                     if (!res.ok) {
                       // 400 is the address itself; anything else (503 no key, 502
                       // upstream, 500) is ours to own -- don't blame the visitor.
+                      // The status rides along: a 503 is a missing key on Vercel
+                      // and a 502 is MailerLite, and both look identical to the
+                      // visitor while needing completely different phone calls.
+                      track('subscribe_failed', {
+                        reason: res.status === 400 ? 'email_rejected' : 'server',
+                        status: res.status,
+                        ms: Date.now() - askedAt,
+                      });
                       setSubErr(res.status === 400 ? 'email' : 'server');
                       setSubState('error');
                       return;
                     }
+                    track('subscribe_completed', { ms: Date.now() - askedAt });
+                    subscribedRef.current = true;
                     setSubState('done');
                   } catch {
+                    track('subscribe_failed', { reason: 'network', ms: Date.now() - askedAt });
                     setSubErr('server'); // never reached /api/subscribe at all
                     setSubState('error');
                   }
@@ -2499,7 +3631,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                 {/* The ask, the field and the verb are one sentence on one line --
                     the copy is the label, so there is nothing to read twice. It
                     wraps at the two gaps, never inside a clause. */}
-                <span className="l-sub-say">receive a heartbeat at</span>
+                <span className="l-sub-say">send backstage demos, photos and footage to</span>
                 <input
                   ref={emailRef}
                   type="email"
@@ -2511,7 +3643,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                     if (subState === 'error') setSubState('idle');
                   }}
                 />
-                <span className="l-sub-say">when the album is out,</span>
+                <span className="l-sub-say">while I make it,</span>
                 {/* The full stop is the sentence's, not the button's -- it sits
                     outside the rule so the underlined word stays the word, and it
                     goes away while the ellipsis is spinning. */}
@@ -2520,7 +3652,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                     <span className="l-sub-go-ink">{'\u2026'}</span>
                   ) : (
                     <>
-                      <span className="l-sub-go-ink">yes</span>.
+                      <span className="l-sub-go-ink">come along</span>.
                     </>
                   )}
                 </button>
@@ -2552,6 +3684,15 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
 const LANDING_CSS = `
 html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .landing{position:fixed;inset:0;overflow:hidden;color:#fff;
+  /* The safety net under every tile. When the rasteriser misses a frame
+     mid-scroll, what shows through is whatever is behind the stage — and
+     behind the stage was the body's pale sky, which at depth reads as half
+     the page flashing white. This backstop follows the descent, so a
+     missed tile is sky-coloured at the shore and abyss-coloured in the
+     deep: invisible either way. (Plain dark first, for engines without
+     color-mix.) */
+  background:#123043;
+  background:color-mix(in oklab, #8cb9d4 calc(100% - var(--s,0) * 100%), #08131f);
   font-family:'Cormorant Garamond',serif;
   /* Fallbacks. The live values come from LITS via an inline style on this
      element, so /?tune=1 can swap them without a rebuild. Everything that means
@@ -2569,7 +3710,12 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
      one of those is already fluid, so this scales the whole curve rather than
      any one breakpoint. The bottom tracklist is deliberately NOT on it: its
      sizing is a measured fit for ten titles and scaling it would break that. */
-  --type-scale:1.15}
+  --type-scale:1.15;
+  /* Where the painting's overflow is taken off, as fractions rather than as an
+     object-position pair. Two things read them now — .l-bg's crop and the
+     credit layer, which has to reproduce that crop in calc() to sit on the man
+     inside it — and one number they could disagree about is one too many. */
+  --bg-px:.5;--bg-py:.45}
 .landing ::selection{background:rgba(230,207,130,.32)}
 /* Normalises the UA button font. Note it is (0,1,1) and beats any bare .l-*
    class, so every button rule below that sets a font has to be written as
@@ -2578,7 +3724,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 
 /* ---- background ---- */
 .l-bg,.l-halo{position:absolute;inset:0;width:100%;height:100%;
-  object-fit:cover;object-position:var(--bg-pos,center 45%)}
+  object-fit:cover;object-position:calc(var(--bg-px) * 100%) calc(var(--bg-py) * 100%)}
 
 /* The tone curve, such as it is. contrast() pivots on mid-grey, so a value under
    1 lifts the blacks and rolls the whites off in one move — which is the whole
@@ -2645,7 +3791,13 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 /* The floor. Under the grain and under the vignette, because it is part of the
    picture rather than part of the lens or the film. Opacity only — a gradient
    this size cannot be re-rastered per frame, and it does not have to be. */
-.l-floor{position:absolute;inset:0;z-index:0;pointer-events:none;
+/* Above the drawn light (.l-lumen, z-index 3) and the stars, because it is the
+   water getting deeper and everything in the stage is under more of it down
+   here — a light layer that stayed at full strength on the sea floor would be
+   the crossing's light shining out of the abyss. Still below .l-grain, which is
+   a sibling of .l-stage and therefore over the whole thing: the film is the
+   last surface, always. */
+.l-floor{position:absolute;inset:0;z-index:5;pointer-events:none;
   opacity:var(--s3,0);
   background:
     radial-gradient(120% 74% at 50% 108%,rgba(2,10,22,.8),rgba(2,10,22,0) 62%),
@@ -2735,10 +3887,166 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   /* 12%, not 22%: at 22 the right edge landed on the figure's head and clipped a
      corner of it, which reads as a smudge rather than a person. Better to leave
      him out of frame entirely than to show a piece of him. */
-  .landing{--bg-pos:12% 45%}
+  .landing{--bg-px:.12}
 }
 @media (max-aspect-ratio: 1/1){
-  .landing{--bg-pos:17% 42%}
+  .landing{--bg-px:.17;--bg-py:.42}
+}
+
+/* ---- the painter's credit ---- */
+
+/* Two boxes. This one exists only to carry .l-bg's parallax, so the outline
+   sinks with the painting rather than sliding across it — same transform, same
+   origin, and a change to one is a change to both.
+
+   It is also the container the box below measures itself against, which is why
+   container-type is here and not there: cqw/cqh have to be the *untransformed*
+   stage, so that the scale applies to painting and outline as one thing. */
+.l-art-plane{position:fixed;inset:0;z-index:12;pointer-events:none;overflow:hidden;
+  container-type:size;
+  transform:translate3d(0,calc(var(--s) * -3.4vh),0) scale(calc(1 + var(--s) * .07));
+  transform-origin:50% 42%;
+  /* Gone well before the water is: this is a credit on a painting, and one
+     screen down there is no painting.
+
+     The 3.4 is not a taste number -- it puts the last of the glow at s=.294,
+     just under the .3 where atTwo flips, so the rule below takes the layer out
+     of the document on the frame after it stops being visible and never before.
+     An invisible link is still a link: opacity 0 keeps its hit area, and left
+     alone this one would sit over the poem catching clicks from a reader who
+     can see nothing there to click. Change one of the two numbers and the other
+     has to move with it. */
+  opacity:clamp(0,calc(1 - var(--s) * 3.4),1)}
+/* visibility rather than pointer-events, because it also takes the anchor out
+   of the tab order and the accessibility tree -- the three things that have to
+   go together and that opacity does none of. */
+.landing[data-two] .l-art-plane{visibility:hidden}
+
+/* And this one is the rectangle object-fit:cover paints the painting into,
+   written out in CSS.
+
+   cover scales until both axes are covered, i.e. by the larger of the two
+   ratios — so the drawn width is whichever is bigger, the stage's own width or
+   its height times the painting's aspect. Whatever that overshoots by is the
+   overflow, and object-position decides how much of it comes off which side:
+   at .5 the two overhangs are equal, at .12 nearly all of it is taken off the
+   right. Same two numbers .l-bg is given, which is the point of storing them
+   as fractions.
+
+   Once this box is the painting's rectangle, a viewBox of the painting's own
+   dimensions makes every coordinate inside it a *painting pixel* — so the
+   traced outline lands on the man with nothing measured, no resize listener,
+   and no second copy of the crop rules to keep in sync. */
+.l-art{position:absolute;display:block;pointer-events:none;
+  --aw:max(100cqw, 100cqh * 1.77683);
+  --ah:max(100cqh, 100cqw / 1.77683);
+  width:var(--aw);height:var(--ah);
+  left:calc((100cqw - var(--aw)) * var(--bg-px));
+  top:calc((100cqh - var(--ah)) * var(--bg-py));
+  color:#fff;text-decoration:none;-webkit-tap-highlight-color:transparent}
+.l-art-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+
+/* The hit area is the man, not the rectangle around him — three quarters of
+   which is empty sky, and a cursor that turns into a pointer over empty sky is
+   a link to nothing. pointer-events:all is what lets a child take events back
+   from a pointer-events:none ancestor; it has to be on the path rather than on
+   the anchor, or the anchor's whole box becomes the target again.
+
+   The stroke is invisible and exists only to widen him by a few painting pixels,
+   because a toe rendered 4px wide is not something anyone can hit. */
+.l-art-hit{fill:transparent;stroke:transparent;stroke-width:16;
+  pointer-events:all;cursor:pointer}
+
+/* Light finding him.
+
+   A stroke blurred wider than itself is a band that falls off both ways from
+   the edge, which is what a rim light is. A *filled* shape blurred is a cloud
+   over his middle, which is not — the density of a blurred solid is highest
+   where the solid was, so it would wash the painting out exactly where the
+   painting is him.
+
+   Both numbers are painting pixels, not CSS pixels: they are inside a viewBox,
+   so they scale with him and no breakpoint ever has to know about them. */
+.l-art-glow{fill:none;stroke:#fff3dd;stroke-width:13;stroke-linejoin:round;
+  filter:blur(11px);opacity:.78}
+.l-art-rim{fill:none;stroke:#fff6e8;stroke-width:5;stroke-linejoin:round;
+  filter:blur(3px);opacity:.62}
+/* The only thing that moves. The two strokes above never change -- their
+   opacities are the mix between them and nothing else -- so the whole effect
+   is one alpha on one already-rasterised surface, both on hover and during the
+   breath. At rest it is 0, and a fully transparent subtree is not painted at
+   all, so the two blurs cost nothing for the 99% of the time nobody is looking
+   at him. */
+.l-art-light{opacity:0;transition:opacity .55s ease}
+.l-art:hover .l-art-light,
+.l-art:focus-visible .l-art-light{opacity:1;transition-duration:.3s}
+
+/* The caption is type and must not scale with the painting, so it is placed in
+   painting coordinates and sized in px. x=1148 puts its right edge just short
+   of his hair and y=196 sets it at his brow — the empty sky in front of him is
+   the only clear ground next to him, and it is the side he is facing. */
+.l-art-cap{position:absolute;right:calc(100% - 1148 / 1672 * 100%);
+  top:calc(196 / 941 * 100%);text-align:right;white-space:nowrap;
+  font-family:'Jost',sans-serif;font-weight:400;text-transform:uppercase;
+  opacity:0;transform:translateX(9px);
+  transition:opacity .45s ease,transform .45s cubic-bezier(.2,.85,.25,1)}
+.l-art:hover .l-art-cap,
+.l-art:focus-visible .l-art-cap{opacity:1;transform:none;transition-duration:.3s}
+/* The same tight dark halo every other small letterspaced cap on this painting
+   gets. Without it, 10px of white type over the pale sky is not there at all. */
+.l-art-cap-eyebrow{display:block;font-size:9.5px;letter-spacing:.34em;
+  opacity:.66;margin-bottom:5px;
+  text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4)}
+/* No outbound arrow. It was drawn rather than typed, for the reason the play
+   and pause marks are (U+2197 carries emoji presentation by default on iOS and
+   would arrive as a colour cartoon that ignores currentColor) -- but the reason
+   it is gone is not that one. It is Qi's call and the right one: a mark that
+   announces a link is UI, and this line is a signature on a painting. The
+   cursor and the browser's own status bar already say where it goes, to anyone
+   who is close enough to be about to click. */
+.l-art-cap-name{display:block;font-size:13px;letter-spacing:.2em;
+  text-shadow:0 1px 2px rgba(10,42,70,.55),0 0 12px rgba(10,42,70,.4)}
+/* A ring around a 700px-tall silhouette is not a focus ring, so the keyboard
+   gets the same answer the mouse does -- the glow and the caption above -- and
+   the outline is suppressed rather than drawn around the whole rectangle. */
+.l-art:focus{outline:none}
+.l-art:focus-visible{outline:none}
+
+/* One breath, five seconds after arriving, and never again.
+
+   Nothing on this page says the man is a link, and nothing should: a badge over
+   an oil painting is the thing this page has refused four times over. So it
+   says it once, the way the falling stars on screen two do -- an effect you
+   might miss is the one worth having seen -- and then it is only ever found by
+   moving the cursor onto him. Delete the animation line to take it back out. */
+@media (prefers-reduced-motion: no-preference){
+  /* backwards, never both: with both, the animation owns opacity forever after
+     it ends and the hover transition is silently outranked -- it would hold the
+     glow at the 100% keyframe, which is 0, and the man would stop lighting up.
+     Same trap as the down-mark's entrance. */
+  .l-art-light{animation:l-art-breath 4.4s 5s ease-in-out 1 backwards}
+  .l-art:hover .l-art-light,
+  .l-art:focus-visible .l-art-light{animation:none}
+}
+@keyframes l-art-breath{
+  0%,100%{opacity:0}
+  46%{opacity:.5}
+}
+
+/* Below 13/10 the crop takes him off the right-hand edge entirely (see the
+   note on --bg-px), so there is no man to credit and the layer leaves the
+   document -- which also takes it out of the tab order and the a11y tree,
+   the two things opacity alone would not. */
+@media (max-aspect-ratio: 13/10){
+  .l-art-plane{display:none}
+}
+/* No hover to find it with, so the caption is simply on. Same answer the poem's
+   track numbers give touch, and for the same reason: an affordance that can
+   only be revealed by reaching is not there at all on a screen you cannot
+   reach on. */
+@media (hover: none){
+  .l-art-cap{opacity:.6;transform:none}
+  .l-art-light{animation:none}
 }
 
 /* ---- nav ---- */
@@ -3324,7 +4632,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 /* Wide enough that the sentence the form lives in holds one line on a laptop;
    under that it wraps at the flex gaps, which sit between clauses. */
 .l-sub{display:flex;flex-direction:column;align-items:center;text-align:center;
-  gap:20px;margin:auto;max-width:min(780px,92vw)}
+  gap:20px;margin:auto;max-width:min(800px,92vw)}
 .l-sub-title{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:500;
   font-size:clamp(28px,4vw,46px);margin:0}
 /* Sized off the title's em so it stays a mark in the line, not an image beside
@@ -3332,13 +4640,24 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    lives in components/JellyMark.tsx, whose CSS is appended below. */
 .l-sub-wink{width:.57em;height:.66em;vertical-align:-.02em;margin-left:.16em}
 .l-sub-form{display:flex;align-items:baseline;justify-content:center;
-  flex-wrap:wrap;gap:4px 10px;margin-top:4px;font-size:clamp(15px,1.7vw,19px)}
+  flex-wrap:wrap;gap:4px 8px;margin-top:4px;font-size:clamp(15px,1.7vw,19px)}
+/* Each say is one sense unit and never breaks inside itself, so the line can
+   only ever turn between clauses -- the rule the poem lines follow too, see
+   POEM_LINES. Which means a clause has to stay short enough to survive the
+   narrowest phone on its own: nowrap cannot wrap, it can only overflow. */
 .l-sub-say{opacity:.85;white-space:nowrap}
 .l-sub-input{width:min(240px,58vw);padding:0 4px 5px;border:none;
   border-bottom:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;
   font-size:inherit;font-family:inherit;outline:none;text-align:center;
   transition:border-color .3s}
 .l-sub-input:focus{border-bottom-color:rgba(255,255,255,.95)}
+/* Narrow enough that the sentence has to break somewhere. Left to itself the
+   field shares a line with the clause after it and the last word is orphaned;
+   given its own line, the breaks land between clauses, the way they do in the
+   poem. */
+@media (max-width:600px){
+  .l-sub-input{flex:0 0 100%;width:auto}
+}
 .l-sub-input::placeholder{color:rgba(255,255,255,.4)}
 /* .landing-qualified for the same reason .landing button{font:inherit} is: a
    bare .l-sub-go would lose to it on specificity however late it comes. */
@@ -3542,7 +4861,12 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    shaft that sways back does not. That is the whole trick: the effect is the
    absence of a period anyone can find. */
 .l-rays{position:absolute;inset:-10% 0 0;z-index:3;pointer-events:none;overflow:hidden;
-  opacity:calc(var(--s) * .95);
+  /* Hands off to the drawn light (.l-lumen) over the same window that layer
+     arrives in: these shafts are the light of the CROSSING, and once the
+     shader's beams are alive down here, five fixed columns standing among
+     them would read as scenery. Four tenths remain — a memory of the
+     surface, not a second sun. */
+  opacity:calc(var(--s) * .95 * (1 - .6 * clamp(0,calc(var(--s) * 1.7 - .6),1)));
   /* Gone well before the poem: this is light in the water above the reader, not
      a wash over the verse. */
   -webkit-mask-image:linear-gradient(180deg,#000 0 46%,transparent 84%);
@@ -3598,6 +4922,25 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-drift i:nth-child(2){--y:44%;--w:56vw;--h:52vh;--a:.09;--dur:137s;--delay:-64s;
   --from:62vw;--to:6vw}
 
+/* ---- the light in the deep ----
+
+   A canvas, not gradients, and the compositing is the whole contract: the
+   shader writes premultiplied light with alpha = its brightest channel, so
+   ordinary source-over equals screen-blending on that channel and the layer
+   can only ever add light — never a wash, never a tint of the dark under
+   it. Deliberately NOT mix-blend-mode:screen: a blend mode isolates the
+   whole stage into a render surface, and building that surface mid-scroll
+   flashed white during the descent. The canvas is its own compositor
+   surface, its bitmap is a third of the CSS pixels, and nothing else on
+   the stage is invalidated by its frames.
+
+   Gated on --s in the same window as the stars: this is what the water does
+   once the surface light has gone, not part of the crossing. --lumen is the
+   one knob, for tuning. */
+.l-lumen{position:absolute;inset:0;z-index:3;width:100%;height:100%;
+  pointer-events:none;
+  opacity:calc(clamp(0,calc(var(--s) * 1.7 - .6),1) * var(--lumen,1))}
+
 /* ---- the sky in the deep ----
 
    The one place on this page where the rule above .l-rays is allowed to be
@@ -3637,6 +4980,17 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   0%,100%{opacity:var(--lo)}
   50%{opacity:var(--hi)}
 }
+/* The deep field sleeps as CSS, not merely as alpha. An opacity animation
+   whose computed value is zero still runs, and still holds its layer — 220
+   of them did, invisibly, and the descent's snap paid for the lot the
+   moment the star container's own opacity left zero mid-scroll. Until
+   DeepLight raises data-bloom on the container (which it only does down on
+   screen two, with the descent settled), these do not animate and are not
+   painted: they cost exactly nothing. */
+.l-star[data-deep]{animation:none;opacity:0}
+.l-stars[data-bloom] .l-star[data-deep]{
+  animation:l-twinkle var(--dur) ease-in-out var(--delay) infinite;
+  opacity:var(--lo)}
 
 /* A fall. The wrap holds position and angle, the child holds the streak and the
    motion, because one element cannot be both rotated by a static transform and
