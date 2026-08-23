@@ -247,16 +247,20 @@ needs no word under it.
 
 Two things it needs that are easy to lose:
 
-- **Size, ground, and motion — it needed all three.** It sits at the bottom of the
-  frame, which on this painting is sea and foam: the lightest, busiest part of it and
-  the worst possible ground for a white hairline. A 22px chevron at 1px was the
-  page's own language and was invisible in it, so it is 30px at 1.25 (still a
-  hairline, an order of magnitude easier to find); a soft dark bloom sits behind the
-  whole mark, wide and formless enough never to read as a button, which is what lets
-  the white stay white instead of being pushed brighter and brighter; and the mark
-  bobs, because the travelling light is 1px and easy to miss while movement is what
-  the eye finds without being asked. The rail also carries a dark `box-shadow` of its
-  own — a 1px element has no text to seat a text-shadow under.
+- **Size and motion.** It sits at the bottom of the frame, which on this painting is
+  sea and foam: the lightest, busiest part of it and the worst possible ground for a
+  white hairline. A 22px chevron at 1px was the page's own language and was invisible
+  in it, so it is 30px at 1.25 — still a hairline, an order of magnitude easier to
+  find. And the mark bobs, because the travelling light is 1px and easy to miss while
+  movement is what the eye finds without being asked.
+- **The halo has to hug the glyph.** A third leg was tried — a wide soft dark bloom
+  behind the whole mark — and cut: at the radius that actually helped it was a grey
+  patch on an oil painting, and nothing else on the page has one. Every white mark
+  here carries a *tight* dark halo instead (the hero's labels with `text-shadow`,
+  this with a second `drop-shadow` on the chevron, the rail with a `box-shadow`,
+  since a 1px element has no text to seat a text-shadow under). Spread it and it
+  stops being light and starts being a shadow — the same lesson the poem's halo
+  learned in the panel.
 - **The chevron catches the light.** The drop reaches the foot of the rail at ~82% of
   its cycle and the chevron blooms as it lands, on the same 3.6s period, so the two
   are one gesture rather than two loops sharing a corner. The flash is on `filter`

@@ -2800,9 +2800,12 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    - SIZE. A 22px chevron at 1px is the page's own language and was invisible in
      it. 30px at 1.25 is still a hairline and is an order of magnitude easier to
      land on.
-   - GROUND. A soft dark bloom behind the whole thing (the ::before), wide and
-     formless enough never to read as a button, which is what lets the white
-     stay white instead of being pushed brighter and brighter.
+   - GROUND. Every white mark on this painting carries a tight dark halo — the
+     hero's labels do it with text-shadow, this does it with a second
+     drop-shadow on the chevron. A wide soft bloom behind the whole mark was
+     tried and cut: at the radius that actually helped, it was a grey patch on
+     an oil painting, and nothing else on the page has one. The halo has to hug
+     the glyph or it stops being light and starts being a shadow.
    - MOTION. The travelling light is 1px and easy to miss; the bob is the whole
      mark moving, and movement is what the eye finds without being asked. It
      starts only once the entrance has landed, so the arrow arrives, settles,
@@ -2831,12 +2834,6 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   0%,100%{transform:translate(-50%,0)}
   50%{transform:translate(-50%,6px)}
 }
-/* The ground the white sits on. Wide, formless, and centred on the mark rather
-   than on the button box, so it never acquires an edge that could read as a
-   control. */
-.landing .l-down::before{content:'';position:absolute;left:50%;top:50%;
-  width:150px;height:150px;transform:translate(-50%,-50%);pointer-events:none;
-  background:radial-gradient(closest-side,rgba(6,30,52,.34),rgba(6,30,52,.14) 52%,transparent 76%)}
 /* Contrast, not brightness. The arrow sits at the bottom of the frame, which on
    this painting is sea and foam — the lightest, busiest part of it. A hairline
    at the tracking the rest of the page uses simply disappears there, so the rail
