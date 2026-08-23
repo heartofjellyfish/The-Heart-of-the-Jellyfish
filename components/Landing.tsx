@@ -19,16 +19,6 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-/* TEMPORARY — five candidate down-marks behind /?down=1, for Qi to choose from.
-   The whole import and everything it touches goes once one wins. */
-import {
-  DOWN_CSS,
-  DOWN_TONES,
-  DOWN_VARIANTS,
-  DownMark,
-  type DownTone,
-  type DownVariant,
-} from './DownMarks';
 
 /**
  * The album *is* the poem — ten titles that read straight through. Punctuation
@@ -386,6 +376,23 @@ function outLine(releaseDate: string) {
   return 'NEW ALBUM OUT ' + (MONTHS[m - 1] ?? '') + ' ' + d;
 }
 
+/** The down-mark's single glyph, drawn twice. Round caps and joins because at
+ *  3px on a painting a mitred corner reads as a defect. */
+function Chevron() {
+  return (
+    <svg className="l-down-chev" width="46" height="20" viewBox="0 0 30 13" aria-hidden>
+      <path
+        d="M1.6 1.6L15 11.4 28.4 1.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function Countdown({ secs, releaseDate }: { secs: number | null; releaseDate: string }) {
   if (secs !== null && secs <= 0) {
     return (
@@ -600,9 +607,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [peaks, setPeaks] = useState<Record<string, number[]> | null>(null);
   /** `/?tune=1` (or `?type=1`) opens the tuner. Dev affordance; renders for nobody else. */
   const [tuner, setTuner] = useState(false);
-  /** `/?down=1` opens the down-mark bake-off. TEMPORARY; see DownMarks.tsx. */
-  const [downV, setDownV] = useState<DownVariant | null>(null);
-  const [downTone, setDownTone] = useState<DownTone>('white');
   const [font, setFont] = useState<PoemFontKey>(POEM_FONT);
   const [fontScale, setFontScale] = useState(1);
   const [vig, setVig] = useState(VIGNETTE);
@@ -659,8 +663,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     setTuner(q.get('tune') === '1' || q.get('type') === '1');
-    const d = q.get('down');
-    if (d) setDownV((DOWN_VARIANTS.find((v) => v.key === d)?.key ?? '0') as DownVariant);
   }, []);
 
   useEffect(() => {
@@ -1104,7 +1106,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       }
     >
       <style dangerouslySetInnerHTML={{ __html: LANDING_CSS }} />
-      {downV && <style dangerouslySetInnerHTML={{ __html: DOWN_CSS }} />}
 
       {/*
         The two filters that do the relief. Same construction, one difference:
@@ -1377,30 +1378,18 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           <button
             type="button"
             className="l-down"
-            data-v={downV ?? undefined}
-            data-tone={downV ? downTone : undefined}
             aria-label="Down to the tracklist"
             onClick={() => goTo(1)}
           >
-            {downV ? (
-              <DownMark v={downV} />
-            ) : (
-              <>
-                <span className="l-down-rail" aria-hidden>
-                  <span className="l-down-drop" />
-                </span>
-                <svg className="l-down-chev" width="30" height="12" viewBox="0 0 30 12" aria-hidden>
-                  <path
-                    d="M1 1l14 10 14-10"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.25"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </>
-            )}
+            {/* Two marks and nothing else — no rail, no ring, no container. See
+                the CSS for why the pair is drawn identical and separated only
+                by when it is bright. */}
+            <span className="l-down-a" aria-hidden>
+              <Chevron />
+            </span>
+            <span className="l-down-b" aria-hidden>
+              <Chevron />
+            </span>
           </button>
         </section>
 
@@ -1609,35 +1598,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         </div>
       )}
 
-      {/* ---- the down-mark bake-off, /?down=1. TEMPORARY ---- */}
-      {downV && (
-        <div className="dm-pick">
-          <div className="dm-pick-head">TONE</div>
-          <div className="dm-pick-row">
-            {DOWN_TONES.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                className={t.key === downTone ? 'dm-on' : undefined}
-                onClick={() => setDownTone(t.key)}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <div className="dm-pick-head">DOWN MARK</div>
-          {DOWN_VARIANTS.map((v) => (
-            <button
-              key={v.key}
-              type="button"
-              className={v.key === downV ? 'dm-on' : undefined}
-              onClick={() => setDownV(v.key)}
-            >
-              {v.label}
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* ---- tuner, /?tune=1 ---- */}
       {tuner && (
@@ -2836,50 +2796,45 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .landing[data-two] .l-mark:hover{opacity:1}
 
 
-/* ---- the arrow ----
+/* ---- the down-mark ----
 
-   What the ten titles used to be. Naming every track at the bottom of the first
-   screen meant the album was over before anyone had scrolled; the arrow says
-   there is more without saying what, which is the only reason the poem can
+   What the ten titles used to be. Naming every track at the bottom of screen
+   one meant the album was over before anyone had scrolled — so it is a mark
+   now, which says there is more without saying what, and the poem gets to
    arrive whole.
 
-   The rail is not decoration. A light runs down it every few seconds — the one
-   piece of motion on this page that points, and the reason the arrow does not
-   need the word SCROLL under it.
+   Chosen out of eight over three rounds, and the two rejected directions are
+   the useful record:
 
-   Three things make it findable, and it needed all three. It sits at the bottom
-   of the frame, which on this painting is sea and foam — the lightest, busiest
-   part of it, and the worst possible ground for white hairlines:
+   - HAIRLINES. Five of them, on the argument that this page is 1px rules
+     everywhere. Invisible, twice. A rule that is structure and a rule you are
+     meant to notice are not the same job, and the second one cannot hold the
+     tight dark halo that keeps every other white mark on this painting legible
+     — 1px is simply too little glyph to seat a shadow under.
+   - INK. Five in the painting's own dark, on the reasoning that white cannot
+     win on a light ground. True as physics, wrong as design: a dark mark is
+     then the darkest thing in the lower half of a painting whose lower half is
+     entirely light, so it stops being an invitation and becomes an object.
 
-   - SIZE. A 22px chevron at 1px is the page's own language and was invisible in
-     it. 30px at 1.25 is still a hairline and is an order of magnitude easier to
-     land on.
-   - GROUND. Every white mark on this painting carries a tight dark halo — the
-     hero's labels do it with text-shadow, this does it with a second
-     drop-shadow on the chevron. A wide soft bloom behind the whole mark was
-     tried and cut: at the radius that actually helped, it was a grey patch on
-     an oil painting, and nothing else on the page has one. The halo has to hug
-     the glyph or it stops being light and starts being a shadow.
-   - MOTION. The travelling light is 1px and easy to miss; the bob is the whole
-     mark moving, and movement is what the eye finds without being asked. It
-     starts only once the entrance has landed, so the arrow arrives, settles,
-     and then begins to breathe.
-
-   fill-mode backwards, not both: the entrance holds its first frame through the
-   delay and then lets go, so the scroll fade below is free to take the opacity
-   back. With 'both' the animation would own it forever and the arrow would ride
-   all the way down to the poem. */
+   What won keeps white, takes the weight, and has no container at all — two
+   marks and nothing else, which is the least furniture of the eight. It sits
+   at the bottom of the frame, which on this painting is sea and foam: the
+   lightest, busiest part of it. */
 .landing .l-down{position:absolute;left:50%;z-index:10;
   bottom:calc(clamp(22px,4vh,40px) + var(--bar));
-  display:flex;flex-direction:column;align-items:center;gap:clamp(8px,1.2vh,13px);
+  display:flex;flex-direction:column;align-items:center;gap:9px;
   background:none;border:none;padding:14px 30px;cursor:pointer;color:#fff;
   transform:translateX(-50%);
   opacity:clamp(0,calc(1 - var(--s) * 3),1);
   transition:bottom .5s cubic-bezier(.2,.8,.2,1);
   /* Two, in sequence: the bob's delay is the entrance's delay plus its
-     duration, so it takes over the transform exactly as the entrance lets go. */
+     duration, so it takes over the transform exactly as the entrance lets go.
+     fill-mode backwards, not both — the entrance holds its first frame through
+     the delay and then lets go, leaving the scroll fade above free to take the
+     opacity back. With 'both' the animation would own opacity forever and the
+     mark would ride all the way down to the poem. */
   animation:l-down-in 1.2s cubic-bezier(.2,.7,.2,1) 1.15s backwards,
-            l-down-bob 3.2s ease-in-out 2.35s infinite}
+            l-down-bob 3.4s ease-in-out 2.35s infinite}
 @keyframes l-down-in{
   from{opacity:0;transform:translate(-50%,12px)}
   to{opacity:1;transform:translate(-50%,0)}
@@ -2888,47 +2843,28 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   0%,100%{transform:translate(-50%,0)}
   50%{transform:translate(-50%,6px)}
 }
-/* Contrast, not brightness. The arrow sits at the bottom of the frame, which on
-   this painting is sea and foam — the lightest, busiest part of it. A hairline
-   at the tracking the rest of the page uses simply disappears there, so the rail
-   carries a dark seat of its own (box-shadow, since a 1px element has no text to
-   put a text-shadow under) and the chevron carries the same two-part shadow the
-   hero's labels do. */
-.l-down-rail{position:relative;display:block;width:1px;height:clamp(34px,6.4vh,66px);
-  overflow:hidden;
-  background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.55) 55%,rgba(255,255,255,.68));
-  box-shadow:0 0 7px rgba(10,42,70,.55);
-  transition:background .4s}
-.l-down-drop{position:absolute;left:0;top:0;width:1px;height:44%;
-  background:linear-gradient(180deg,transparent,#fff,transparent);
-  animation:l-down-drop 3.6s cubic-bezier(.45,0,.55,1) infinite}
-@keyframes l-down-drop{
-  0%{transform:translateY(-140%);opacity:0}
-  20%{opacity:.95}
-  72%{opacity:.95}
-  100%{transform:translateY(320%);opacity:0}
+/* The same halo the hero's labels carry, and for the same reason. Tight, or it
+   stops being light and becomes the patch of grey we took out from behind an
+   earlier version of this mark. */
+.l-down-chev{display:block;
+  filter:drop-shadow(0 1px 2px rgba(10,42,70,.55)) drop-shadow(0 0 10px rgba(10,42,70,.45))}
+/* The pair is drawn identical and separated only by WHEN it is bright: the
+   light runs from the upper mark to the lower and starts again, so the two
+   point by moving rather than by being drawn pointing. Offset by 0.42s of a
+   2.6s cycle rather than by half of it, so they are never both bright and
+   never both dim — either reads as blinking, and one travelling mark is what
+   this is meant to be. */
+.l-down-a{animation:l-down-lead 2.6s ease-in-out infinite}
+.l-down-b{animation:l-down-lead 2.6s ease-in-out infinite;animation-delay:.42s}
+@keyframes l-down-lead{
+  0%,100%{opacity:.34;transform:translateY(0)}
+  30%{opacity:1;transform:translateY(2px)}
+  60%{opacity:.34;transform:translateY(0)}
 }
-/* And it catches it. The travelling light reaches the foot of the rail at ~82%
-   of the cycle, and the chevron blooms as it lands — same 3.6s period, so the
-   two are one gesture rather than two loops that happen to share a corner.
-   
-   The flash is on 'filter' alone, deliberately: transform and opacity stay free
-   for the hover, which an infinite animation would otherwise own outright. */
-.l-down-chev{opacity:1;
-  filter:drop-shadow(0 1px 2px rgba(10,42,70,.55)) drop-shadow(0 0 10px rgba(10,42,70,.45));
-  animation:l-down-catch 3.6s ease-in-out infinite;
-  transition:transform .42s cubic-bezier(.2,.8,.2,1),opacity .42s}
-@keyframes l-down-catch{
-  0%,72%,100%{filter:drop-shadow(0 1px 2px rgba(10,42,70,.55))
-                     drop-shadow(0 0 10px rgba(10,42,70,.45))}
-  84%{filter:drop-shadow(0 1px 2px rgba(10,42,70,.55))
-             drop-shadow(0 0 9px rgba(216,242,255,.95))}
-}
-.l-down:hover .l-down-chev,
-.l-down:focus-visible .l-down-chev{transform:translateY(3px);opacity:1}
-.l-down:hover .l-down-rail,
-.l-down:focus-visible .l-down-rail{
-  background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.68) 55%,rgba(255,255,255,.8))}
+.l-down:hover .l-down-a,
+.l-down:focus-visible .l-down-a,
+.l-down:hover .l-down-b,
+.l-down:focus-visible .l-down-b{animation-play-state:paused;opacity:1}
 .l-down:focus-visible{outline:none}
 
 /* ---- screen two ---- */

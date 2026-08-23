@@ -237,40 +237,51 @@ is the one place on this site that is allowed to end in nothing, and anything se
 after `sea risen.` is answering it. **One ask, always visible, never inside the
 work.**
 
-### The arrow, and what it replaced
+### The down-mark, and what it replaced
 
 The bottom of screen one used to name all ten tracks. That meant the album was over
-before anyone had scrolled — so it is an arrow now, which says there is more without
-saying what, and the poem gets to arrive whole. A light runs down its rail every few
-seconds: the one piece of motion on that screen that *points*, and the reason it
-needs no word under it.
+before anyone had scrolled — so it is a mark now, which says there is more without
+saying what, and the poem gets to arrive whole.
 
-Two things it needs that are easy to lose:
+It is **two chevrons and nothing else**: no rail, no ring, no container, the least
+furniture of the eight candidates it was chosen from. The pair is drawn identical and
+separated only by *when* it is bright — the light runs from the upper to the lower and
+starts again, so they point by **moving** rather than by being drawn pointing. Offset
+by 0.42s of a 2.6s cycle rather than by half of it, so the two are never both bright
+and never both dim; either of those reads as blinking, and one travelling mark is what
+this is. The whole mark also bobs, because movement is what the eye finds without being
+asked.
 
-- **Size and motion.** It sits at the bottom of the frame, which on this painting is
-  sea and foam: the lightest, busiest part of it and the worst possible ground for a
-  white hairline. A 22px chevron at 1px was the page's own language and was invisible
-  in it, so it is 30px at 1.25 — still a hairline, an order of magnitude easier to
-  find. And the mark bobs, because the travelling light is 1px and easy to miss while
-  movement is what the eye finds without being asked.
-- **The halo has to hug the glyph.** A third leg was tried — a wide soft dark bloom
-  behind the whole mark — and cut: at the radius that actually helped it was a grey
-  patch on an oil painting, and nothing else on the page has one. Every white mark
-  here carries a *tight* dark halo instead (the hero's labels with `text-shadow`,
-  this with a second `drop-shadow` on the chevron, the rail with a `box-shadow`,
-  since a 1px element has no text to seat a text-shadow under). Spread it and it
-  stops being light and starts being a shadow — the same lesson the poem's halo
-  learned in the panel.
-- **The chevron catches the light.** The drop reaches the foot of the rail at ~82% of
-  its cycle and the chevron blooms as it lands, on the same 3.6s period, so the two
-  are one gesture rather than two loops sharing a corner. The flash is on `filter`
-  alone, deliberately: `transform` and `opacity` stay free for the hover, which an
-  infinite animation would otherwise own outright.
-- **`animation-fill-mode: backwards`, not `both`.** Its entrance holds its first
-  frame through the delay and then lets go, leaving the scroll fade free to take the
-  opacity back. With `both`, the animation would own `opacity` forever and the arrow
-  would ride all the way down to the poem. The same trap decides why the reveal on
-  screen two ends at `var(--o)` rather than at 1 — see below.
+**Two rejected directions, kept because both were reasonable and both were wrong.**
+The mark sits at the bottom of the frame, which on this painting is sea and foam — the
+lightest, busiest part of it:
+
+- **Hairlines.** Five of them, on the argument that this page is 1px rules everywhere.
+  Invisible, twice. A rule that is *structure* and a rule you are *meant to notice* are
+  not the same job — and the second cannot hold the tight dark halo that keeps every
+  other white mark here legible, because 1px is too little glyph to seat a shadow
+  under. That halo is most of why the hero's 12px labels never disappear on the same
+  painting with the same shadow.
+- **Ink.** Five in the painting's own dark, on the reasoning that white cannot win on
+  a light ground. True as physics and wrong as design (*抢眼*): a dark mark is then the
+  darkest thing in the lower half of a painting whose lower half is entirely light, so
+  it stops being an invitation and becomes an object. White is the page's colour and
+  should not be spent to buy visibility.
+
+What won keeps the white and takes the weight — 3px strokes at 46px wide, where the
+first version was 1px at 22 — and buys the rest with motion.
+
+Two mechanics on it that are easy to break:
+
+- **The halo has to hug the glyph.** A wide soft dark bloom behind the whole mark was
+  tried and cut: at the radius that helped it was a patch of grey on an oil painting,
+  and nothing else on the page has one. Spread a halo and it stops being light and
+  starts being a shadow — the same lesson the poem's halo learned in the panel.
+- **`animation-fill-mode: backwards`, not `both`.** The entrance holds its first frame
+  through its delay and then lets go, leaving the scroll fade free to take the opacity
+  back. With `both`, the animation would own `opacity` forever and the mark would ride
+  all the way down to the poem. The same trap decides why the reveal on screen two ends
+  at `var(--o)` rather than at 1 — see below.
 
 ### Screen two
 
