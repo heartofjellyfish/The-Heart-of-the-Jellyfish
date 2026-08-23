@@ -296,7 +296,7 @@ function look(m: DriftMessage, isFresh: boolean) {
  *                 water, held still, and sending lets go of it.
  */
 type Say = 'rule' | 'sentence' | 'riser';
-const SAY_DEFAULT: Say = 'rule';
+const SAY_DEFAULT: Say = 'riser';
 const SAY_BY_PARAM: Record<string, Say> = { '1': 'rule', '2': 'sentence', '3': 'riser' };
 
 export function Drift({ active }: { active: boolean }) {
@@ -591,7 +591,15 @@ export const DRIFT_CSS = `
   /* Used only by the reduced-motion column, which is the one presentation here
      that is laid out rather than travelling. It starts higher than it used to:
      the title it was clearing is gone. */
-  --water-top:13dvh;--water-h:62dvh}
+  --water-top:13dvh;--water-h:62dvh;
+
+  /* The still water at the bottom of the screen, and where a riser is born.
+     Zero for most designs — a riser starts off the bottom edge and the composer
+     sits on top of it behind a rule. The riser composer sets it, because that
+     design has no rule and therefore cannot survive anything passing behind it;
+     see [data-say=riser]. */
+  --say-zone:0px;
+  --rise-from:calc(100dvh - var(--say-zone))}
 
 /* The stage owns the dark down here — see .l-floor in Landing. This screen
    paints nothing of its own over the picture, which is what keeps the grain
@@ -638,7 +646,7 @@ export const DRIFT_CSS = `
    top. var(--dim) in the middle two stops is what keeps the depth parallax:
    the keyframe fades TO the message's own brightness, not to 1. */
 @keyframes l-drift-up{
-  0%{transform:translate3d(0,100dvh,0);opacity:0}
+  0%{transform:translate3d(0,var(--rise-from,100dvh),0);opacity:0}
   8%{opacity:var(--dim)}
   /* Gone well before the top, not at it. The travel still runs off the edge —
      it just does it invisibly. A message that is still lit when it reaches the
@@ -753,15 +761,67 @@ export const DRIFT_CSS = `
 
 /* ---- 3 · the riser ----
    No form at all. It is set exactly like a message already in the water — same
-   face, same size, same glow — held still at the bottom, and sending lets go of
-   it. The risk is real and is the whole point of trying it: an input with no
-   furniture may not read as an input. Two things carry it — a caret that is
-   always there, and a prompt beside the caret rather than inside the field,
-   because grey instructions sitting IN a message stop it being a message. */
+   face, same size, same glow — held still, and sending lets go of it.
+
+   Built once and it failed, in the two ways a design with no furniture can:
+   you could not tell it was an input, and the risers went straight through it.
+   Both are the same fact. Once messages travel UPWARD, the bottom of the screen
+   is where messages are BORN, so anything parked there is guaranteed to be
+   collided with by things that look exactly like it. A rule fixes that by
+   declaring "not a message" — which is designs 1 and 2, and is the furniture
+   this one refuses.
+
+   So the fix is not to mark the composer off. It is to part the water:
+   --say-zone empties the bottom band, and risers now begin their travel at the
+   composer's own line instead of below the screen. Nothing ever passes behind
+   it, and the payoff is better than the problem was — a sent message starts
+   exactly where you typed it, so letting go is something you watch happen. The
+   line you write on is the seabed.
+
+   What is left to say "this is yours" is not furniture either:
+     · it is the only thing on the screen holding still, in the only band of
+       water with nothing moving in it — stillness reads, in a field of motion
+     · a caret, blinking at the album's own 60bpm, which is the one glyph on
+       earth that means "type here"
+     · light, not an object: a soft rise of glow off the bottom, no edge
+       anywhere in it. The house rule is that light is allowed and objects are
+       not, and this is the same rule the shafts are built on. */
+.l-three[data-say=riser]{--say-band:clamp(116px,17vh,172px);
+  --say-zone:calc(var(--say-band) + var(--bar))}
+
+/* The light the composer sits in. Placed on the screen rather than on the form
+   so it is not clipped to the text's box, and sized in the same units as the
+   zone so the two cannot drift apart. No border, no radius, nothing with an
+   edge — at this alpha it is the water being lit from below, which is also
+   where a rising thing would be lit from. */
+.l-three[data-say=riser]::after{content:'';position:absolute;z-index:0;
+  left:0;right:0;bottom:0;height:calc(var(--say-zone) + 14vh);pointer-events:none;
+  background:radial-gradient(126% 100% at 50% 112%,
+    rgba(132,192,232,.2),rgba(132,192,232,.075) 44%,rgba(132,192,232,0) 74%)}
+
+/* The horizon of the still band — where the water that moves stops and the
+   water you write in begins.
+
+   This is not design 1's rule wearing a different name, and the difference is
+   the ends: it is a gradient that reaches nothing at both edges of the screen,
+   so it never closes anything. A rule around a field says "control"; a line
+   with no ends, spanning the whole frame, says "surface" — and it is telling
+   the truth, because that IS the line every message is born on. It also gives
+   the eye the one boundary this design was missing without giving it a box. */
+.l-three[data-say=riser]::before{content:'';position:absolute;z-index:0;
+  left:0;right:0;bottom:var(--say-zone);block-size:1px;pointer-events:none;
+  background:linear-gradient(90deg,
+    rgba(150,200,236,0),rgba(150,200,236,.17) 26%,
+    rgba(150,200,236,.17) 74%,rgba(150,200,236,0))}
+
 .l-three[data-say=riser] .l-say{
   flex-wrap:wrap;gap:.3em .6em;justify-content:center;text-align:center;
   inline-size:min(32ch,calc(100vw - 48px));
-  bottom:calc(clamp(56px,11vh,120px) + var(--bar))}
+  /* Sits inside the band it just cleared, and above the player when there is
+     one. Expressed in the band's own variable, so the composer and the empty
+     water can never drift apart — the whole design depends on it being the only
+     thing down there. */
+  bottom:calc(var(--bar) + var(--say-band) * .34)}
 .l-three[data-say=riser] input{
   text-align:center;color:rgba(228,242,252,.94);
   text-shadow:0 0 18px rgba(96,172,220,.4)}
@@ -769,14 +829,22 @@ export const DRIFT_CSS = `
 .l-three[data-say=riser] .l-say-name{flex:0 0 auto;inline-size:7em;
   font-size:.74em;opacity:.6}
 .l-three[data-say=riser] .l-say-ghost{position:absolute;left:0;right:0;top:0;
-  pointer-events:none;color:rgba(178,206,226,.3);
+  pointer-events:none;color:rgba(184,212,232,.34);font-style:italic;
   font-family:'Cormorant Garamond',Georgia,serif;
   font-size:clamp(16px,2.05vh,21px);line-height:1.5}
 .l-three[data-say=riser] .l-say:focus-within .l-say-ghost{color:rgba(190,218,238,.42)}
-.l-say-caret{display:inline-block;inline-size:1px;block-size:1.05em;
-  vertical-align:-.16em;margin-inline-end:.34em;
-  background:rgba(206,234,252,.85);
-  animation:l-say-blink 1.15s steps(1,end) infinite}
+/* 1s, steps(1) — a real caret's rate, and the album's 60bpm, which are the same
+   number. Not a soft pulse: a soft pulse reads as decoration, and the hard
+   on/off is the entire reason anyone recognises a caret. */
+/* 2px, not 1. A hairline is the site's language for structure, and this is the
+   opposite of structure — it is the one mark on the screen that has to be
+   noticed, on a ground with grain over it, at half opacity for half of every
+   second. 1px lost that fight. */
+.l-say-caret{display:inline-block;inline-size:2px;block-size:1.1em;
+  vertical-align:-.18em;margin-inline-end:.4em;
+  background:rgba(222,242,255,.95);
+  box-shadow:0 0 10px rgba(150,208,246,.55);
+  animation:l-say-blink 1s steps(1,end) infinite}
 @keyframes l-say-blink{0%,52%{opacity:1}53%,100%{opacity:0}}
 /* Nothing to let go of yet, so the words for it are not there either. Hidden
    rather than dimmed: in a design with no furniture, a greyed-out control is
