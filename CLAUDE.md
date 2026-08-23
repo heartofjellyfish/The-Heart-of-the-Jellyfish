@@ -308,17 +308,24 @@ was not enough:
   seconds. The bands were widened at the same time (36–84s).
 - **Starting phase is chosen against the neighbours, not within the column.**
   Spreading evenly *inside* a column was the first attempt and it barely helped,
-  for a reason worth remembering: **a riser is ~26% of the width and the columns
+  for a reason worth remembering: **a riser is ~30% of the width and the columns
   are 10% apart, so most of a message's real neighbours are in other columns.**
   The phase now tries sixteen positions around the cycle and keeps the one
   furthest from everything it can actually overlap. Arrivals go to the emptiest
   column — two people posting in the same minute is the commonest way a field
   gets a stack.
 
-Measured over two minutes of motion with 16 messages: 32 pairs overlap at some
-point, the median one for **7 seconds**, the worst for 19. Nothing is permanent,
-which was the brief. Before these rules there were three pairs that never came
-apart at all.
+  **A message with no neighbours yet must still be scattered, not defaulted.**
+  Returning a constant in that branch was a real and quiet bug: the *first*
+  message placed in each clear stretch of the width got the same phase as every
+  other first message, so a handful of them began life in a row at the same
+  height. An unconstrained message is not one to put anywhere in particular, it
+  is one to put anywhere at all.
+
+Measured over two minutes of motion with 16 messages: **none overlapping at
+load**, 26 pairs overlap at some point during the two minutes, the median one
+for **6 seconds** and the worst for 14. Nothing is permanent, which was the
+brief. Before these rules there were three pairs that never came apart at all.
 
 **How to measure it, because two obvious methods are both wrong.** A screenshot
 cannot tell a busy field from a broken one, and neither can watching — the
@@ -335,6 +342,11 @@ else moves.
   throws all of it away — every message snaps to the start of its cycle, which
   is the one configuration the phase placement exists to prevent. Read each
   animation's `currentTime` first and seek to `base + dt`.
+- **Do not measure the `<li>`.** The sway is a transform on the inner span, so
+  it moves the text without moving the outer element's box, and
+  `getBoundingClientRect()` on the `<li>` is blind to it — it will report a
+  clean field while two messages are visibly on top of each other. Measure
+  `.l-drift-in`, and seek the inner span's animation along with the outer one.
 
 The working method is: capture the base times, step `dt` in one-second
 increments, walk the rendered boxes for intersections at each step, and record
