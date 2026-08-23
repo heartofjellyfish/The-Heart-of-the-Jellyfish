@@ -396,6 +396,27 @@ increments, walk the rendered boxes for intersections at each step, and record
 the longest consecutive run per pair. That number — longest run, not count — is
 the one that says whether the field drifts or stacks.
 
+### Testing the store without an Upstash account
+
+The memory fallback is convenient and it is also a trap: it makes every test
+green while the code that will actually run in production has never executed
+once. The rate limiter in particular is disabled in memory mode, so it went from
+written to verified without ever running.
+
+**Stand up a fake Upstash instead.** Its REST API is small enough that the
+handful of commands this store sends — `LPUSH` `LTRIM` `LRANGE` `LREM` `INCR`
+`EXPIRE`, all through `POST /pipeline` — fit in about sixty lines of Python, and
+pointing `UPSTASH_REDIS_REST_URL` at `http://127.0.0.1:<port>` in `.env.local`
+is the whole setup. Make it count commands: that is the only way to check the
+claim that a poll costs exactly one, which is the number the whole free-tier
+budget rests on. It also lets you assert things a real store makes awkward —
+that a rejected bot costs *zero* commands, that a 429'd request does not spend
+the hourly budget, that the rate-limit key is a hash and not an address.
+
+Killing the fake mid-run is also the only easy way to see the store-down path:
+both routes should 502, the poll should quietly back off rather than clear the
+water, and a failed send should hand the visitor their text back.
+
 **Both ends fade inside the keyframe, not under a mask.** A mask forces the
 whole viewport-sized subtree into one render surface and re-rasters it every
 frame — the exact cost the glimmers were removed for. Four opacity stops cost
