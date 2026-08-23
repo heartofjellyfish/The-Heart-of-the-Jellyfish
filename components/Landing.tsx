@@ -1,12 +1,16 @@
 'use client';
 
 /**
- * The qi.land front page — one screen, no scroll.
+ * The qi.land front page — two screens, one descent.
  *
- * Everything lives over the shore painting: the album title, the demo player,
- * the poem, and the mailing list. The two secondary things (poem, subscribe)
- * open as panels over the same image rather than as sections below it, so the
- * page never grows a second screen.
+ * Screen one is the shore painting: the album title, the countdown, the two
+ * actions. Screen two is the tracklist, which is a poem, under water. Nothing
+ * loads between them — the backdrop is one fixed layer and the descent is that
+ * layer changing as you scroll, so the second screen is the same painting seen
+ * from below rather than a different picture.
+ *
+ * The mailing list is still a panel over both, because it is a form and a form
+ * is not a place. The poem used to be one too; it is the second screen now.
  *
  * This replaces the earlier shader treatment. That version painted the whole
  * ocean in WebGL and revealed it by scrolling; once the painting went full-bleed
@@ -53,9 +57,6 @@ const POEM_LINES: readonly (readonly string[])[] = [
   ['sea risen.'],
 ];
 
-/** The same ten lines as flat strings, for the strip that runs them together. */
-const POEM = POEM_LINES.map((units) => units.join(' '));
-
 /** Player metadata — title case, no trailing punctuation. The poem is the poem. */
 const TITLES = [
   'Sea Rising',
@@ -96,6 +97,18 @@ const AVAILABLE_DEMOS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
  * with, and it is a separate decision from the running order.
  */
 const FEATURED_DEMO = 3;
+
+/**
+ * The track the album is named after, and the one line of the poem that beats.
+ *
+ * The heartbeat is the album's own rhythm — it arrives at frame VI and from
+ * there it drives everything, which is why the hero's "Heart" swells once a
+ * second. On the tracklist the same beat lands on the same words, so the two
+ * screens are keeping one time. Not literally: this one is a plain 1s loop
+ * rather than the countdown's tick, because the two are never on screen
+ * together and a shared clock would buy nothing a reader could ever see.
+ */
+const HEART_TRACK = 6;
 
 /**
  * The shore painting. Served as WebP; the PNG master is in `artwork/hero_oil.png`,
@@ -575,15 +588,29 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [titlePx, setTitlePx] = useState(96);
   /** One clock for the countdown and the title's beat. See Countdown. */
   const [secs, setSecs] = useState<number | null>(null);
-  const [stripCut, setStripCut] = useState(false);
   /**
-   * Which face the bottom bar is showing. Playback and the bar's view are
-   * separate concerns: leaving the player must not stop the music, and stopping
-   * the music must not strand you on a dead player.
+   * True once the descent is more than 40% of the way down. Two jobs: it reveals
+   * screen two's type, and it hands the nav its wordmark. Deliberately a boolean
+   * and not the scroll position — the position itself is a CSS variable written
+   * straight to the DOM (see the scroll effect), because re-rendering this
+   * component, SVG filters and all, sixty times a second to move a gradient
+   * would be an absurd price for a backdrop.
    */
-  const [barView, setBarView] = useState<'list' | 'player'>('list');
+  const [atTwo, setAtTwo] = useState(false);
+  /**
+   * True when the two screens do not add up to exactly two screens — i.e. the
+   * tracklist is taller than the window it is in. Measured rather than guessed
+   * at a breakpoint, because what makes it overflow is how many of the ten
+   * lines had to turn, which depends on the width, the height, the font that
+   * finished loading and whether the player is up. No media query knows all
+   * four. See the snap rule in the CSS for what it is for.
+   */
+  const [tall, setTall] = useState(false);
+  /** Named because the layout depends on it, not only the markup. */
+  const barOn = cur > 0;
 
-  const stripRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -618,48 +645,62 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   }, []);
 
   /*
-   * Whether the run-on tracklist is wider than the bar. Measured rather than
-   * guessed at a breakpoint: the width depends on the fluid type, on which font
-   * has finished loading, and on how much room the POEM button leaves — no
-   * media query knows all three. Re-runs when the bar swaps to the player.
+   * The descent, as one number.
+   *
+   * --s is scrollTop over one screen height, clamped to 0..1: 0 on the shore, 1
+   * in the water. Everything about the transition reads it — the veil's opacity,
+   * the parallax on the painting, the light from the surface, the marine snow,
+   * the arrow fading out, the wordmark fading in — so there is exactly one
+   * source of truth for "how deep are we" and no two layers can disagree.
+   *
+   * Written as a custom property rather than held in state on purpose; see
+   * atTwo.
+   *
+   * Read synchronously in the handler, NOT deferred to requestAnimationFrame.
+   * rAF is suspended in a background tab, and a scroll that lands while it is
+   * suspended — a restored position, a programmatic jump, a snap finishing after
+   * the tab was switched — would then leave --s frozen at whatever it was, with
+   * the backdrop showing one screen while the type shows the other. The work
+   * here is two property reads and one style set; there is nothing to coalesce.
    */
   useEffect(() => {
-    const el = stripRef.current;
-    if (!el) {
-      setStripCut(false);
-      return;
-    }
-    /*
-     * Deferred a frame on purpose. The observer can fire mid-transition — while
-     * the media query is swapping the row from flex to block, the items are
-     * still shrunk and the row measures as fitting when it will not, or the
-     * reverse. Measuring after layout settles gives the honest number: without a
-     * second pass the fade latched on at 1100px wide with nothing to scroll to.
-     *
-     * A timer rather than requestAnimationFrame, because rAF is suspended in a
-     * background tab and the second measurement would simply never arrive.
-     */
-    let t = 0;
-    const measure = () => setStripCut(el.scrollWidth > el.clientWidth + 1);
-    const check = () => {
-      measure();          // the common case, right away
-      window.clearTimeout(t);
-      t = window.setTimeout(measure, 60); // and again once layout has settled
+    const sc = scrollRef.current;
+    const root = rootRef.current;
+    if (!sc || !root) return;
+    const read = () => {
+      const h = sc.clientHeight || 1;
+      const s = Math.min(1, Math.max(0, sc.scrollTop / h));
+      root.style.setProperty('--s', s.toFixed(4));
+      setAtTwo(s > 0.3);
+      // Two screens should measure two screens. Anything over is the tracklist
+      // spilling, and the snap has to give way — see .landing[data-tall].
+      setTall(sc.scrollHeight > h * 2 + 2);
     };
-    check();
-    const ro = new ResizeObserver(check);
-    ro.observe(el);
-    // Belt and braces: a ResizeObserver on this element misses some window
-    // resizes, so listen for the window too. Both funnel into the same debounce.
-    window.addEventListener('resize', check);
-    // A late webfont reflows the sentence without resizing anything.
-    document.fonts?.ready.then(check).catch(() => {});
+    read();
+    sc.addEventListener('scroll', read, { passive: true });
+    window.addEventListener('resize', read);
+    // A late webfont reflows the poem without resizing anything, and the hand
+    // it is set in is the last thing to arrive.
+    document.fonts?.ready.then(read).catch(() => {});
     return () => {
-      window.clearTimeout(t);
-      window.removeEventListener('resize', check);
-      ro.disconnect();
+      sc.removeEventListener('scroll', read);
+      window.removeEventListener('resize', read);
     };
-  }, [cur]);
+    // Re-measures when the player arrives or leaves: the bar changes screen
+    // two's padding, which is exactly the kind of thing that tips it over.
+  }, [barOn]);
+
+  /**
+   * The only way either screen is reached by a control. Smooth, unless the
+   * visitor has asked for less motion — in which case a page that animates its
+   * way down is exactly what they said no to.
+   */
+  const goTo = useCallback((screen: 0 | 1) => {
+    const sc = scrollRef.current;
+    if (!sc) return;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    sc.scrollTo({ top: screen * sc.clientHeight, behavior: reduce ? 'auto' : 'smooth' });
+  }, []);
 
   /* --- Esc closes whatever panel is open -------------------------- */
   useEffect(() => {
@@ -711,7 +752,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       loadPeaks();
       const au = ensureAudio();
       if (curRef.current === n) {
-        setBarView('player');
         if (au.paused) {
           au.play().catch(() => {});
           setPlaying(true);
@@ -723,7 +763,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       }
       au.src = FILES[n - 1];
       curRef.current = n;
-      setBarView('player');
       pctRef.current = 0;
       setCur(n);
       setMissing(false);
@@ -951,7 +990,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     setCur(0);
     setPlaying(false);
     setPct(0);
-    setBarView('list');
   }, []);
 
   useEffect(
@@ -994,6 +1032,13 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   return (
     <div
       className="landing"
+      ref={rootRef}
+      /* Both are read by CSS alone. `data-two` gives the wordmark its pointer
+         events back once it is actually visible; `data-bar` lifts the arrow and
+         screen two's footer clear of the player when there is one. */
+      data-two={atTwo ? '' : undefined}
+      data-bar={barOn ? '' : undefined}
+      data-tall={tall ? '' : undefined}
       style={
         {
           ['--lit' as string]: litVals.lit,
@@ -1035,6 +1080,11 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       </svg>
 
       {/*
+        The backdrop, fixed to the window rather than to a screen. Both screens
+        share it: screen one is the painting, screen two is the same painting
+        under deep water, and the descent between them is this layer changing
+        rather than a second image loading.
+
         One layer, cover at every aspect ratio — only the crop moves. There used
         to be a blurred copy underneath holding the letterbox on narrow screens;
         at the blur radius that kept it from competing, the oil texture was gone
@@ -1042,25 +1092,66 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         never be. Positioning is in CSS, not inline — the media query has to be
         able to override it, and inline styles outrank stylesheet rules.
       */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        className="l-bg"
-        src={HERO_IMAGE}
-        alt="A figure on the shore, looking down at a jellyfish in the shallows"
-      />
-      <div className="l-scrim" />
-      <div
-        className="l-vignette"
-        style={
-          {
-            ['--vig-strength' as string]: vig.strength,
-            ['--vig-inner' as string]: vig.inner + '%',
-          } as React.CSSProperties
-        }
-      />
+      <div className="l-stage">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          className="l-bg"
+          src={HERO_IMAGE}
+          alt="A figure on the shore, looking down at a jellyfish in the shallows"
+        />
+        <div className="l-scrim" />
+        <div
+          className="l-vignette"
+          style={
+            {
+              ['--vig-strength' as string]: vig.strength,
+              ['--vig-inner' as string]: vig.inner + '%',
+            } as React.CSSProperties
+          }
+        />
+        {/*
+          The water. All three are driven by --s and are simply not there at 0,
+          so screen one is untouched by any of it and nothing below costs a
+          frame until someone starts down.
+
+          They are three because sinking reads as three things at once: the
+          light going (l-deep), the light that is left coming from above and
+          behind you (l-surface), and the particles going up past you, which is
+          the only one of the three that says which way you are moving.
+        */}
+        <div className="l-deep" aria-hidden />
+        <div className="l-surface" aria-hidden />
+        <div className="l-snow" aria-hidden>
+          <i />
+          <i />
+          <i />
+        </div>
+      </div>
 
       <nav className="l-nav">
         <div className="l-nav-left">
+          {/*
+            Fades up as the title it stands for scrolls away, so the album is
+            named on both screens without ever being named twice at once. It is
+            the way back to the surface too — there is no other one, and a page
+            that can only be left by scrolling up is a page with no door.
+          */}
+          {/* Not in the tab order while it is invisible: opacity 0 plus
+              pointer-events none still leaves a button a keyboard can land on,
+              and a focus ring on nothing is worse than no control at all. */}
+          <button
+            type="button"
+            className="l-mark"
+            tabIndex={atTwo ? 0 : -1}
+            aria-hidden={atTwo ? undefined : true}
+            onClick={() => goTo(0)}
+          >
+            {/* Two labels, one of them always display:none. On a phone the full
+                title at this tracking is wider than the nav has room for, and
+                the initials are what a spine would carry anyway. */}
+            <span className="l-mark-long">THE HEART OF THE JELLYFISH</span>
+            <span className="l-mark-short">QI · 琦</span>
+          </button>
           {META_PLACEMENT === 'topLeft' && (
             <div className="l-meta">
               <Countdown secs={secs} />
@@ -1072,226 +1163,362 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         </button>
       </nav>
 
-      <div className="l-hero">
-        {META_PLACEMENT === 'eyebrow' && (
-          <div className="l-meta l-meta-eyebrow">
-            <Countdown secs={secs} />
-          </div>
-        )}
-        <h1 className="l-title" data-inset={inset} data-lift={lift} ref={titleRef}>
-          {/*
-            The relief moved off the h1 and onto these spans, and it had to. The
-            beat is a shadow that swells around one word, and any shadow painted
-            by a descendant of a filtered element is fed back into that filter's
-            SourceAlpha — the carve would then be computed from the glyph plus its
-            own halo and smear. Per-word filters put the beat outside the carve
-            instead of inside it. Nothing about the relief itself changes: the
-            construction reads the alpha of whatever glyphs it is given, and the
-            spans do not overlap.
-          */}
-          <span className="l-t">The </span>
-          {/*
-            Keyed on the second, so React remounts it on each tick and the CSS
-            animation restarts from zero. Same value the digit is drawn from, so
-            the swell and the number land together by construction rather than by
-            two timers happening to agree.
-          */}
-          <span className="l-t-beat" key={secs ?? 'wait'}>
-            <span className="l-t">Heart</span>
-          </span>
-          <br />
-          <span className="l-t">of the Jellyfish</span>
-        </h1>
-        {META_PLACEMENT === 'underTitle' && (
-          <div className="l-meta l-meta-under">
-            <Countdown secs={secs} />
-          </div>
-        )}
-
-        <div className="l-play-row">
-          {/* The circle and its label are one action, so they share a hover — but
-              only with each other. */}
-          <span className="l-act-primary">
-            <button
-              type="button"
-              className="l-play"
-              aria-label={'Listen — ' + TITLES[FEATURED_DEMO - 1]}
-              onClick={() => playTrack(FEATURED_DEMO)}
-            >
-              <svg width="13" height="15" viewBox="0 0 13 15" fill="currentColor" aria-hidden>
-                <path d="M0 0l13 7.5L0 15z" />
-              </svg>
-            </button>
-            <button type="button" className="l-play-label" onClick={() => playTrack(FEATURED_DEMO)}>
+      {/*
+        The scroller. Fixed to the window and holding both screens, rather than
+        letting the document itself scroll: the backdrop, the nav and the player
+        all have to stay put while the type moves past them, and a fixed shell
+        with one scrolling child is the version of that with no position:fixed
+        children inside a transformed ancestor waiting to go wrong on iOS.
+      */}
+      <div className="l-scroll" ref={scrollRef}>
+        <section className="l-screen l-one">
+          <div className="l-hero">
+            {META_PLACEMENT === 'eyebrow' && (
+              <div className="l-meta l-meta-eyebrow">
+                <Countdown secs={secs} />
+              </div>
+            )}
+            <h1 className="l-title" data-inset={inset} data-lift={lift} ref={titleRef}>
               {/*
-                Per letter, so the motion is a transform and never a reflow.
-                Opening the letter-spacing would have been the obvious move and
-                is the wrong one — it widens the button, which shoves the rule
-                and TRACKLIST sideways every time the cursor arrives.
+                The relief moved off the h1 and onto these spans, and it had to. The
+                beat is a shadow that swells around one word, and any shadow painted
+                by a descendant of a filtered element is fed back into that filter's
+                SourceAlpha — the carve would then be computed from the glyph plus its
+                own halo and smear. Per-word filters put the beat outside the carve
+                instead of inside it. Nothing about the relief itself changes: the
+                construction reads the alpha of whatever glyphs it is given, and the
+                spans do not overlap.
               */}
-              {Array.from('LISTEN NOW').map((ch, i) => (
-                <span
-                  key={i}
-                  className="l-ll"
-                  style={{ ['--i' as string]: i } as React.CSSProperties}
-                >
-                  {ch === ' ' ? '\u00A0' : ch}
-                </span>
-              ))}
-            </button>
-          </span>
-          {/*
-            Second action, deliberately unequal to the first. The circle carries
-            the primary; this one is type alone with a rule that only appears
-            under the cursor, so the two read as "do this" and "or this" rather
-            than as a pair of equal buttons competing at the same weight.
+              <span className="l-t">The </span>
+              {/*
+                Keyed on the second, so React remounts it on each tick and the CSS
+                animation restarts from zero. Same value the digit is drawn from, so
+                the swell and the number land together by construction rather than by
+                two timers happening to agree.
+              */}
+              <span className="l-t-beat" key={secs ?? 'wait'}>
+                <span className="l-t">Heart</span>
+              </span>
+              <br />
+              <span className="l-t">of the Jellyfish</span>
+            </h1>
+            {META_PLACEMENT === 'underTitle' && (
+              <div className="l-meta l-meta-under">
+                <Countdown secs={secs} />
+              </div>
+            )}
 
-            Labelled TRACKLIST, not POEM. It opens onto a poem, and the format
-            says so at a glance — naming it beforehand spends the surprise for
-            nothing.
-          */}
-          <span className="l-act-rule" aria-hidden />
-          <button type="button" className="l-act-second" onClick={() => setPanel('poem')}>
-            <svg width="12" height="10" viewBox="0 0 12 10" aria-hidden>
-              <path d="M0 .5h12M0 5h12M0 9.5h8" stroke="currentColor" strokeWidth="1" fill="none" />
-            </svg>
-            {/*
-              Typed rather than revealed. The label has to stay readable at rest,
-              so nothing can be hidden and un-hidden — instead the letters brighten
-              one after another, as if a caret were passing under them, and the
-              caret itself appears at the end of the sweep and blinks.
-            */}
-            {/* One wrapper, because the button is inline-flex with a gap meant for
-                icon-to-text — loose letters would each become a flex item and
-                collect that gap between them. */}
-            <span className="l-type">
-              {Array.from('TRACKLIST').map((ch, i) => (
-                <span
-                  key={i}
-                  className="l-tl"
-                  style={{ ['--i' as string]: i } as React.CSSProperties}
+            <div className="l-play-row">
+              {/* The circle and its label are one action, so they share a hover — but
+                  only with each other. */}
+              <span className="l-act-primary">
+                <button
+                  type="button"
+                  className="l-play"
+                  aria-label={'Listen — ' + TITLES[FEATURED_DEMO - 1]}
+                  onClick={() => playTrack(FEATURED_DEMO)}
                 >
-                  {ch}
+                  <svg width="13" height="15" viewBox="0 0 13 15" fill="currentColor" aria-hidden>
+                    <path d="M0 0l13 7.5L0 15z" />
+                  </svg>
+                </button>
+                <button type="button" className="l-play-label" onClick={() => playTrack(FEATURED_DEMO)}>
+                  {/*
+                    Per letter, so the motion is a transform and never a reflow.
+                    Opening the letter-spacing would have been the obvious move and
+                    is the wrong one — it widens the button, which shoves the rule
+                    and TRACKLIST sideways every time the cursor arrives.
+                  */}
+                  {Array.from('LISTEN NOW').map((ch, i) => (
+                    <span
+                      key={i}
+                      className="l-ll"
+                      style={{ ['--i' as string]: i } as React.CSSProperties}
+                    >
+                      {ch === ' ' ? '\u00A0' : ch}
+                    </span>
+                  ))}
+                </button>
+              </span>
+              {/*
+                Second action, deliberately unequal to the first. The circle carries
+                the primary; this one is type alone with a rule that only appears
+                under the cursor, so the two read as "do this" and "or this" rather
+                than as a pair of equal buttons competing at the same weight.
+
+                Labelled TRACKLIST, not POEM. It opens onto a poem, and the format
+                says so at a glance — naming it beforehand spends the surprise for
+                nothing.
+              */}
+              <span className="l-act-rule" aria-hidden />
+              <button type="button" className="l-act-second" onClick={() => setPanel('poem')}>
+                <svg width="12" height="10" viewBox="0 0 12 10" aria-hidden>
+                  <path d="M0 .5h12M0 5h12M0 9.5h8" stroke="currentColor" strokeWidth="1" fill="none" />
+                </svg>
+                {/*
+                  Typed rather than revealed. The label has to stay readable at rest,
+                  so nothing can be hidden and un-hidden — instead the letters brighten
+                  one after another, as if a caret were passing under them, and the
+                  caret itself appears at the end of the sweep and blinks.
+                */}
+                {/* One wrapper, because the button is inline-flex with a gap meant for
+                    icon-to-text — loose letters would each become a flex item and
+                    collect that gap between them. */}
+                <span className="l-type">
+                  {Array.from('TRACKLIST').map((ch, i) => (
+                    <span
+                      key={i}
+                      className="l-tl"
+                      style={{ ['--i' as string]: i } as React.CSSProperties}
+                    >
+                      {ch}
+                    </span>
+                  ))}
+                  <span className="l-caret" aria-hidden />
                 </span>
-              ))}
-              <span className="l-caret" aria-hidden />
+              </button>
+            </div>
+
+            {META_PLACEMENT === 'underPlay' && (
+              <div className="l-meta l-meta-under">
+                <Countdown secs={secs} />
+              </div>
+            )}
+          </div>
+
+          {/*
+            What the ten titles used to be. The bar named every track at the
+            bottom of the first screen, which meant the album was already
+            over before anyone had scrolled — the arrow says there is more
+            without saying what, and the poem gets to arrive whole.
+
+            The rail is not decoration: a light runs down it, once every few
+            seconds, in the direction it is asking you to go.
+          */}
+          <button
+            type="button"
+            className="l-down"
+            aria-label="Down to the tracklist"
+            onClick={() => goTo(1)}
+          >
+            <span className="l-down-rail" aria-hidden>
+              <span className="l-down-drop" />
             </span>
+            <svg className="l-down-chev" width="22" height="9" viewBox="0 0 22 9" aria-hidden>
+              <path
+                d="M1 1l10 7 10-7"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </section>
+
+        {/*
+          Screen two. The panel this replaces was a scrim over the painting with
+          a close button; a screen is not, and the difference is the whole point
+          — the poem is not something you open and dismiss, it is where the page
+          was going all along. Everything inside is the panel's markup unchanged
+          (the fill, the scrub, the transport in the margin), because none of it
+          was ever about being in a dialog.
+        */}
+        <section
+          className={'l-screen l-two' + (atTwo ? ' is-in' : '')}
+          aria-label="The tracklist, as a poem"
+        >
+          <div className="l-poem">
+            {/*
+              The one line of explanation the poem gets, and it is doing real
+              work: without it, ten lines of verse on their own screen are a
+              poem, and the fact that each is a track — and playable — is
+              something you find out by accident. It names the format, not the
+              content, so nothing is spent.
+            */}
+            <div className="l-two-eyebrow">TEN SONGS THAT READ AS A POEM</div>
+            <div
+              className={'l-poem-body l-poem-f-' + font}
+              style={{ ['--poem-scale' as string]: fontScale } as React.CSSProperties}
+            >
+              {STANZAS.map((stanza, si) => (
+                <div className="l-poem-stanza" key={si}>
+                    {stanza.map((n) => {
+                      const has = AVAILABLE_DEMOS.includes(n);
+                      const on = cur === n;
+                      return (
+                        /* The row exists only to be animated. The reveal is an
+                           opacity, and so are three of the line's own states —
+                           dimmed for no demo yet, full for sounding — so an
+                           animation with a fill mode on the button itself would
+                           win the cascade forever and freeze all three. One
+                           wrapper keeps the entrance and the semantics apart. */
+                        <div
+                          className={'l-poem-row' + (n === HEART_TRACK ? ' l-poem-heart' : '')}
+                          key={n}
+                          style={{ ['--i' as string]: n } as React.CSSProperties}
+                        >
+                          <button
+                            type="button"
+                            className={
+                              'l-poem-line' +
+                              (has ? '' : ' l-poem-soon') +
+                              (on ? ' l-poem-playing' : '')
+                            }
+                            /* Sounding: the line is the track's length, so it is
+                               pressed rather than clicked, and there is nothing
+                               left for a click to mean. Silent: unchanged. */
+                            onClick={on ? undefined : () => playFromPoem(n)}
+                            onPointerDown={on ? onLineDown : undefined}
+                            onPointerMove={on ? onLineMove : undefined}
+                            onPointerUp={on ? onLineUp : undefined}
+                            /* Both of these, or a drag that ends somewhere the
+                               page never hears about leaves the line stuck mid-
+                               scrub, with the fill frozen under a hairline. */
+                            onPointerCancel={on ? onLineUp : undefined}
+                            onLostPointerCapture={on ? onLineUp : undefined}
+                            onPointerLeave={on ? onLineLeave : undefined}
+                            onKeyDown={on ? onLineKey : undefined}
+                            role={on ? 'slider' : undefined}
+                            aria-valuemin={on ? 0 : undefined}
+                            aria-valuemax={on ? 100 : undefined}
+                            aria-valuenow={on ? Math.round(pct) : undefined}
+                            data-paused={on && !playing ? '' : undefined}
+                            style={
+                              on
+                                ? ({ ['--p' as string]: pct.toFixed(1) + '%' } as React.CSSProperties)
+                                : undefined
+                            }
+                            aria-label={
+                              (on
+                                ? 'Seek — '
+                                : has
+                                  ? 'Play demo — '
+                                  : 'No demo yet — ') + TITLES[n - 1]
+                            }
+                          >
+                            <span
+                              className="l-poem-num"
+                              aria-hidden
+                              title={on ? (playing ? 'Pause' : 'Play') : undefined}
+                            >
+                              {String(n).padStart(2, '0')}
+                            </span>
+                            {/* The words are their own box — see .l-poem-ink. The
+                                button stays full width so a silent line is easy
+                                to hit; the ink is what fills and what seeks.
+                                Its children are the line's sense units, so a line
+                                too long for the phone turns where the poem does —
+                                see POEM_LINES. */}
+                            <span className="l-poem-ink" ref={on ? attachInk : undefined}>
+                              {POEM_LINES[n - 1].map((unit, ui) => (
+                                <span className="l-poem-unit" key={ui}>
+                                  {unit}
+                                </span>
+                              ))}
+                              {on && <span className="l-poem-time" ref={poemTimeRef} aria-hidden />}
+                            </span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                </div>
+              ))}
+            </div>
+            <div className="l-two-foot">
+              <span>RELEASING · 12 · 20 · 2026</span>
+              <span className="l-two-sep" aria-hidden />
+              <button type="button" className="l-two-sub" onClick={() => setPanel('subscribe')}>
+                PRE-SAVE
+              </button>
+            </div>
+          </div>
+          {/*
+            The Chinese title, set the way it would be on a spine. It is the only
+            thing on this screen that is not English and not a control, and it
+            hangs in the right margin where a seal would — which is also the one
+            place it can be large and quiet at the same time. Gone below 900px,
+            where there is no margin to hang anything in.
+          */}
+          <div className="l-two-cn" aria-hidden>
+            <span className="l-two-cn-rule" />
+            水母之心
+          </div>
+        </section>
+      </div>
+
+      {/*
+        The player. One, fixed to the window, so it plays across both screens —
+        starting a demo from the poem and scrolling back up to the shore does not
+        interrupt it, and does not leave the transport behind on the other screen.
+
+        It is only here when something is playing. There is no idle state to
+        design: the bar used to carry the tracklist when nothing was sounding,
+        and the tracklist is a screen now.
+      */}
+      {barOn && (
+        <div className="l-bar">
+          {/*
+            Drawn, not typed. U+25B6 has emoji presentation by default, so iOS
+            rendered the transport as a colour emoji — a grey-blue triangle
+            that ignored `color` and sat next to the pure-white hero button
+            looking broken. An inline SVG is the same shape the hero uses and
+            takes currentColor everywhere.
+          */}
+          <button
+            type="button"
+            className="l-bar-toggle"
+            aria-label={playing ? 'Pause' : 'Play'}
+            onClick={() => playTrack(cur)}
+          >
+            {playing ? (
+              <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor" aria-hidden>
+                <path d="M0 0h3.2v12H0zM6.8 0H10v12H6.8z" />
+              </svg>
+            ) : (
+              <svg
+                className="l-bar-tri"
+                width="10"
+                height="12"
+                viewBox="0 0 10 12"
+                fill="currentColor"
+                aria-hidden
+              >
+                <path d="M0 0l10 6L0 12z" />
+              </svg>
+            )}
+          </button>
+          <div className="l-bar-title">{nowTitle}</div>
+          <div
+            ref={seekRef}
+            className="l-bar-track"
+            role="slider"
+            tabIndex={0}
+            aria-label="Seek"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(pct)}
+            onPointerDown={onSeekDown}
+            onPointerMove={onSeekMove}
+            onPointerUp={onSeekUp}
+            onKeyDown={onSeekKey}
+          >
+            {waveData ? (
+              <Waveform data={waveData} pct={pct} />
+            ) : (
+              <div className="l-bar-line">
+                <div className="l-bar-fill" style={{ width: pct.toFixed(1) + '%' }}>
+                  <span className="l-bar-knob" />
+                </div>
+              </div>
+            )}
+          </div>
+          <button type="button" className="l-bar-close" aria-label="Close player" onClick={stop}>
+            ✕
           </button>
         </div>
-
-        {META_PLACEMENT === 'underPlay' && (
-          <div className="l-meta l-meta-under">
-            <Countdown secs={secs} />
-          </div>
-        )}
-      </div>
-
-      {/* ---- the one bar at the bottom: tracklist, or the player ---- */}
-      <div className="l-bar">
-        {cur > 0 && barView === 'player' ? (
-          <>
-            <button
-              type="button"
-              className="l-bar-back"
-              aria-label="Back to the tracklist"
-              onClick={() => setBarView('list')}
-            >
-              ←
-            </button>
-            {/*
-              Drawn, not typed. U+25B6 has emoji presentation by default, so iOS
-              rendered the transport as a colour emoji — a grey-blue triangle
-              that ignored `color` and sat next to the pure-white hero button
-              looking broken. An inline SVG is the same shape the hero uses and
-              takes currentColor everywhere.
-            */}
-            <button
-              type="button"
-              className="l-bar-toggle"
-              aria-label={playing ? 'Pause' : 'Play'}
-              onClick={() => playTrack(cur)}
-            >
-              {playing ? (
-                <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor" aria-hidden>
-                  <path d="M0 0h3.2v12H0zM6.8 0H10v12H6.8z" />
-                </svg>
-              ) : (
-                <svg
-                  className="l-bar-tri"
-                  width="10"
-                  height="12"
-                  viewBox="0 0 10 12"
-                  fill="currentColor"
-                  aria-hidden
-                >
-                  <path d="M0 0l10 6L0 12z" />
-                </svg>
-              )}
-            </button>
-            <div className="l-bar-title">{nowTitle}</div>
-            <div
-              ref={seekRef}
-              className="l-bar-track"
-              role="slider"
-              tabIndex={0}
-              aria-label="Seek"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(pct)}
-              onPointerDown={onSeekDown}
-              onPointerMove={onSeekMove}
-              onPointerUp={onSeekUp}
-              onKeyDown={onSeekKey}
-            >
-              {waveData ? (
-                <Waveform data={waveData} pct={pct} />
-              ) : (
-                <div className="l-bar-line">
-                  <div className="l-bar-fill" style={{ width: pct.toFixed(1) + '%' }}>
-                    <span className="l-bar-knob" />
-                  </div>
-                </div>
-              )}
-            </div>
-            <button type="button" className="l-bar-close" aria-label="Close player" onClick={stop}>
-              ✕
-            </button>
-          </>
-        ) : (
-          <>
-            {/*
-              The ten titles run together as one sentence — which is what they
-              are. Each is still its own button; the hover is the only thing that
-              says so, plus a tooltip naming the track.
-            */}
-            <div
-              ref={stripRef}
-              className={'l-strip-items' + (stripCut ? ' l-strip-cut' : '')}
-            >
-              {POEM.map((line, i) => (
-                <React.Fragment key={i}>
-                  {i > 0 && ' '}
-                  <button
-                    type="button"
-                    className={'l-strip-item' + (cur === i + 1 ? ' l-strip-playing' : '')}
-                    onClick={() => (cur === i + 1 ? setBarView('player') : playTrack(i + 1))}
-                    title={String(i + 1).padStart(2, '0') + ' — ' + TITLES[i]}
-                    aria-label={
-                      (cur === i + 1 ? 'Back to player — ' : 'Play ') +
-                      String(i + 1).padStart(2, '0') +
-                      ' — ' +
-                      TITLES[i]
-                    }
-                  >
-                    {line}
-                  </button>
-                </React.Fragment>
-              ))}
-            </div>
-
-          </>
-        )}
-      </div>
+      )}
 
       {/* ---- tuner, /?tune=1 ---- */}
       {tuner && (
@@ -1457,14 +1684,14 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         </div>
       )}
 
-      {/* ---- panels ---- */}
-      {panel && (
-        <div
-          className="l-panel"
-          role="dialog"
-          aria-modal="true"
-          aria-label={panel === 'poem' ? 'The poem and full tracklist' : 'Get notified'}
-        >
+      {/* ---- the subscribe panel ---- */}
+      {/*
+        The one thing still worth covering the page for. A form is not a place:
+        it has no content to be read, it is answered and dismissed, and it must
+        not cost the visitor their position on the way back out.
+      */}
+      {panel === 'subscribe' && (
+        <div className="l-panel" role="dialog" aria-modal="true" aria-label="Get notified">
           <button
             type="button"
             className="l-panel-close"
@@ -1474,161 +1701,76 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             ✕
           </button>
 
-          {panel === 'poem' ? (
-            <div className="l-poem">
-              <div className="l-poem-head">The Heart of the Jellyfish</div>
-              <div
-                className={'l-poem-body l-poem-f-' + font}
-                style={{ ['--poem-scale' as string]: fontScale } as React.CSSProperties}
-              >
-                {STANZAS.map((stanza, si) => (
-                  <div className="l-poem-stanza" key={si}>
-                    {stanza.map((n) => {
-                      const has = AVAILABLE_DEMOS.includes(n);
-                      const on = cur === n;
-                      return (
-                        <button
-                          key={n}
-                          type="button"
-                          className={
-                            'l-poem-line' +
-                            (has ? '' : ' l-poem-soon') +
-                            (on ? ' l-poem-playing' : '')
-                          }
-                          /* Sounding: the line is the track's length, so it is
-                             pressed rather than clicked, and there is nothing
-                             left for a click to mean. Silent: unchanged. */
-                          onClick={on ? undefined : () => playFromPoem(n)}
-                          onPointerDown={on ? onLineDown : undefined}
-                          onPointerMove={on ? onLineMove : undefined}
-                          onPointerUp={on ? onLineUp : undefined}
-                          /* Both of these, or a drag that ends somewhere the
-                             page never hears about leaves the line stuck mid-
-                             scrub, with the fill frozen under a hairline. */
-                          onPointerCancel={on ? onLineUp : undefined}
-                          onLostPointerCapture={on ? onLineUp : undefined}
-                          onPointerLeave={on ? onLineLeave : undefined}
-                          onKeyDown={on ? onLineKey : undefined}
-                          role={on ? 'slider' : undefined}
-                          aria-valuemin={on ? 0 : undefined}
-                          aria-valuemax={on ? 100 : undefined}
-                          aria-valuenow={on ? Math.round(pct) : undefined}
-                          data-paused={on && !playing ? '' : undefined}
-                          style={
-                            on
-                              ? ({ ['--p' as string]: pct.toFixed(1) + '%' } as React.CSSProperties)
-                              : undefined
-                          }
-                          aria-label={
-                            (on
-                              ? 'Seek — '
-                              : has
-                                ? 'Play demo — '
-                                : 'No demo yet — ') + TITLES[n - 1]
-                          }
-                        >
-                          <span
-                            className="l-poem-num"
-                            aria-hidden
-                            title={on ? (playing ? 'Pause' : 'Play') : undefined}
-                          >
-                            {String(n).padStart(2, '0')}
-                          </span>
-                          {/* The words are their own box — see .l-poem-ink. The
-                              button stays full width so a silent line is easy
-                              to hit; the ink is what fills and what seeks.
-                              Its children are the line's sense units, so a line
-                              too long for the phone turns where the poem does —
-                              see POEM_LINES. */}
-                          <span className="l-poem-ink" ref={on ? attachInk : undefined}>
-                            {POEM_LINES[n - 1].map((unit, ui) => (
-                              <span className="l-poem-unit" key={ui}>
-                                {unit}
-                              </span>
-                            ))}
-                            {on && <span className="l-poem-time" ref={poemTimeRef} aria-hidden />}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="l-sub">
-              <h2 className="l-sub-title">Follow thy heart ;)</h2>
-              <p className="l-sub-copy">
-                Leave your email — you&apos;ll be the first to know when it surfaces.
-              </p>
-              {subState === 'done' ? (
-                <div className="l-sub-thanks">
-                  Heartbeat received, expect receiving mine too ;)
-                </div>
-              ) : (
-                <form
-                  className="l-sub-form"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    const email = emailRef.current?.value.trim() ?? '';
-                    if (!EMAIL_RE.test(email)) {
-                      setSubErr('email');
+          <div className="l-sub">
+            <h2 className="l-sub-title">Follow thy heart ;)</h2>
+            <p className="l-sub-copy">
+              Leave your email — you&apos;ll be the first to know when it surfaces.
+            </p>
+            {subState === 'done' ? (
+              <div className="l-sub-thanks">Heartbeat received, expect receiving mine too ;)</div>
+            ) : (
+              <form
+                className="l-sub-form"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const email = emailRef.current?.value.trim() ?? '';
+                  if (!EMAIL_RE.test(email)) {
+                    setSubErr('email');
+                    setSubState('error');
+                    emailRef.current?.focus();
+                    return;
+                  }
+                  setSubState('sending');
+                  try {
+                    const res = await fetch('/api/subscribe', {
+                      method: 'POST',
+                      headers: { 'content-type': 'application/json' },
+                      body: JSON.stringify({ email, source: 'qi.land' }),
+                    });
+                    if (!res.ok) {
+                      // 400 is the address itself; anything else (503 no key, 502
+                      // upstream, 500) is ours to own -- don't blame the visitor.
+                      setSubErr(res.status === 400 ? 'email' : 'server');
                       setSubState('error');
-                      emailRef.current?.focus();
                       return;
                     }
-                    setSubState('sending');
-                    try {
-                      const res = await fetch('/api/subscribe', {
-                        method: 'POST',
-                        headers: { 'content-type': 'application/json' },
-                        body: JSON.stringify({ email, source: 'qi.land' }),
-                      });
-                      if (!res.ok) {
-                        // 400 is the address itself; anything else (503 no key, 502
-                        // upstream, 500) is ours to own -- don't blame the visitor.
-                        setSubErr(res.status === 400 ? 'email' : 'server');
-                        setSubState('error');
-                        return;
-                      }
-                      setSubState('done');
-                    } catch {
-                      setSubErr('server'); // never reached /api/subscribe at all
-                      setSubState('error');
-                    }
+                    setSubState('done');
+                  } catch {
+                    setSubErr('server'); // never reached /api/subscribe at all
+                    setSubState('error');
+                  }
+                }}
+              >
+                <input
+                  ref={emailRef}
+                  type="email"
+                  placeholder="Email address"
+                  aria-label="Email address"
+                  className="l-sub-input"
+                  disabled={subState === 'sending'}
+                  onChange={() => {
+                    if (subState === 'error') setSubState('idle');
                   }}
-                >
-                  <input
-                    ref={emailRef}
-                    type="email"
-                    placeholder="Email address"
-                    aria-label="Email address"
-                    className="l-sub-input"
-                    disabled={subState === 'sending'}
-                    onChange={() => {
-                      if (subState === 'error') setSubState('idle');
-                    }}
-                  />
-                  <button type="submit" className="l-sub-btn" disabled={subState === 'sending'}>
-                    {subState === 'sending' ? '\u2026' : 'SIGN UP'}
-                  </button>
-                </form>
-              )}
-              {subState === 'error' && (
-                <p className="l-sub-err" role="alert">
-                  {subErr === 'email'
-                    ? 'That address doesn\u2019t look right \u2014 mind checking it?'
-                    : 'The tide didn\u2019t carry it \u2014 try again in a moment.'}
-                </p>
-              )}
-              <div className="l-sub-foot">
-                QI — 12 · 20 · 2026 ·{' '}
-                <a href="https://qi.land" className="l-sub-link">
-                  QI.LAND
-                </a>
-              </div>
+                />
+                <button type="submit" className="l-sub-btn" disabled={subState === 'sending'}>
+                  {subState === 'sending' ? '\u2026' : 'SIGN UP'}
+                </button>
+              </form>
+            )}
+            {subState === 'error' && (
+              <p className="l-sub-err" role="alert">
+                {subErr === 'email'
+                  ? 'That address doesn\u2019t look right \u2014 mind checking it?'
+                  : 'The tide didn\u2019t carry it \u2014 try again in a moment.'}
+              </p>
+            )}
+            <div className="l-sub-foot">
+              QI — 12 · 20 · 2026 ·{' '}
+              <a href="https://qi.land" className="l-sub-link">
+                QI.LAND
+              </a>
             </div>
-          )}
+          </div>
         </div>
       )}
     </div>
@@ -1719,7 +1861,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 }
 
 /* ---- nav ---- */
-.l-nav{position:absolute;top:0;left:0;right:0;z-index:20;
+.l-nav{position:fixed;top:0;left:0;right:0;z-index:20;
   display:flex;justify-content:space-between;align-items:center;
   padding:26px clamp(24px,3vw,52px);
   font-family:'Jost',sans-serif;font-weight:300;font-size:11.5px;letter-spacing:.3em}
@@ -1960,52 +2102,14 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 /* A scrim, not a block. A solid bar cut ~70px off the bottom of the painting —
    which on a 16:9 canvas is the sand and the near water. The gradient keeps the
    type legible while the art runs all the way to the edge of the screen. */
-.l-bar{position:absolute;left:0;right:0;bottom:0;z-index:20;
+.l-bar{position:fixed;left:0;right:0;bottom:0;z-index:20;
   height:clamp(76px,11vh,104px);display:flex;align-items:center;
   gap:clamp(12px,1.2vw,22px);padding:0 clamp(20px,2.2vw,44px);
   background:linear-gradient(0deg,rgba(9,36,58,.86),rgba(9,36,58,.52) 62%,transparent);
-  color:#f2f6f8;overflow-x:auto;scrollbar-width:none;
-  text-shadow:0 1px 8px rgba(6,26,44,.55)}
-.l-bar::-webkit-scrollbar{display:none}
-.landing 
-/* Ten titles, each in its own slot, spread across the bar — no numbers, no
-   separators. flex:0 1 auto (not 1 1 0) sizes each to its own text and shrinks
-   them proportionally, so "Wake up!" never claims the same width as "what
-   belongs to the sea will always return to the sea." Dropping the numbers freed
-   roughly 155px, and all of it went into the gaps. */
-.l-strip-items{flex:1;min-width:0;
-  display:flex;align-items:baseline;justify-content:space-between;
-  gap:clamp(10px,1.15vw,28px);
-  font-family:'Cormorant Garamond',serif;font-style:italic;
-  font-size:clamp(10.5px,.88vw,16.5px)}
-.l-strip-item{flex:0 1 auto;min-width:0;
-  background:none;border:none;padding:0;color:inherit;cursor:pointer;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  opacity:.88;transition:opacity .3s,color .3s}
-.l-strip-item:hover{opacity:1;color:#fff}
-/* The line that is sounding. Lit rather than badged — the bar gains no chrome,
-   and clicking it is the way back into the player. */
-.landing .l-strip-playing{opacity:1;color:var(--lit)}
-.landing .l-strip-playing:hover{color:var(--lit-bright)}
-
-.landing .l-bar-back{background:none;border:none;padding:0 2px;color:inherit;
-  cursor:pointer;font-size:15px;opacity:.6;flex-shrink:0;transition:opacity .3s}
-.landing .l-bar-back:hover{opacity:1}
-
-/* Too narrow for ten slots, and ten ellipsised half-words read worse than
-   anything. Below this the same markup becomes one scrolling sentence: the flex
-   container turns into a line of inline buttons, and the whitespace between them
-   — ignored while it was a flex container — starts doing its job as word space. */
-@media (max-width:1180px){
-  /* .landing-qualified, because the base rules are too — a bare .l-strip-items
-     here loses on specificity no matter that it comes later. Same trap as
-     .landing button{font:inherit}; see the note further down. */
-  .landing .l-strip-items{display:block;white-space:nowrap;overflow-x:auto;
-    scrollbar-width:none;font-size:clamp(11px,1.05vw,14px)}
-  .landing .l-strip-items::-webkit-scrollbar{display:none}
-  .landing .l-strip-item{display:inline;overflow:visible}
-}
-
+  color:#f2f6f8;
+  text-shadow:0 1px 8px rgba(6,26,44,.55);
+  animation:l-bar-in .55s cubic-bezier(.2,.8,.2,1) both}
+@keyframes l-bar-in{from{opacity:0;transform:translateY(100%)}to{opacity:1;transform:none}}
 /* Colour stated, not inherited. The bar's #f2f6f8 was already what it wanted,
    but the glyph is the one thing on this page that must be unambiguously the
    same white as the hero's — say it here so it survives whatever the bar's own
@@ -2050,7 +2154,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-bar-close:hover{opacity:1}
 
 /* ---- panels ---- */
-.l-panel{position:absolute;inset:0;z-index:30;
+.l-panel{position:fixed;inset:0;z-index:30;
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   padding:clamp(60px,9vh,110px) clamp(24px,6vw,80px);
   background:rgba(8,34,56,.80);backdrop-filter:blur(14px);
@@ -2089,20 +2193,6 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
      water. If it ever goes fuzzy instead of lit, the blur radius grew. */
   --poem-ink:rgba(2,14,26,.85);
   --poem-halo:rgba(186,230,252,.55)}
-/* The poem's own hand, at Qi's call.
-   
-   The risk this accepts: "The heart of the jellyfish." is also line 06, so in the
-   same face the title and that line are nearly the same string. What keeps them
-   apart is not the typeface but the ranking — the title runs about 1.6x the
-   line size with ~90px of air under it, and it is the only thing in the panel
-   that is not a button. If it ever starts reading as the poem's first line, that
-   ratio is the knob, not the font. */
-.l-poem-head{font-family:'Nothing You Could Do',cursive;font-weight:400;
-  font-size:clamp(24px,3.4vh,38px);letter-spacing:.01em;line-height:1.2;
-  opacity:.72;margin-bottom:clamp(46px,9.5vh,98px);
-  /* A wider bloom than the lines get — the strokes are bigger here, so the same
-     7px would sit inside the letterform instead of around it. Same seat. */
-  text-shadow:0 0 11px rgba(186,230,252,.5),0 1px 2px rgba(2,14,26,.8)}
 .l-poem-body{display:flex;flex-direction:column;
   gap:clamp(18px,3.2vh,38px)}          /* the space between stanzas */
 .l-poem-stanza{display:flex;flex-direction:column;gap:clamp(1px,.35vh,5px)}
@@ -2333,12 +2423,6 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-sub-link{color:inherit;border-bottom:1px solid currentColor;text-decoration:none}
 
 /* ---- narrow ---- */
-/* Only when the row really is wider than the bar — see the ResizeObserver in the
-   component. It scrolls rather than truncating, and the fade says so. */
-.l-strip-cut{
-  -webkit-mask-image:linear-gradient(90deg,#000 86%,transparent);
-  mask-image:linear-gradient(90deg,#000 86%,transparent);
-}
 /* All four countdown units have to stay on one line, so on a phone the type
    gives. These are still multiplied by --type-scale — a hardcoded px here would
    silently opt the countdown out of the scale on mobile only, which is exactly
@@ -2362,7 +2446,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 }
 
 /* Dev-only, behind /?type=1 — never rendered for a visitor. */
-.l-tuner{position:absolute;right:18px;top:76px;z-index:40;max-width:248px;
+.l-tuner{position:fixed;right:18px;top:76px;z-index:40;max-width:248px;
   max-height:calc(100vh - 108px);overflow-y:auto;scrollbar-width:thin;
   display:flex;flex-direction:column;gap:10px;align-items:flex-start;
   padding:14px 18px;border-radius:4px;
@@ -2383,6 +2467,370 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   justify-content:flex-start;white-space:nowrap}
 .l-tuner-head{font-size:9px;letter-spacing:.34em;opacity:.45;margin-top:4px}
 .l-tuner input[type=range]{width:120px;accent-color:var(--lit)}
+
+/* ==================================================================
+   TWO SCREENS, ONE DESCENT
+   ==================================================================
+
+   Everything below is the second screen and the way down to it. The rule that
+   makes it work is that nothing here is a second page: the painting, the nav
+   and the player are fixed to the WINDOW and only the type scrolls past them,
+   so screen two is the same picture seen from further down rather than a new
+   one. One number carries it — --s, the scroll position over one screen height,
+   0 on the shore and 1 in the water, written to .landing by the scroll effect.
+   Every layer below reads it. None of them reads anything else. */
+
+.landing{
+  /* Defaults so the page is correct before a single scroll event has fired,
+     and so it is still correct with JS off: --s pinned at 0 is exactly screen
+     one, and the scroller still scrolls. */
+  --s:0;
+  /* The bar's own height, named once. Two things have to get out of its way
+     and neither should have to know the number. */
+  --barh:clamp(76px,11vh,104px);
+  --bar:0px}
+.landing[data-bar]{--bar:var(--barh)}
+
+/* The scroller. Fixed, with both screens inside it, rather than letting the
+   document scroll: the backdrop and the player have to hold still while the
+   type moves, and one fixed shell with a single scrolling child is the version
+   of that which does not depend on position:fixed behaving inside whatever
+   ancestor iOS has decided to make a containing block this year.
+   The scrollbar is hidden because the arrow is the affordance. */
+.l-scroll{position:fixed;inset:0;z-index:10;overflow-y:auto;overflow-x:hidden;
+  scroll-snap-type:y mandatory;scrollbar-width:none;overscroll-behavior-y:none}
+.l-scroll::-webkit-scrollbar{display:none}
+.l-screen{position:relative;width:100%;min-height:100%;scroll-snap-align:start}
+.l-one{height:100%;
+  /* The shore does not merely leave, it dissolves. Multiplied so it is gone at
+     ~87% of the way down, which is where the water has taken over anyway. */
+  opacity:clamp(0,calc(1 - var(--s) * 1.15),1)}
+
+/* Mandatory snap is the whole feeling of "two pages", and it is also the one
+   thing here that can trap a reader: a screen taller than the window has no
+   snap position at its own bottom, so the tail of the poem becomes unreachable
+   — the scroller keeps pulling back to the top of the section.
+
+   So it gives way, and it gives way on a measurement rather than on a
+   breakpoint. data-tall means the two screens measured more than two screens;
+   see the scroll effect. Proximity still settles onto a screen when you let go
+   near one, so the two-page feel survives everywhere it can afford to. */
+.landing[data-tall] .l-scroll{scroll-snap-type:y proximity}
+
+/* With scripting off, --s never moves and screen two would be white
+   handwriting over a bright sky. Everything else on this page is gone in that
+   world too — the countdown, the player, the panels — but a static page is one
+   kind of broken and an unreadable one is another, so the water gets painted in
+   a way that does not need a scroll position to exist. */
+@media (scripting: none){
+  .l-two{background:linear-gradient(180deg,rgba(6,28,50,.88),rgba(2,13,27,.95))}
+  .landing .l-down{display:none}
+}
+
+/* ---- the backdrop, and the water that comes over it ---- */
+.l-stage{position:fixed;inset:0;z-index:0;overflow:hidden}
+/* The camera sinks: the painting drifts up and opens slightly as it goes, which
+   is parallax and nothing more — but it is what keeps the second screen from
+   reading as the first screen with a filter on it. Transform only, so it stays
+   on the compositor. */
+.l-bg{transform:translate3d(0,calc(var(--s) * -3.4vh),0) scale(calc(1 + var(--s) * .07));
+  transform-origin:50% 42%;will-change:transform}
+/* Depth eats detail and colour before it eats light. Wide screens only: this is
+   a full-bleed blur re-rasterising while the scroll is in flight, which a laptop
+   absorbs and a phone should not be asked to. */
+@media (min-width:900px){
+  .l-bg{filter:blur(calc(var(--s) * 4px)) saturate(calc(1 - var(--s) * .42))}
+}
+
+/* The dark. Two gradients, because deep water does two things at once and one
+   of them is not vertical.
+
+   The linear one is depth: heaviest at the bottom of the frame, because that is
+   where the reader is going and because it puts the weight under the footer
+   rather than under the verse.
+
+   The radial one is the water closing in — it darkens everything the poem is
+   not, which is what stops the second screen from reading as the first screen
+   with the lights off. It is also what leaves the figure on the shore as a
+   ghost rather than as a subject: he is still there, still standing where he
+   was one screen ago, but he is no longer the thing being looked at. That is
+   the storyboard, not a compromise — see the frame notes in CLAUDE.md.
+
+   Both stop short of opaque so the oil texture survives the descent. A flat
+   colour is the one thing this background must never be, at any depth. */
+.l-deep{position:absolute;inset:0;z-index:2;pointer-events:none;opacity:var(--s);
+  background:
+    radial-gradient(78% 62% at 46% 46%,transparent 24%,rgba(2,13,27,.34) 68%,rgba(2,13,27,.62) 100%),
+    linear-gradient(180deg,
+      rgba(7,32,56,.66) 0%,
+      rgba(5,24,45,.86) 44%,
+      rgba(2,13,27,.94) 100%)}
+
+/* The light that is left, which comes from above and behind — the surface,
+   receding. It breathes, which is the same 9-11s swell the water in /descent
+   has. The breathing lives on the child so that its keyframes hold plain
+   numbers: a keyframe that multiplies --s would have to re-resolve mid-scroll,
+   and engines disagree about whether it does. Parent carries --s, child
+   carries the motion. Nothing has to agree with anything. */
+.l-surface{position:absolute;left:50%;top:-22vh;width:150vw;height:88vh;z-index:3;
+  transform:translateX(-50%);pointer-events:none;opacity:var(--s)}
+.l-surface::before{content:'';position:absolute;inset:0;
+  background:radial-gradient(46% 62% at 50% 0%,
+    rgba(158,214,240,.22),rgba(158,214,240,.07) 52%,transparent 78%);
+  animation:l-swell 11s ease-in-out infinite}
+@keyframes l-swell{0%,100%{opacity:.62;transform:scale(1)}50%{opacity:1;transform:scale(1.06)}}
+
+/* Marine snow, going UP.
+   
+   This is the only layer that says which way we are moving — everything else
+   would read the same on a page that was merely getting darker. Three layers
+   because depth is parallax: the near one is bigger, brighter and quick, the
+   far one is small, dim and slow, and the eye assembles a volume out of the
+   difference without ever being told.
+   
+   Each layer is one tile of dots repeated, translated by exactly one tile
+   height, so the loop is seamless with no JS and no canvas. Transform, not
+   background-position: the first is composited, the second repaints. */
+.l-snow{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:hidden;
+  opacity:calc(var(--s) * .9);
+  -webkit-mask-image:linear-gradient(180deg,transparent,#000 15%,#000 85%,transparent);
+          mask-image:linear-gradient(180deg,transparent,#000 15%,#000 85%,transparent)}
+.l-snow i{position:absolute;left:0;right:0;top:calc(-1 * var(--tile));
+  height:calc(100% + var(--tile) * 2);
+  background-repeat:repeat;background-size:var(--tile) var(--tile);
+  animation:l-snowdrift var(--dur) linear infinite;will-change:transform}
+@keyframes l-snowdrift{
+  from{transform:translate3d(0,0,0)}
+  to{transform:translate3d(0,calc(-1 * var(--tile)),0)}
+}
+.l-snow i:nth-child(1){--tile:230px;--dur:19s;
+  background-image:
+    radial-gradient(2.2px 2.2px at 22% 14%,rgba(228,244,254,.62),transparent),
+    radial-gradient(1.8px 1.8px at 71% 39%,rgba(228,244,254,.46),transparent),
+    radial-gradient(2.4px 2.4px at 44% 68%,rgba(228,244,254,.5),transparent),
+    radial-gradient(1.6px 1.6px at 88% 82%,rgba(228,244,254,.4),transparent),
+    radial-gradient(2px 2px at 9% 91%,rgba(228,244,254,.44),transparent)}
+.l-snow i:nth-child(2){--tile:330px;--dur:34s;
+  background-image:
+    radial-gradient(1.5px 1.5px at 13% 8%,rgba(222,240,252,.5),transparent),
+    radial-gradient(1.2px 1.2px at 57% 21%,rgba(222,240,252,.36),transparent),
+    radial-gradient(1.6px 1.6px at 33% 47%,rgba(222,240,252,.42),transparent),
+    radial-gradient(1.1px 1.1px at 80% 58%,rgba(222,240,252,.3),transparent),
+    radial-gradient(1.5px 1.5px at 63% 79%,rgba(222,240,252,.4),transparent),
+    radial-gradient(1.2px 1.2px at 19% 93%,rgba(222,240,252,.32),transparent)}
+.l-snow i:nth-child(3){--tile:470px;--dur:58s;
+  background-image:
+    radial-gradient(1px 1px at 28% 11%,rgba(214,236,250,.34),transparent),
+    radial-gradient(.9px .9px at 74% 26%,rgba(214,236,250,.26),transparent),
+    radial-gradient(1.1px 1.1px at 47% 44%,rgba(214,236,250,.3),transparent),
+    radial-gradient(.8px .8px at 12% 63%,rgba(214,236,250,.24),transparent),
+    radial-gradient(1px 1px at 86% 74%,rgba(214,236,250,.28),transparent),
+    radial-gradient(.9px .9px at 39% 88%,rgba(214,236,250,.24),transparent)}
+
+/* ---- the wordmark, which is also the way back up ---- */
+.landing .l-mark{background:none;border:none;padding:0;color:inherit;cursor:pointer;
+  font-family:'Jost',sans-serif;font-weight:300;font-size:inherit;letter-spacing:.3em;
+  white-space:nowrap;text-shadow:0 1px 2px rgba(10,42,70,.5);
+  /* Exactly the inverse of the title it stands in for: it arrives as the carved
+     one leaves, so the album is named on both screens and never twice at once.
+     Untouchable until it is actually there — an invisible button in the corner
+     of the first screen is a trap, not a courtesy. */
+  opacity:calc(var(--s) * .8);pointer-events:none;transition:opacity .25s}
+.landing[data-two] .l-mark{pointer-events:auto}
+.landing[data-two] .l-mark:hover{opacity:1}
+.l-mark-short{display:none}
+@media (max-width:720px){
+  .l-mark-long{display:none}
+  .l-mark-short{display:inline}
+}
+
+/* ---- the arrow ----
+
+   What the ten titles used to be. Naming every track at the bottom of the first
+   screen meant the album was over before anyone had scrolled; the arrow says
+   there is more without saying what, which is the only reason the poem can
+   arrive whole.
+
+   The rail is not decoration. A light runs down it every few seconds — the one
+   piece of motion on this page that points, and the reason the arrow does not
+   need the word SCROLL under it.
+
+   fill-mode backwards, not both: the entrance holds its first frame through the
+   delay and then lets go, so the scroll fade below is free to take the opacity
+   back. With 'both' the animation would own it forever and the arrow would ride
+   all the way down to the poem. */
+.landing .l-down{position:absolute;left:50%;z-index:10;
+  bottom:calc(clamp(22px,4vh,40px) + var(--bar));
+  display:flex;flex-direction:column;align-items:center;gap:clamp(7px,1.1vh,11px);
+  background:none;border:none;padding:12px 22px;cursor:pointer;color:#fff;
+  transform:translateX(-50%);
+  opacity:clamp(0,calc(1 - var(--s) * 3),1);
+  transition:bottom .5s cubic-bezier(.2,.8,.2,1);
+  animation:l-down-in 1.2s cubic-bezier(.2,.7,.2,1) 1.15s backwards}
+@keyframes l-down-in{
+  from{opacity:0;transform:translate(-50%,12px)}
+  to{opacity:1;transform:translate(-50%,0)}
+}
+/* Contrast, not brightness. The arrow sits at the bottom of the frame, which on
+   this painting is sea and foam — the lightest, busiest part of it. A hairline
+   at the tracking the rest of the page uses simply disappears there, so the rail
+   carries a dark seat of its own (box-shadow, since a 1px element has no text to
+   put a text-shadow under) and the chevron carries the same two-part shadow the
+   hero's labels do. */
+.l-down-rail{position:relative;display:block;width:1px;height:clamp(28px,5.2vh,54px);
+  overflow:hidden;
+  background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.45) 55%,rgba(255,255,255,.52));
+  box-shadow:0 0 6px rgba(10,42,70,.5);
+  transition:background .4s}
+.l-down-drop{position:absolute;left:0;top:0;width:1px;height:44%;
+  background:linear-gradient(180deg,transparent,#fff,transparent);
+  animation:l-down-drop 3.6s cubic-bezier(.45,0,.55,1) infinite}
+@keyframes l-down-drop{
+  0%{transform:translateY(-140%);opacity:0}
+  20%{opacity:.95}
+  72%{opacity:.95}
+  100%{transform:translateY(320%);opacity:0}
+}
+.l-down-chev{opacity:.9;
+  filter:drop-shadow(0 1px 2px rgba(10,42,70,.55)) drop-shadow(0 0 10px rgba(10,42,70,.45));
+  transition:transform .42s cubic-bezier(.2,.8,.2,1),opacity .42s}
+.l-down:hover .l-down-chev,
+.l-down:focus-visible .l-down-chev{transform:translateY(3px);opacity:1}
+.l-down:hover .l-down-rail,
+.l-down:focus-visible .l-down-rail{
+  background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.68) 55%,rgba(255,255,255,.8))}
+.l-down:focus-visible{outline:none}
+
+/* ---- screen two ---- */
+/* Top clears the fixed nav, bottom clears the player when there is one. The
+   poem itself is centred in what is left, so adding the player nudges the verse
+   up rather than putting the bar on top of it. */
+.l-two{display:flex;align-items:center;justify-content:center;
+  padding:clamp(78px,12vh,120px) clamp(24px,6vw,80px)
+          calc(clamp(44px,8vh,92px) + var(--bar))}
+
+/* One line of explanation, doing real work: without it, ten lines of verse on
+   their own screen are a poem, and that each line is also a track — and playable
+   — is something you find out by accident. It names the format, not the content,
+   so nothing is spent. The rule in front of it is the only horizontal line on
+   the screen; it is what makes the line read as a caption rather than as verse. */
+.l-two-eyebrow{--o:.54;font-family:'Jost',sans-serif;font-weight:300;
+  font-size:clamp(9px,1.05vh,10.5px);letter-spacing:.44em;opacity:.54;
+  margin-bottom:clamp(30px,6vh,64px);white-space:nowrap;
+  text-shadow:0 1px 2px rgba(2,14,26,.7)}
+.l-two-eyebrow::before{content:'';display:inline-block;
+  width:clamp(16px,3vw,38px);height:1px;background:currentColor;opacity:.55;
+  vertical-align:middle;margin:0 1.15em 3px 0}
+
+.l-two-foot{--o:.5;display:flex;align-items:center;gap:clamp(11px,1.6vw,20px);
+  margin-top:clamp(32px,7vh,74px);opacity:.5;
+  font-family:'Jost',sans-serif;font-weight:300;font-size:10px;letter-spacing:.34em;
+  text-shadow:0 1px 2px rgba(2,14,26,.7)}
+.l-two-sep{width:clamp(14px,2.4vw,32px);height:1px;background:currentColor;opacity:.5}
+.landing .l-two-sub{background:none;border:none;padding:0 0 2px;color:inherit;cursor:pointer;
+  font-family:'Jost',sans-serif;font-weight:300;font-size:10px;letter-spacing:.34em;
+  border-bottom:1px solid transparent;transition:border-color .4s}
+.landing .l-two-sub:hover{border-bottom-color:currentColor}
+
+/* The Chinese title, set the way it would run on a spine. It is the only thing
+   on this screen that is neither English nor a control, and it hangs in the
+   right margin where a seal would — the one place it can be large and quiet at
+   once. Below 900px there is no margin to hang anything in, so it goes.
+   
+   The rule above it is an inline-block inside vertical text, which is why its
+   size is given logically: in vertical-rl the inline axis runs down the page, so
+   inline-size is the length of the line and block-size is its thickness. */
+.l-two-cn{--o:.32;position:absolute;right:clamp(20px,3.4vw,54px);top:50%;
+  transform:translateY(-50%);writing-mode:vertical-rl;pointer-events:none;
+  font-family:'Noto Serif SC','Songti SC',serif;font-weight:300;
+  font-size:clamp(13px,1.55vh,18px);letter-spacing:.62em;color:#dcecf6;opacity:.32;
+  text-shadow:0 0 10px rgba(150,210,240,.35),0 1px 2px rgba(2,14,26,.7)}
+.l-two-cn-rule{display:inline-block;inline-size:clamp(24px,6vh,58px);block-size:1px;
+  background:currentColor;opacity:.55;vertical-align:middle;
+  margin-inline-end:clamp(12px,2.6vh,26px)}
+@media (max-width:900px){.l-two-cn{display:none}}
+
+/* The verse gets more room than it had in the panel, since it now has a screen
+   rather than a hole cut in one. Both faces move together — see POEM_FONTS for
+   why they cannot share a number. */
+.l-two .l-poem-f-nothing{--poem-size:clamp(16px,2.5vh,27px)}
+.l-two .l-poem-f-cormorant{--poem-size:clamp(18px,2.8vh,29px)}
+/* Printed, not hidden. In the panel the numbers appeared on hover because they
+   were chrome over a poem; on a tracklist they are the tracklist, and a reader
+   should be able to see which line is 08 without reaching for it. */
+.l-two .l-poem-num{opacity:.3}
+.l-two .l-poem-line:hover .l-poem-num{opacity:.66}
+
+/* ---- VI, the one line that beats ----
+
+   Same swell as the title's, an octave down: a 60bpm bloom on the halo and
+   nothing else — no movement, no size change, nothing that would make a line of
+   verse jump. Fast attack and a long release, because a symmetric swell reads
+   as breathing rather than as a pulse.
+
+   It is on the button, so the sounding state turns it off by construction: a
+   playing line paints its text through .l-poem-ink, which states its own
+   text-shadow and so is untouched by this. Which is right — when the track is
+   actually sounding you can hear the heart, and the line has the fill to do. */
+.landing .l-poem-heart .l-poem-line{
+  animation:l-poem-beat 1s cubic-bezier(.15,.85,.25,1) infinite}
+@keyframes l-poem-beat{
+  0%{text-shadow:0 0 7px var(--poem-halo),0 1px 2px var(--poem-ink)}
+  11%{text-shadow:0 0 15px rgba(212,240,255,.82),0 1px 2px var(--poem-ink)}
+  100%{text-shadow:0 0 7px var(--poem-halo),0 1px 2px var(--poem-ink)}
+}
+
+/* ---- how screen two arrives ----
+
+   The lines surface one after another, from blurred and low to sharp and still,
+   which is a poem coming into focus as you sink to it — and the same 55ms
+   stagger as everything else that reads left to right on this page.
+
+   Two things make it safe. It is wrapped in no-preference, so the base opacity:0
+   never exists for a reader who asked for less motion (the global
+   animation:none would otherwise leave them a blank screen). And it ends at
+   var(--o) rather than at 1, because three of these elements are deliberately
+   not opaque and a fill-mode animation ending at 1 would silently overrule
+   every one of them, forever. */
+@media (prefers-reduced-motion:no-preference){
+  .l-two-eyebrow,.l-poem-row,.l-two-foot,.l-two-cn{opacity:0}
+  .l-two.is-in .l-two-eyebrow{animation:l-in .9s cubic-bezier(.2,.7,.2,1) both}
+  .l-two.is-in .l-poem-row{animation:l-in .85s cubic-bezier(.2,.7,.2,1) both;
+    animation-delay:calc(var(--i,0) * 55ms)}
+  .l-two.is-in .l-two-cn{animation:l-in 1.3s cubic-bezier(.2,.7,.2,1) .5s both}
+  .l-two.is-in .l-two-foot{animation:l-in .9s cubic-bezier(.2,.7,.2,1) .78s both}
+}
+@keyframes l-in{
+  from{opacity:0;transform:translateY(16px);filter:blur(4px)}
+  to{opacity:var(--o,1);transform:none;filter:none}
+}
+/* The vertical title comes in along its own axis, so it keeps its centring. */
+@media (prefers-reduced-motion:no-preference){
+  .l-two.is-in .l-two-cn{animation-name:l-in-cn}
+}
+@keyframes l-in-cn{
+  from{opacity:0;transform:translateY(-50%) translateX(14px)}
+  to{opacity:var(--o,1);transform:translateY(-50%)}
+}
+
+@media (max-width:560px){
+  /* The numbers hang outside the column, and on a phone that column is most of
+     the screen — 3.2em of margin is a fifth of it. */
+  .l-two .l-poem{padding-left:2.5em}
+  /* A phone is where the poem stops being ten lines. Three of them turn, so the
+     column is fourteen rows rather than ten and the type has to come down to
+     pay for the four it did not budget for — 2.5vh of a phone is a comfortable
+     size for a line that fits and an overflowing screen for one that doesn't. */
+  .l-two{padding-top:clamp(70px,10vh,110px)}
+  .l-two .l-poem-f-nothing{--poem-size:clamp(15px,2.15vh,22px)}
+  .l-two .l-poem-f-cormorant{--poem-size:clamp(16px,2.4vh,24px)}
+  .l-two .l-poem-body{gap:clamp(16px,2.6vh,30px)}
+  .l-two-eyebrow{margin-bottom:clamp(24px,4.6vh,48px)}
+  .l-two-foot{margin-top:clamp(26px,5.4vh,58px)}
+  .l-two-eyebrow{letter-spacing:.3em;font-size:9px}
+  .l-two-foot{letter-spacing:.24em;gap:10px}
+  .landing .l-two-sub{letter-spacing:.24em}
+}
 
 @media (prefers-reduced-motion: reduce){
   .landing *{animation:none !important}

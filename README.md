@@ -29,7 +29,7 @@ npm run dev          # http://localhost:3000
 
 | URL | What it shows |
 |---|---|
-| `/` | **The public site.** One screen: the shore painting, the album, the demo player, and panels for the poem and the mailing list. No scroll |
+| `/` | **The public site.** Two screens: the shore painting with the album over it, then the tracklist as a poem under water. The mailing list opens as a panel over either |
 | `/descent` | The R3F 3D descent (real water, real GLB jellyfish, shipwreck). Was `/` until the 2026-07-27 launch |
 | `/descent?tweak=1` | Same, with Leva sliders top-right for live sunset / sky / water / lights tuning |
 | `/descent?focus=heart` | Locks depth at frame VI (the jellyfish heart). No poem overlay |

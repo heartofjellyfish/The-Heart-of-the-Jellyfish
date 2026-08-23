@@ -1,8 +1,8 @@
 # qi.land web — context for Claude
 
 The site for Qi · 琦's debut album *The Heart of the Jellyfish* (release: 2026-12-20).
-Two things live here. `/` is the public front page: one screen, no scroll, the shore
-painting with the album over it. `/descent` is the R3F telling of the same story — above
+Two things live here. `/` is the public front page: two screens — the shore painting
+with the album over it, then the tracklist as a poem under water. `/descent` is the R3F telling of the same story — above
 water → past the jellyfish → into the abyss — kept for later, not the front door.
 
 ## Stack
@@ -35,43 +35,143 @@ Constants live at the top of OceanScene: `SURFACE_Y`, `JELLY_Y`, `ABYSS_Y`, `WRE
 - `/descent?focus=heart` — locks at d=0.55
 - `/descent?focus=abyss` — locks at d=0.92
 - `?tweak=1` — shows leva panel
-- `/` — the one-screen front page (see below); shares no code with the above
+- `/` — the two-screen front page (see below); shares no code with the above
 
-## The front page (`/`) — one screen
+## The front page (`/`) — two screens, one descent
 
-`/` is a single screen. No scroll: `html, body { overflow: hidden }` and the root
-is `position: fixed`. Everything the visitor can reach is either on that screen or
-in a panel that opens over it.
+*(rebuilt from one screen to two on 2026-08-22)*
+
+`/` is two screens and nothing else: the shore, and the tracklist under water. The
+document itself never scrolls — `html, body { overflow: hidden }`, the root is
+`position: fixed`, and inside it **one fixed scroller** (`.l-scroll`) holds both
+screens. Everything that must hold still while the type moves — the painting, the
+nav, the player — is a sibling of that scroller, fixed to the window.
 
 [components/Landing.tsx](components/Landing.tsx) is the whole thing — markup plus a
-`LANDING_CSS` string at the bottom. Layers, back to front: the painting (twice — see
-below), a scrim, the nav, the hero block, the bottom bar, and the panel.
+`LANDING_CSS` string at the bottom. Layers, back to front: the stage (painting,
+scrim, vignette, and the three water layers over them), the scroller with its two
+screens, the nav, the player, and the panel.
 
-**The bottom bar has two states and one slot.** Idle it's the ten titles, no
-numbers, each in its own slot spread across the bar; playing, it becomes the player
-in place. That matters on a one-screen layout — a separate fixed player bar would
-have covered the tracklist it was launched from.
+### The descent is one number
 
-`barView` is separate state from `cur` on purpose: **leaving the player must not
-stop the music, and stopping the music must not strand you on a dead player.** The
-`←` returns to the list with playback running, the sounding line is lit rather than
-badged (the bar gains no chrome), and clicking that lit line goes back into the
-player instead of pausing. `✕` is the one that stops.
+`--s` is the scroll position over one screen height, clamped to 0..1: **0 on the
+shore, 1 in the water.** It is written straight to `.landing` as a custom property
+by the scroll effect, and *everything* about the transition reads it — the veil's
+opacity, the parallax and blur on the painting, the light from the surface, the
+marine snow, screen one fading out, the arrow fading out, the wordmark fading in.
+One source of truth, so no two layers can disagree about how deep we are.
 
-Items are `flex:0 1 auto`, never `1 1 0` — equal thirds hand "Wake up!" the same
-width as "what belongs to the sea will always return to the sea." and truncate the
-long ones to nothing. Below 1180px the same markup becomes one scrolling sentence:
-`display:block` turns the buttons inline and the whitespace between them, ignored
-while it was a flex container, starts working as word space. Whether it overflows
-is measured by a `ResizeObserver` (plus `document.fonts.ready`, since a late webfont
-reflows text without resizing anything), not guessed at a breakpoint.
+Two rules about it that are easy to undo by accident:
 
-It's a gradient scrim, not a solid bar. A solid one cut ~70px off the bottom of the
-painting, which on this canvas is the sand and the near water. 
+- **It is not React state.** Re-rendering this component — SVG filters, ten poem
+  lines, a waveform — sixty times a second to move a gradient would be an absurd
+  price for a backdrop. The only state the scroll drives is `atTwo` (a boolean, so
+  it changes twice) and `tall` (see below).
+- **It is read synchronously in the handler, not in a `requestAnimationFrame`.**
+  rAF is suspended in a background tab, and a scroll that lands while it is
+  suspended would leave `--s` frozen — backdrop showing one screen, type showing
+  the other. The work is two property reads and one style set; there is nothing
+  worth coalescing. (Same lesson as the tracklist measurement that used to live
+  here, and the same reason.)
 
-**The poem and the mailing list are panels, not sections.** `ALBUM` / `ALL TEN` opens
-the poem; `PRE-SAVE` opens the signup. Escape closes. This is what keeps the page one
-screen while still having somewhere to put the poem.
+Screen two is *the same painting seen from further down*, not a second image: the
+figure is still standing where he was one screen ago, as a ghost behind the veil.
+That is the storyboard, not a compromise — see the frame notes in the workspace
+CLAUDE.md. The veil stops short of opaque in both its gradients so the oil texture
+survives the descent; **a flat colour is what this background must never be, at any
+depth.**
+
+The marine snow drifts **upward**, and it is the only layer that says which way we
+are moving — everything else would read the same on a page that was merely getting
+darker. Three layers, each one tile of dots repeated and translated by exactly one
+tile height, so the loop is seamless with no JS and no canvas.
+
+### Snap, and the one thing that can trap a reader
+
+`scroll-snap-type: y mandatory` is the whole feeling of "two pages". It is also the
+one thing here that can strand someone: a section taller than the window has no snap
+position at its own bottom, so the scroller keeps pulling back and the tail of the
+poem becomes unreachable.
+
+So it gives way — **on a measurement, not on a breakpoint.** The scroll effect sets
+`data-tall` when the two screens measure more than two screens, and that switches
+the snap to `proximity`. What makes screen two overflow is how many of the ten lines
+had to turn, which depends on the width, the height, which font finished loading and
+whether the player is up; no media query knows all four. (The effect re-runs on
+`barOn` for exactly this reason — the player changes screen two's padding.)
+
+### The player is one player, for both screens
+
+The bar is fixed to the window and mounts **only when something is sounding** —
+there is no idle state to design any more, because the tracklist it used to carry
+when idle is a screen now. Starting a demo from the poem and scrolling back to the
+shore does not interrupt it and does not leave the transport behind on the other
+screen. `✕` is the one control that stops.
+
+It is a gradient scrim, not a solid bar. A solid one cut ~70px off the bottom of the
+painting, which on this canvas is the sand and the near water.
+
+**The poem is a screen; the mailing list is still a panel.** `TRACKLIST` and the
+arrow both scroll to screen two; `PRE-SAVE` opens the signup over whatever you were
+looking at, and Escape closes it. The split is not layout convenience — a form is
+not a place: it has no content to be read, it is answered and dismissed, and it must
+not cost the visitor their position on the way back out. The poem is the opposite of
+all three, which is why it stopped being a dialog you open and dismiss.
+
+### The arrow, and what it replaced
+
+The bottom of screen one used to name all ten tracks. That meant the album was over
+before anyone had scrolled — so it is an arrow now, which says there is more without
+saying what, and the poem gets to arrive whole. A light runs down its rail every few
+seconds: the one piece of motion on that screen that *points*, and the reason it
+needs no word under it.
+
+Two things it needs that are easy to lose:
+
+- **Contrast, not brightness.** It sits at the bottom of the frame, which on this
+  painting is sea and foam — the lightest, busiest part of it. The rail carries a
+  dark `box-shadow` of its own (a 1px element has no text to seat a text-shadow
+  under) and the chevron carries the same two-part shadow the hero's labels do.
+- **`animation-fill-mode: backwards`, not `both`.** Its entrance holds its first
+  frame through the delay and then lets go, leaving the scroll fade free to take the
+  opacity back. With `both`, the animation would own `opacity` forever and the arrow
+  would ride all the way down to the poem. The same trap decides why the reveal on
+  screen two ends at `var(--o)` rather than at 1 — see below.
+
+### Screen two
+
+The panel's markup, unchanged, on a screen: the same fill, the same press-to-seek,
+the same transport in the margin. None of it was ever about being in a dialog. What
+is new around it:
+
+- An eyebrow — *TEN SONGS THAT READ AS A POEM* — instead of the handwritten album
+  title the panel carried. Ten lines of verse alone on a screen are a poem, and that
+  each line is also a playable track is then something you find out by accident. It
+  names the format, not the content, so nothing is spent. It also retires the
+  title-vs-line-06 collision the panel had to live with.
+- The Chinese title set vertically in the right margin, the way it would run on a
+  spine. Its rule is an inline-block inside vertical text, so its size is given
+  logically — in `vertical-rl` the inline axis runs *down* the page, so `inline-size`
+  is the length of the line and `block-size` is its thickness. Gone below 900px,
+  where there is no margin to hang anything in.
+- **The numbers are printed, not revealed.** In the panel they appeared on hover
+  because they were chrome over a poem; on a tracklist they *are* the tracklist.
+- **Line VI beats.** `HEART_TRACK` — the album is named after it, the heartbeat is
+  the album's rhythm, and the hero's "Heart" already swells once a second. On the
+  tracklist the same beat lands on the same words. Not literally the same clock: a
+  plain 1s loop, because the two are never on screen together and a shared tick
+  would buy nothing anyone could see. It is on the button, so a sounding line turns
+  it off by construction — the words are painted by `.l-poem-ink`, which states its
+  own `text-shadow`.
+
+The reveal (`l-in`) staggers the lines in as you land. Two things keep it honest:
+it lives inside `@media (prefers-reduced-motion: no-preference)`, because the base
+`opacity: 0` must not exist for a reader whose global `animation: none` would then
+leave them a blank screen; and it ends at `opacity: var(--o, 1)`, because three of
+the elements it animates are deliberately *not* opaque and a fill-mode animation
+ending at 1 would silently overrule them forever. Each row is a wrapper that exists
+only to be animated, for the same reason — the line's own opacity means "no demo
+yet" / "sounding", and an animation on the button would freeze all of it.
 
 ### The painting
 
@@ -104,7 +204,7 @@ figure's head and clipped a corner of it, which reads as a smudge rather than as
 person. Leaving him out entirely is better than showing a piece of him. If the crop
 ever needs retuning, that is the failure mode to watch for.
 
-### The poem is canon### The poem is canon
+### The poem is canon
 
 The ten titles read as one poem, and the punctuation is the poem:
 
@@ -119,7 +219,10 @@ Lower-case openings and trailing marks are deliberate — they're what makes the
 run on as verse. Don't "fix" them. `POEM` holds these; the `\n` in track 08 is the line
 break the poem itself takes, which the strip flattens back to one line. `TITLES` is a
 separate array of title-case names for the player and for `aria-label`s — player metadata,
-not the work.
+not the work. `POEM_LINES` stores each line as its **sense units** — the caesuras Qi
+would read aloud — because a phone cannot fit the long ones and the browser's own
+break is nonsense: a turned line looks exactly like the next track, so a bad break
+does not merely read badly, it invents a line of verse the album does not have.
 
 ### The seek bar is a real waveform
 
@@ -150,8 +253,9 @@ and arrow keys (Shift for 30s).
 In the poem panel the line that is playing fills left to right in step with the
 track. Since 2026-08-22 it is also **pressed to seek** — press anywhere along the
 words to land there, drag to sweep, and a hairline with a `m:ss` clock follows the
-pointer to say where you would land. The panel sits above the bottom bar, so
-without this there was no way to move through a track while reading the poem.
+pointer to say where you would land. It began in the poem panel, where the panel
+covered the bottom bar and there was otherwise no way to move through a track while
+reading; it came across to screen two unchanged.
 
 What makes it honest is **which box** it measures. The row is a fixed column width
 — the longest line sets it — so a fill measured on the row finishes `Wake up!`
@@ -188,13 +292,12 @@ and for the rest of the page. Rejected along the way: Caveat (reads as a marker 
 Petit Formal Script (a wedding invitation), La Belle Aurore, Shadows Into Light Two,
 The Girl Next Door, Sacramento.
 
-The poem's title is in the poem's own hand, at Qi's call after two rounds of my
-arguing otherwise. The risk it accepts is real: "The heart of the jellyfish." is
-also line 06, so title and line are nearly the same string in the same face. What
-separates them is the ranking, not the typeface — the title runs ~1.6x the line
-size with ~90px of air beneath it, and it is the only thing in the panel that is
-not a button. If it ever starts reading as the poem's first line, that ratio is the
-knob to turn.
+The poem used to be titled in its own hand, at Qi's call — and the risk that
+accepted was real: "The heart of the jellyfish." is also line 06, so title and line
+were nearly the same string in the same face, held apart only by a size ratio. The
+two-screen rebuild retired it: screen two opens on a letterspaced eyebrow instead,
+the album title is one screen away in the carve, and the collision is gone rather
+than managed.
 
 **`/?tune=1` opens a live tuner** (top right): vignette strength and spread, poem face
 and size. Dev affordance, renders for nobody else. `?type=1` still works.
@@ -370,9 +473,8 @@ descenders, has to keep the padding ahead of the ink.
 **Specificity.** `.landing button{font:inherit}` normalises the UA button font at
 (0,1,1), which beats any bare `.l-foo` class — so every button rule that sets a font
 must be `.landing .l-foo`. That prefixing then bites back inside media queries: a
-`@media` block containing bare `.l-strip-items` loses to a base `.landing
-.l-strip-items` no matter that it comes later, because specificity outranks source
-order. Both bugs looked identical from outside: a rule that reads correctly and
+`@media` block containing a bare `.l-foo` loses to a base `.landing .l-foo` no
+matter that it comes later, because specificity outranks source order. Both bugs looked identical from outside: a rule that reads correctly and
 computes to something else. **If a base rule is `.landing`-qualified, its media
 query override has to be too.**
 
