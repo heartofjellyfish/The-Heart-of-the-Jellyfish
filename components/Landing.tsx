@@ -183,6 +183,77 @@ const POEM_FONT: PoemFontKey = 'nothing';
 const VIGNETTE = { strength: 0.14, inner: 0 };
 
 /**
+ * THE FILM PASS
+ *
+ * The photograph Qi pointed at is a video still, and what reads as "film" in it
+ * is three things stacked. Grain is only the loudest one:
+ *
+ * - Grain proper. Silver halide is a random field, so the noise is strongest in
+ *   the midtones and gone at both ends — there is no emulsion left to be random
+ *   in a blown sky or a blocked-up shadow. `soft-light` is that curve for free:
+ *   a 50% grey source is a no-op, and the blend is pinned at backdrop 0 and 1,
+ *   so the grain dies out exactly where silver's does. No mask needed.
+ * - Halation. Bright areas bleed warm because light punched through the
+ *   emulsion and scattered back off the film base. This is the half everyone
+ *   forgets, and it is the half that makes a still look photographed rather
+ *   than dusted.
+ * - The toe and the shoulder. Film cannot clip. Blacks sit lifted and whites
+ *   roll off, which is why the wetsuits in the reference are dark teal and
+ *   never black. contrast() below 1 pivots on mid-grey and does both ends.
+ *
+ * An oil painting adds a fourth problem the reference does not have: the canvas
+ * already has texture. Grain reads as emulsion only if it is FINER than the
+ * brushwork — at the same scale it just muddies the strokes. So `grainPx` is in
+ * DEVICE pixels, not CSS ones, which keeps it sub-pixel on a retina screen
+ * instead of doubling the weave.
+ */
+const FILM = {
+  /** Grain layer opacity. Past ~.6 it stops being stock and starts being dirt. */
+  grain: 0.42,
+  /** One grain, in DEVICE pixels. 1 vanishes on a 3x phone, 3 is sandpaper. */
+  grainPx: 1.6,
+  /**
+   * Halation strength, and it is deliberately small.
+   *
+   * Halation reads as bloom only around something SMALL and bright against
+   * something darker. This painting has no point source at all — no sun, no
+   * specular, nothing but broad bright fields: the sand, the sky, the boy's
+   * white clothes. Bleed a broad field and you do not get bloom, you get fog,
+   * and at .34/.74 the whole picture went milky and lost the blue.
+   *
+   * So the threshold is set high enough that only the surf line and the lit
+   * edge of the shirt clear it, and the amount is low enough to soften them
+   * rather than light them. Push it and watch the sky go grey — that is the
+   * failure mode, and it arrives quickly.
+   */
+  halo: 0.18,
+  /** Spread of the bleed, in vmin so it holds its scale on any screen. */
+  haloBlur: 1.4,
+  /** Luminance above which a pixel blooms, 0-1. Only the foam and the shirt. */
+  haloThreshold: 0.88,
+  /** Contrast. Below 1 to lift the blacks and roll the whites off. */
+  contrast: 0.96,
+  /** Saturation. Colour stock is a shade quieter than a screen. */
+  saturate: 0.97,
+};
+
+/**
+ * The grain tile, in texels. Tiled across the viewport, so it has to be big
+ * enough that the eye does not catch the period. White noise has no structure to
+ * latch onto, but the rhythm of the repeat itself is visible below about 128.
+ */
+const GRAIN_TILE = 256;
+
+/**
+ * How hard the halation mask is cut. Paired with --halo-gain below: contrast()
+ * pivots on mid-grey, so to put the *threshold* at black rather than at grey the
+ * image is first scaled so the threshold lands at (0.5 - 0.5/C). Everything
+ * darker than that clips to nothing and never blooms; everything about 25%
+ * brighter blooms fully.
+ */
+const HALO_CUT = 9;
+
+/**
  * Multiplier on the hero block's type — title, countdown, both actions. Qi's
  * setting, arrived at with the slider at /?tune=1. The CSS fallback on .landing
  * carries the same number; keep the two in step.
@@ -647,6 +718,61 @@ function JellyMark() {
   );
 }
 
+/**
+ * One tile of grain, as a data URL, made on the client.
+ *
+ * Generated rather than shipped because true white noise does not compress: a
+ * tile this size is ~90 KB of PNG that would sit in the bundle earning nothing,
+ * while the loop below costs about a millisecond. It also means the grain is a
+ * different draw on every visit, which is what a fresh strip of stock would do.
+ *
+ * The values are gaussian-ish — two uniforms summed, the cheapest central limit
+ * theorem there is — rather than flat random. Flat noise puts too many texels at
+ * the extremes and reads as digital sensor noise; grain clusters near the middle
+ * and only occasionally spikes.
+ *
+ * Null until the effect runs, so the server pass and the first client pass agree
+ * and there is nothing to mismatch on hydration.
+ */
+function useGrainTile(size: number) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    const img = ctx.createImageData(size, size);
+    const d = img.data;
+    for (let i = 0; i < size * size; i++) {
+      const g = 128 + (Math.random() + Math.random() - 1) * 118;
+      const v = g < 0 ? 0 : g > 255 ? 255 : g;
+      const o = i * 4;
+      d[o] = d[o + 1] = d[o + 2] = v;
+      d[o + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    setUrl(c.toDataURL('image/png'));
+  }, [size]);
+  return url;
+}
+
+/**
+ * Device pixel ratio, read on the client. The grain is the one thing on this
+ * page specified in physical pixels rather than CSS ones, so it needs the real
+ * number — and it needs to re-read it, because dragging a window between a
+ * retina display and an external monitor changes it under you.
+ */
+function useDpr() {
+  const [dpr, setDpr] = useState(1);
+  useEffect(() => {
+    const read = () => setDpr(window.devicePixelRatio || 1);
+    read();
+    window.addEventListener('resize', read);
+    return () => window.removeEventListener('resize', read);
+  }, []);
+  return dpr;
+}
+
 export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }) {
   const [panel, setPanel] = useState<Panel>(null);
   const [cur, setCur] = useState(0);
@@ -669,6 +795,18 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [sharp, setSharp] = useState(INSET_SHARP);
   const [white, setWhite] = useState(INSET_WHITE);
   const [amp, setAmp] = useState(BEAT_AMP);
+  const [film, setFilm] = useState(FILM);
+  /**
+   * Whether the strip moves. A single frame of film has static grain, so off is
+   * the literal reading of the reference; on, the grain is redrawn several times
+   * a second and the still becomes a still being *projected*. It is the one
+   * switch here that changes what the page is rather than how it is graded.
+   */
+  const [weave, setWeave] = useState(true);
+  /** Grain over the type too, so the screen is one photographed object. */
+  const [grainOverAll, setGrainOverAll] = useState(false);
+  const grainUrl = useGrainTile(GRAIN_TILE);
+  const dpr = useDpr();
   /** +1 cuts the letters in, -1 stands them off. See LIFTS. */
   const dir = lift === 'in' ? 1 : -1;
   /**
@@ -1153,6 +1291,14 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           ['--sharp' as string]: sharp,
           ['--white' as string]: white,
           ['--amp' as string]: amp,
+          ['--grain' as string]: film.grain,
+          ['--grain-size' as string]: (GRAIN_TILE * film.grainPx) / dpr + 'px',
+          ['--halo' as string]: film.halo,
+          ['--halo-blur' as string]: film.haloBlur + 'vmin',
+          ['--halo-gain' as string]: (0.5 - 0.5 / HALO_CUT) / Math.max(0.04, film.haloThreshold),
+          ['--halo-cut' as string]: HALO_CUT,
+          ['--film-con' as string]: film.contrast,
+          ['--film-sat' as string]: film.saturate,
         } as React.CSSProperties
       }
     >
@@ -1203,6 +1349,30 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           src={HERO_IMAGE}
           alt="A figure on the shore, looking down at a jellyfish in the shallows"
         />
+
+        {/*
+          Halation. A second copy of the painting, crushed until only its
+          brightest end survives, tinted red-orange, blurred, and screened back
+          on.
+
+          The crush is the whole trick and it is done with two filters that were
+          not designed for it: brightness() first scales the image so the chosen
+          threshold lands where contrast() clips, then contrast() throws away
+          everything below it. What comes out is a mask of just the surf line and
+          the lit edge of the shirt. Blur last, so the spread happens to the mask
+          and not to the painting.
+
+          Inside .l-stage and directly behind the water, so the descent puts the
+          bloom out the same way it puts the painting out: this is light coming
+          off the art, and it has no business surviving into the deep.
+
+          It carries the same crop as .l-bg or the glow drifts off the thing that
+          is glowing — hence --bg-pos, which both read and the media queries set
+          in one place.
+        */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="l-halo" src={HERO_IMAGE} alt="" aria-hidden="true" />
+
         <div className="l-scrim" />
         <div
           className="l-vignette"
@@ -1239,6 +1409,24 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           <i />
         </div>
       </div>
+
+      {/*
+        The emulsion. Above the vignette on purpose: the vignette is the lens and
+        the grain is the film, so this is the physical order — and it has the
+        happy side effect of dithering the vignette's ramp, which is the widest
+        gradient on the page and the only place banding has room to show.
+
+        Rendered only once the tile exists, which is after mount. There is no
+        server-side version of a random field, and a placeholder would flash.
+      */}
+      {grainUrl && (
+        <div
+          className={
+            'l-grain' + (weave ? ' l-grain-weave' : '') + (grainOverAll ? ' l-grain-top' : '')
+          }
+          style={{ backgroundImage: `url(${grainUrl})` }}
+        />
+      )}
 
       <nav className="l-nav">
         <div className="l-nav-left">
@@ -1653,6 +1841,115 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       {/* ---- tuner, /?tune=1 ---- */}
       {tuner && (
         <div className="l-tuner">
+          <div className="l-tuner-head">FILM</div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0}
+              max={0.9}
+              step={0.01}
+              value={film.grain}
+              aria-label="Grain amount"
+              onChange={(e) => setFilm((f) => ({ ...f, grain: Number(e.target.value) }))}
+            />
+            <span className="l-tuner-val">grain {film.grain.toFixed(2)}</span>
+          </div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0.8}
+              max={3.5}
+              step={0.1}
+              value={film.grainPx}
+              aria-label="Grain size in device pixels"
+              onChange={(e) => setFilm((f) => ({ ...f, grainPx: Number(e.target.value) }))}
+            />
+            <span className="l-tuner-val">size {film.grainPx.toFixed(1)}px</span>
+          </div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={film.halo}
+              aria-label="Halation amount"
+              onChange={(e) => setFilm((f) => ({ ...f, halo: Number(e.target.value) }))}
+            />
+            <span className="l-tuner-val">halo {film.halo.toFixed(2)}</span>
+          </div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0.3}
+              max={7}
+              step={0.1}
+              value={film.haloBlur}
+              aria-label="Halation spread"
+              onChange={(e) => setFilm((f) => ({ ...f, haloBlur: Number(e.target.value) }))}
+            />
+            <span className="l-tuner-val">spread {film.haloBlur.toFixed(1)}</span>
+          </div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0.35}
+              max={0.98}
+              step={0.01}
+              value={film.haloThreshold}
+              aria-label="Halation threshold"
+              onChange={(e) => setFilm((f) => ({ ...f, haloThreshold: Number(e.target.value) }))}
+            />
+            <span className="l-tuner-val">above {film.haloThreshold.toFixed(2)}</span>
+          </div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0.75}
+              max={1.15}
+              step={0.01}
+              value={film.contrast}
+              aria-label="Contrast"
+              onChange={(e) => setFilm((f) => ({ ...f, contrast: Number(e.target.value) }))}
+            />
+            <span className="l-tuner-val">contrast {film.contrast.toFixed(2)}</span>
+          </div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0.6}
+              max={1.25}
+              step={0.01}
+              value={film.saturate}
+              aria-label="Saturation"
+              onChange={(e) => setFilm((f) => ({ ...f, saturate: Number(e.target.value) }))}
+            />
+            <span className="l-tuner-val">sat {film.saturate.toFixed(2)}</span>
+          </div>
+          <div className="l-tuner-row">
+            <button
+              type="button"
+              className={'l-tuner-btn' + (weave ? ' l-tuner-on' : '')}
+              onClick={() => setWeave((v) => !v)}
+            >
+              WEAVE
+            </button>
+            <button
+              type="button"
+              className={'l-tuner-btn' + (grainOverAll ? ' l-tuner-on' : '')}
+              onClick={() => setGrainOverAll((v) => !v)}
+            >
+              OVER TYPE
+            </button>
+            <button
+              type="button"
+              className="l-tuner-btn"
+              onClick={() => setFilm((f) => ({ ...f, grain: 0, halo: 0, contrast: 1, saturate: 1 }))}
+            >
+              BYPASS
+            </button>
+          </div>
+
           <div className="l-tuner-head">VIGNETTE</div>
           <div className="l-tuner-row">
             <input
@@ -1954,8 +2251,15 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .landing button{font:inherit}
 
 /* ---- background ---- */
-.l-bg{position:absolute;inset:0;width:100%;height:100%;
-  object-fit:cover;object-position:center 45%}
+.l-bg,.l-halo{position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;object-position:var(--bg-pos,center 45%)}
+
+/* The tone curve, such as it is. contrast() pivots on mid-grey, so a value under
+   1 lifts the blacks and rolls the whites off in one move — which is the whole
+   of what a film toe and shoulder do to a picture this evenly lit. The painting
+   is the only thing graded; the halo is a highlight bloom and does not want it,
+   and the type is not part of the photograph. */
+.l-bg{filter:contrast(var(--film-con,1)) saturate(var(--film-sat,1))}
 .l-scrim{position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(180deg,rgba(24,74,112,.28),rgba(24,74,112,.05) 30%,transparent 55%)}
 
@@ -1979,6 +2283,71 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
     rgba(5,22,38,calc(var(--vig-strength,.38) * .60)) calc(var(--vig-inner,42%) + var(--vig-span) * .86),
     rgba(5,22,38,var(--vig-strength,.38)) 100%)}
 
+/* ---- the film pass ---- */
+
+/* Halation. Between the painting and the scrim, with no z-index of its own —
+   DOM order alone puts it over .l-bg and under .l-vignette, which is the order
+   the light actually happens in.
+
+   The filter chain reads left to right and every step is load-bearing:
+   brightness scales the picture so the threshold lands where contrast clips,
+   contrast(9) discards everything under it, sepia+saturate+hue-rotate paint what
+   survives the red-orange of light scattering back off a film base, and blur
+   last spreads the mask rather than the painting. screen adds it back without
+   ever darkening anything. */
+.l-halo{pointer-events:none;opacity:calc(var(--halo,0) * (1 - var(--s)));mix-blend-mode:screen;
+  filter:brightness(var(--halo-gain,.6)) contrast(var(--halo-cut,9))
+         sepia(1) saturate(3.4) hue-rotate(-14deg)
+         blur(var(--halo-blur,2.2vmin))}
+
+/* Grain. Three things here are load-bearing:
+
+   soft-light, because it is film's response curve for free. A 50% grey texel is
+   a no-op and the blend is pinned at both ends, so the noise is loudest in the
+   midtones and fades to nothing in the deep water and in the sun — no mask, no
+   luminance maths, just the right blend mode.
+
+   image-rendering:pixelated, because the default bilinear resample averages
+   neighbouring texels into a soft haze. Grain has to have edges. A blurred
+   random field is fog, and there is already a vignette for that.
+
+   --grain-size in device pixels, because on the one screen that matters this
+   painting is competing with its own brushwork, and grain only reads as
+   emulsion when it is finer than the strokes it sits on.
+
+   Inset past the viewport so the weave below never drags an edge into frame. */
+.l-grain{position:absolute;inset:-8%;z-index:2;pointer-events:none;
+  background-repeat:repeat;background-size:var(--grain-size,256px);
+  image-rendering:pixelated;
+  mix-blend-mode:soft-light;opacity:var(--grain,0)}
+
+/* Over the type as well, so the screen is one photographed object rather than
+   titles laid on a photograph. Above the poem panel, below the tuner — a tuner
+   you cannot read is not a tuner. */
+.l-grain-top{z-index:35}
+
+/* Gate weave, in miniature. A frame of film is never still: the grain is a fresh
+   draw every frame and the strip shifts in the gate. Six offsets on steps(1) is
+   about 11 Hz, fast enough to read as shimmer and slow enough to be free —
+   nothing here repaints, it only re-composites one layer, and the offsets are
+   deliberately non-round so no two land on the same tile phase. */
+.l-grain-weave{animation:l-grain-jitter .55s steps(1,end) infinite}
+
+@keyframes l-grain-jitter{
+  0%  {transform:translate3d(0,0,0)}
+  16% {transform:translate3d(-2.4%,1.6%,0)}
+  33% {transform:translate3d(1.8%,-2.2%,0)}
+  50% {transform:translate3d(-1.2%,-1.4%,0)}
+  66% {transform:translate3d(2.6%,1.1%,0)}
+  83% {transform:translate3d(-1.9%,2.4%,0)}
+}
+
+/* A field of noise flickering at 11 Hz is precisely what this setting is for.
+   The grain stays — it is part of the picture — only the shimmer stops. */
+@media (prefers-reduced-motion: reduce){
+  .l-grain-weave{animation:none}
+}
+
 /* Narrower than 13:10 the painting is 16:9 against a portrait window, so a cover
    crop shows only a slice of it — and both subjects cannot survive that, since
    the jellyfish sits at the far left and the figure at the far right. Follow the
@@ -1994,10 +2363,10 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   /* 12%, not 22%: at 22 the right edge landed on the figure's head and clipped a
      corner of it, which reads as a smudge rather than a person. Better to leave
      him out of frame entirely than to show a piece of him. */
-  .l-bg{object-position:12% 45%}
+  .landing{--bg-pos:12% 45%}
 }
 @media (max-aspect-ratio: 1/1){
-  .l-bg{object-position:17% 42%}
+  .landing{--bg-pos:17% 42%}
 }
 
 /* ---- nav ---- */
@@ -2737,7 +3106,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    is parallax and nothing more — but it is what keeps the second screen from
    reading as the first screen with a filter on it. Transform only, so it stays
    on the compositor. */
-.l-bg{transform:translate3d(0,calc(var(--s) * -3.4vh),0) scale(calc(1 + var(--s) * .07));
+.l-bg,.l-halo{transform:translate3d(0,calc(var(--s) * -3.4vh),0) scale(calc(1 + var(--s) * .07));
   transform-origin:50% 42%;will-change:transform;transition:filter .55s ease}
 /* Depth eats detail and colour before it eats light.
 
@@ -2751,7 +3120,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    Wide screens only. A laptop absorbs one full-bleed blur; a phone should not
    be asked to. */
 @media (min-width:900px){
-  .landing[data-two] .l-bg{filter:blur(3px) saturate(.62)}
+  .landing[data-two] .l-bg{filter:blur(3px) contrast(var(--film-con,1)) saturate(calc(var(--film-sat,1) * .62))}
 }
 
 /* The dark. Two gradients, because deep water does two things at once and one
