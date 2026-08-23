@@ -1,151 +1,155 @@
 'use client';
 
 /**
- * Five candidate "scroll down" marks for screen one, plus the one that ships,
- * so they can be judged against each other in place.
+ * Five candidate "scroll down" marks for screen one, plus the one that ships.
  *
  * TEMPORARY. Behind `/?down=1`, renders for nobody else, and the whole file
  * goes once Qi picks — the winner moves into Landing.tsx and LANDING_CSS.
  *
- * The brief was that a lone hairline chevron disappears against the bottom of
- * this painting, which is sea and foam. The brief was NOT that it should get
- * heavier: the page is 1px rules and letterspaced caps everywhere, and a solid
- * arrow would be the only fat thing on it. So every candidate below is still a
- * hairline, and each buys its visibility a different way —
+ * ROUND TWO. The first five were all hairlines, on the argument that the page
+ * is 1px rules everywhere and a heavy arrow would be the only fat thing on it.
+ * Qi: 都太细了，看不清楚 — twice now, which means the argument was wrong.
  *
- *   1  a moving object on the line        (something falls down it)
- *   2  area, repeated                     (rings leave the centre)
- *   3  a closed shape                     (a ring, kin to the play button)
- *   4  an organic silhouette              (a tentacle, drifting)
- *   5  length                             (a rule most of the screen wide)
+ * And it was wrong for a reason worth keeping: **the problem was never weight,
+ * it was value.** The bottom of this painting is sky-blue water and pale foam —
+ * one of the lightest grounds in the whole frame — and every mark I made was
+ * white. No amount of thickening fixes white on light; it just makes a bigger
+ * invisible thing. The painting itself already answers it: the only marks that
+ * read down there are the jellyfish's tentacles, and they are dark.
  *
- * Motion is doing most of the work in all five, which is why they cannot be
- * judged from a screenshot.
+ * So four of these five are INK, and they carry a soft white halo rather than a
+ * dark one — light around a dark mark is what sets it on the surface instead of
+ * pasting it over. The fifth is the same idea inverted (solid white, dark
+ * chevron), because a solid white disc reads on that water too and matches the
+ * page's white type. Nothing here is under 2.2px or under 44px.
+ *
+ *   1  ink disc        solid dark circle, white chevron
+ *   2  white disc      the same, inverted
+ *   3  ink arrow       an actual arrow — shaft and head — in dark ink
+ *   4  double chevron  two heavy chevrons, no container, light running down
+ *   5  ink pill        a dark capsule with a word in it
  */
 
 import React from 'react';
 
 export const DOWN_VARIANTS = [
   { key: '0', label: '0 · current' },
-  { key: '1', label: '1 · sounding line' },
-  { key: '2', label: '2 · ripple' },
-  { key: '3', label: '3 · ring' },
-  { key: '4', label: '4 · tentacle' },
-  { key: '5', label: '5 · tide line' },
+  { key: '1', label: '1 · ink disc' },
+  { key: '2', label: '2 · white disc' },
+  { key: '3', label: '3 · ink arrow' },
+  { key: '4', label: '4 · double chevron' },
+  { key: '5', label: '5 · ink pill' },
 ] as const;
 
 export type DownVariant = (typeof DOWN_VARIANTS)[number]['key'];
 
-/** The shared chevron. One shape, so the five differ in idea and not in drawing. */
-function Chev({ w = 30 }: { w?: number }) {
+/** The chevron the containers hold. Weight is a prop because a chevron inside a
+ *  54px disc and a chevron standing on its own do not want the same stroke. */
+function Chev({ w = 22, sw = 2.2 }: { w?: number; sw?: number }) {
   return (
     <svg
       className="dm-chev"
       width={w}
-      height={(w / 30) * 12}
-      viewBox="0 0 30 12"
+      height={(w / 30) * 13}
+      viewBox="0 0 30 13"
       aria-hidden
     >
       <path
-        d="M1 1l14 10 14-10"
+        d="M1.6 1.6L15 11.4 28.4 1.6"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.25"
+        strokeWidth={sw}
         strokeLinecap="round"
         strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
       />
     </svg>
   );
 }
 
 export function DownMark({ v }: { v: DownVariant }) {
-  /* 1 — THE SOUNDING LINE.
-     A plumb falls down a hairline, over and over. The album's own instrument:
-     a sounding line is how you measure how deep the water is, and this site
-     already calls its seek bar one. The moving object is what you see; the
-     line only tells it where to go. */
+  /* 1 — INK DISC.
+     Solid, dark, and the same geometry as the LISTEN button one line above, so
+     it reads as the page's own vocabulary rather than as a new object. Filled
+     rather than outlined because a 1px ring on this water is the problem we are
+     leaving behind. Inverts on hover, exactly as its big brother does. */
   if (v === '1') {
     return (
       <span className="dm1">
-        <span className="dm1-rail" />
-        <span className="dm1-weight" />
+        <Chev w={21} sw={2.3} />
       </span>
     );
   }
 
-  /* 2 — THE RIPPLE.
-     Three rings leave the centre and fade, on a stagger, the way water answers
-     something dropped into it. Visibility from area rather than from weight:
-     nothing here is thicker than 1px, but at any instant something 80px wide
-     is moving. */
+  /* 2 — WHITE DISC.
+     The same idea with the values swapped. Solid white reads on this water too,
+     and it agrees with the type, which is all white — the cost is that it is the
+     brightest thing in the lower half of the frame, where the ink disc is the
+     darkest. Worth seeing both before deciding which the painting can carry. */
   if (v === '2') {
     return (
       <span className="dm2">
-        <i />
-        <i />
-        <i />
-        <Chev w={22} />
+        <Chev w={21} sw={2.3} />
       </span>
     );
   }
 
-  /* 3 — THE RING.
-     A small sibling of the LISTEN button, breathing. The one candidate that is
-     a closed shape, which is the cheapest visibility there is — and the only
-     one already in the page's vocabulary, so it reads as a system rather than
-     as an ornament. Fills on hover exactly as its big brother does. */
+  /* 3 — INK ARROW.
+     Not a chevron: a shaft with a head, which is the thing that was actually
+     asked for at the start. In ink, at 2.6px, with a white glow around it —
+     light around a dark mark, which is the inverse of every shadow on this page
+     and the only version that works on a light ground. */
   if (v === '3') {
     return (
       <span className="dm3">
-        <Chev w={17} />
+        <svg width="30" height="72" viewBox="0 0 30 72" aria-hidden>
+          <path
+            d="M15 3v52"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+          />
+          <path
+            d="M4.5 46.5L15 57.5 25.5 46.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </span>
     );
   }
 
-  /* 4 — THE TENTACLE.
-     The creature's own line, drifting. It sways from its anchor, and a short
-     bright dash travels down the curve — a stroke-dashoffset animation, so the
-     light follows the bend instead of falling past it. The album is named after
-     the animal; this is the only candidate that says so. */
+  /* 4 — DOUBLE CHEVRON.
+     No container at all — just two heavy marks, which is the least furniture of
+     the five. The brightness runs from the top one to the bottom one and back,
+     so the pair points by moving rather than by being drawn pointing. */
   if (v === '4') {
     return (
       <span className="dm4">
-        <svg width="26" height="104" viewBox="0 0 26 104" aria-hidden>
-          <path
-            className="dm4-base"
-            d="M13 0c-9 13 9 26 0 39s9 26 0 39 5 20 0 26"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1"
-            strokeLinecap="round"
-          />
-          <path
-            className="dm4-lit"
-            d="M13 0c-9 13 9 26 0 39s9 26 0 39 5 20 0 26"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1"
-            strokeLinecap="round"
-          />
-        </svg>
-        <span className="dm4-tip" />
+        <span className="dm4-a">
+          <Chev w={46} sw={3} />
+        </span>
+        <span className="dm4-b">
+          <Chev w={46} sw={3} />
+        </span>
       </span>
     );
   }
 
-  /* 5 — THE TIDE LINE.
-     A rule most of the screen wide, riding up and down a few pixels, with a
-     swell travelling along it. Track 01 is "Sea rising"; this is that, as an
-     invitation. Impossible to miss because it is 420px long — and it can be,
-     precisely because it is 1px tall. */
+  /* 5 — INK PILL.
+     The one that gives up on being purely a symbol and says the word. Nothing
+     here can be missed or misread, and the word is the album's own — the R3F
+     telling of this story lives at /descent. The cost is that it is the most
+     UI-looking object on the page; the gain is that it is the only candidate a
+     visitor cannot fail to understand. */
   if (v === '5') {
     return (
       <span className="dm5">
-        <span className="dm5-line">
-          <span className="dm5-swell" />
-        </span>
-        <Chev w={26} />
+        <span className="dm5-word">DESCEND</span>
+        <Chev w={16} sw={2.4} />
       </span>
     );
   }
@@ -156,20 +160,31 @@ export function DownMark({ v }: { v: DownVariant }) {
       <span className="dm0-rail">
         <span className="dm0-drop" />
       </span>
-      <Chev w={30} />
+      <Chev w={30} sw={1.25} />
     </span>
   );
 }
 
 export const DOWN_CSS = `
-/* Neutralise the shipping mark's own box so each candidate can size itself. */
-.landing .l-down[data-v]{gap:0;padding:12px 26px;animation:none}
-.landing .l-down[data-v='0']{animation:l-down-in 1.2s cubic-bezier(.2,.7,.2,1) 1.15s backwards,
-  l-down-bob 3.2s ease-in-out 2.35s infinite}
-.dm-chev{display:block;filter:drop-shadow(0 1px 2px rgba(10,42,70,.55)) drop-shadow(0 0 10px rgba(10,42,70,.45))}
+/* Neutralise the shipping mark's own box so each candidate can size itself.
+   The bob stays on all of them: motion is still the cheapest visibility there
+   is, and now it is carrying a mark you can already see rather than making up
+   for one you cannot. */
+.landing .l-down[data-v]{gap:0;padding:12px 26px;
+  animation:l-down-in 1.2s cubic-bezier(.2,.7,.2,1) 1.15s backwards,
+            l-down-bob 3.4s ease-in-out 2.35s infinite}
+.dm-chev{display:block}
+
+/* --- the ink, and the light that sets it on the surface ---
+   #0c2b45 is the painting's own dark, off the tentacles. The halo is WHITE and
+   tight: a dark mark on a light ground needs light around it for exactly the
+   reason a white mark needs dark, and this page's every other shadow is the
+   other way round. Wide and it becomes fog; tight and it becomes an edge. */
+.dm-ink{color:#0c2b45}
 
 /* 0 — current */
-.dm0{display:flex;flex-direction:column;align-items:center;gap:clamp(8px,1.2vh,13px)}
+.dm0{display:flex;flex-direction:column;align-items:center;gap:clamp(8px,1.2vh,13px);color:#fff}
+.dm0 .dm-chev{filter:drop-shadow(0 1px 2px rgba(10,42,70,.55)) drop-shadow(0 0 10px rgba(10,42,70,.45))}
 .dm0-rail{position:relative;display:block;width:1px;height:clamp(34px,6.4vh,66px);overflow:hidden;
   background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.55) 55%,rgba(255,255,255,.68));
   box-shadow:0 0 7px rgba(10,42,70,.55)}
@@ -177,96 +192,54 @@ export const DOWN_CSS = `
   background:linear-gradient(180deg,transparent,#fff,transparent);
   animation:l-down-drop 3.6s cubic-bezier(.45,0,.55,1) infinite}
 
-/* 1 — sounding line */
-.dm1{--h:clamp(70px,10vh,116px);position:relative;display:block;width:16px;height:var(--h)}
-.dm1-rail{position:absolute;left:50%;top:0;bottom:0;width:1px;transform:translateX(-50%);
-  background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.42) 30%,rgba(255,255,255,.55));
-  box-shadow:0 0 7px rgba(10,42,70,.5)}
-/* The plumb. A diamond, not a circle: a circle on a line is a slider handle and
-   this is not a control you drag. */
-.dm1-weight{position:absolute;left:50%;top:0;width:9px;height:9px;margin-left:-4.5px;
-  background:#fff;border-radius:1.5px;
-  box-shadow:0 0 11px rgba(10,42,70,.6);
-  animation:dm1-drop 3.8s cubic-bezier(.5,0,.5,1) infinite}
-@keyframes dm1-drop{
-  0%{transform:translateY(-4px) rotate(45deg) scale(.4);opacity:0}
-  12%{transform:translateY(2px) rotate(45deg) scale(1);opacity:1}
-  70%{opacity:1}
-  100%{transform:translateY(calc(var(--h) - 8px)) rotate(45deg) scale(.75);opacity:0}
-}
-.l-down:hover .dm1-rail{background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.6) 30%,rgba(255,255,255,.8))}
+/* 1 — ink disc */
+.dm1{display:flex;align-items:center;justify-content:center;
+  width:clamp(50px,4vw,60px);height:clamp(50px,4vw,60px);border-radius:50%;
+  background:rgba(12,43,69,.88);color:#fff;
+  box-shadow:0 0 0 1px rgba(255,255,255,.26),0 10px 30px rgba(6,26,44,.34);
+  transition:background .4s cubic-bezier(.2,.8,.2,1),color .4s,box-shadow .4s}
+.dm1 .dm-chev{margin-top:2px}
+.l-down:hover .dm1{background:#fff;color:#0c2b45;
+  box-shadow:0 0 0 1px rgba(12,43,69,.3),0 12px 34px rgba(6,26,44,.4)}
 
-/* 2 — ripple */
-.dm2{position:relative;display:flex;align-items:center;justify-content:center;
-  width:96px;height:96px;color:#fff}
-.dm2 i{position:absolute;left:50%;top:50%;width:92px;height:92px;margin:-46px 0 0 -46px;
-  border:1px solid rgba(255,255,255,.85);border-radius:50%;opacity:0;
-  animation:dm2-ring 3.9s cubic-bezier(.22,.6,.3,1) infinite}
-.dm2 i:nth-child(2){animation-delay:1.3s}
-.dm2 i:nth-child(3){animation-delay:2.6s}
-@keyframes dm2-ring{
-  0%{transform:scale(.16);opacity:0}
-  14%{opacity:.8}
-  100%{transform:scale(1);opacity:0}
-}
-.dm2 .dm-chev{position:relative;z-index:1}
+/* 2 — white disc */
+.dm2{display:flex;align-items:center;justify-content:center;
+  width:clamp(50px,4vw,60px);height:clamp(50px,4vw,60px);border-radius:50%;
+  background:rgba(255,255,255,.93);color:#0c2b45;
+  box-shadow:0 8px 26px rgba(6,26,44,.3);
+  transition:background .4s cubic-bezier(.2,.8,.2,1),box-shadow .4s}
+.dm2 .dm-chev{margin-top:2px}
+.l-down:hover .dm2{background:#fff;box-shadow:0 12px 32px rgba(6,26,44,.42)}
 
-/* 3 — ring */
-.dm3{position:relative;display:flex;align-items:center;justify-content:center;
-  width:clamp(44px,3.6vw,58px);height:clamp(44px,3.6vw,58px);border-radius:50%;
-  border:1px solid rgba(255,255,255,.55);color:#fff;
-  box-shadow:0 0 14px rgba(10,42,70,.35);
-  animation:dm3-breathe 3.6s ease-in-out infinite;
-  transition:background .4s cubic-bezier(.2,.8,.2,1),color .4s,border-color .4s}
-@keyframes dm3-breathe{
-  0%,100%{transform:scale(1);border-color:rgba(255,255,255,.48)}
-  50%{transform:scale(1.075);border-color:rgba(255,255,255,.95)}
-}
-.dm3 .dm-chev{margin-top:1px}
-.l-down:hover .dm3{background:#fff;border-color:#fff;color:#0d3550}
-.l-down:hover .dm3 .dm-chev{filter:none}
+/* 3 — ink arrow */
+.dm3{display:block;color:#0c2b45}
+.dm3 svg{display:block;
+  filter:drop-shadow(0 0 5px rgba(255,255,255,.7)) drop-shadow(0 0 14px rgba(255,255,255,.45))}
+.l-down:hover .dm3{color:#06203a}
 
-/* 4 — tentacle */
-.dm4{position:relative;display:block;width:26px;height:104px;color:#fff;
-  transform-origin:50% 0;
-  animation:dm4-sway 5.6s ease-in-out infinite alternate}
-@keyframes dm4-sway{from{transform:rotate(-4deg)}to{transform:rotate(4deg)}}
-.dm4 svg{display:block;overflow:visible;
-  filter:drop-shadow(0 1px 2px rgba(10,42,70,.5)) drop-shadow(0 0 9px rgba(10,42,70,.4))}
-.dm4-base{opacity:.38}
-/* A short bright dash running down the curve. The path is ~112 units long, so
-   one dash and one very long gap put exactly one travelling segment on it. */
-.dm4-lit{opacity:.95;stroke-dasharray:16 200;stroke-dashoffset:16;
-  animation:dm4-run 3.4s cubic-bezier(.5,0,.55,1) infinite}
-@keyframes dm4-run{
-  0%{stroke-dashoffset:16;opacity:0}
-  12%{opacity:.95}
-  78%{opacity:.95}
-  100%{stroke-dashoffset:-124;opacity:0}
+/* 4 — double chevron */
+.dm4{display:flex;flex-direction:column;align-items:center;gap:9px;color:#0c2b45}
+.dm4 svg{filter:drop-shadow(0 0 5px rgba(255,255,255,.7)) drop-shadow(0 0 14px rgba(255,255,255,.4))}
+/* The light runs top to bottom and starts again — the pair points by moving.
+   Offset by half the cycle rather than by a delay, so the two are never both
+   bright and never both dim. */
+.dm4-a{animation:dm4-lead 2.6s ease-in-out infinite}
+.dm4-b{animation:dm4-lead 2.6s ease-in-out infinite;animation-delay:.42s}
+@keyframes dm4-lead{
+  0%,100%{opacity:.38;transform:translateY(0)}
+  30%{opacity:1;transform:translateY(2px)}
+  60%{opacity:.38;transform:translateY(0)}
 }
-.dm4-tip{position:absolute;left:50%;bottom:-3px;width:5px;height:5px;margin-left:-2.5px;
-  border-radius:50%;background:#fff;box-shadow:0 0 10px rgba(10,42,70,.55);
-  animation:dm4-tip 2.9s ease-in-out infinite alternate}
-@keyframes dm4-tip{from{transform:translate(-1px,0) scale(.85)}to{transform:translate(1px,3px) scale(1)}}
 
-/* 5 — tide line */
-.dm5{display:flex;flex-direction:column;align-items:center;gap:13px;color:#fff;
-  animation:dm5-tide 5.4s ease-in-out infinite alternate}
-@keyframes dm5-tide{from{transform:translateY(3px)}to{transform:translateY(-3px)}}
-.dm5-line{position:relative;display:block;height:1px;width:clamp(220px,34vw,440px);
-  overflow:hidden;
-  background:linear-gradient(90deg,transparent,rgba(255,255,255,.5) 22%,rgba(255,255,255,.5) 78%,transparent);
-  box-shadow:0 0 8px rgba(10,42,70,.45)}
-.dm5-swell{position:absolute;top:0;left:0;height:1px;width:34%;
-  background:linear-gradient(90deg,transparent,#fff,transparent);
-  animation:dm5-swell 4.6s cubic-bezier(.45,0,.55,1) infinite}
-@keyframes dm5-swell{
-  0%{transform:translateX(-110%);opacity:0}
-  18%{opacity:1}
-  82%{opacity:1}
-  100%{transform:translateX(330%);opacity:0}
-}
-.l-down:hover .dm5-line{background:linear-gradient(90deg,transparent,rgba(255,255,255,.75) 22%,rgba(255,255,255,.75) 78%,transparent)}
+/* 5 — ink pill */
+.dm5{display:flex;align-items:center;gap:11px;
+  padding:12px 22px;border-radius:999px;
+  background:rgba(12,43,69,.88);color:#fff;
+  box-shadow:0 0 0 1px rgba(255,255,255,.24),0 10px 30px rgba(6,26,44,.34);
+  transition:background .4s cubic-bezier(.2,.8,.2,1),color .4s}
+.dm5-word{font-family:'Jost',sans-serif;font-weight:400;font-size:11px;letter-spacing:.34em}
+.dm5 .dm-chev{margin-top:1px}
+.l-down:hover .dm5{background:#fff;color:#0c2b45}
 
 /* The picker. Dev chrome, same key as the tuner's. */
 .dm-pick{position:fixed;right:18px;bottom:18px;z-index:40;
