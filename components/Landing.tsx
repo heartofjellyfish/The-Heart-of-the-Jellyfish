@@ -235,6 +235,20 @@ const FILM = {
    */
   weave: false,
   weaveTwo: true,
+  /**
+   * How many fresh draws of grain per second.
+   *
+   * 24 because that is what a projector does, and because 11 — the first guess —
+   * sits in the worst part of the range: fast enough to see as flicker, slow
+   * enough that every step reads as a discrete jump rather than a boil. Real
+   * grain does not twitch, it seethes, and the difference is entirely rate.
+   *
+   * This is a rate, not a step count. The keyframes below are a fixed ring of
+   * twelve offsets and the duration is derived (12 / weaveHz), which is the only
+   * way to make this adjustable at all — CSS cannot vary how many keyframes an
+   * animation has, only how long it takes to walk them.
+   */
+  weaveHz: 24,
   /** One grain, in DEVICE pixels. 1 vanishes on a 3x phone, 3 is sandpaper. */
   grainPx: 1.6,
   /**
@@ -1313,6 +1327,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           ['--amp' as string]: amp,
           ['--grain' as string]: film.grain,
           ['--grain-two' as string]: film.grainTwo,
+          ['--weave-dur' as string]: (12 / Math.max(1, film.weaveHz)).toFixed(3) + 's',
           ['--grain-size' as string]: (GRAIN_TILE * film.grainPx) / dpr + 'px',
           ['--halo' as string]: film.halo,
           ['--halo-blur' as string]: film.haloBlur + 'vmin',
@@ -1995,6 +2010,18 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               WEAVE
             </button>
           </div>
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={6}
+              max={30}
+              step={1}
+              value={film.weaveHz}
+              aria-label="Weave rate in hertz"
+              onChange={(e) => setFilm((f) => ({ ...f, weaveHz: Number(e.target.value) }))}
+            />
+            <span className="l-tuner-val">rate {film.weaveHz}fps</span>
+          </div>
 
           <div className="l-tuner-head">VIGNETTE</div>
           <div className="l-tuner-row">
@@ -2378,28 +2405,44 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 
 /* Gate weave, in miniature. A frame of film is never still: the grain is a fresh
    draw every frame and the strip shifts in the gate. Six offsets on steps(1) is
-   about 11 Hz, fast enough to read as shimmer and slow enough to be free —
-   nothing here repaints, it only re-composites one layer, and the offsets are
-   deliberately non-round so no two land on the same tile phase. */
+   the projector's own rate. Nothing here repaints — it only re-composites one
+   layer — but it does so at whatever --weave-dur asks for, so the rate slider is
+   also the cost slider. */
 /* Three rules, read top to bottom as one sentence: weave at the surface if
    screen one asked for it, never once we are under, unless screen two asked for
    it too. Specificity settles it without depending on source order —
    .landing[data-two] .l-grain beats .l-grain[data-weave-one], and adding
    [data-weave-two] beats that in turn. */
-.l-grain[data-weave-one]{animation:l-grain-jitter .55s steps(1,end) infinite}
+.l-grain[data-weave-one]{animation:l-grain-jitter var(--weave-dur,.5s) steps(1,end) infinite}
 .landing[data-two] .l-grain{animation:none}
-.landing[data-two] .l-grain[data-weave-two]{animation:l-grain-jitter .55s steps(1,end) infinite}
+.landing[data-two] .l-grain[data-weave-two]{animation:l-grain-jitter var(--weave-dur,.5s) steps(1,end) infinite}
 
+/* Twelve, not six, and the count is the point rather than the smoothness.
+   These offsets are a RING — the grain is not random, it is the same short loop
+   forever, and the loop is audible as a rhythm if it comes round too often. Six
+   at 24 Hz would repeat four times a second; twelve halves that to two, which is
+   where it stops reading as a pattern and starts reading as noise.
+
+   Every offset is well under the tile period (~205px against ~40px of travel),
+   so each one lands on a genuinely different phase of the tile instead of
+   sliding back onto a repeat, and no two are near each other. */
 @keyframes l-grain-jitter{
-  0%  {transform:translate3d(0,0,0)}
-  16% {transform:translate3d(-2.4%,1.6%,0)}
-  33% {transform:translate3d(1.8%,-2.2%,0)}
-  50% {transform:translate3d(-1.2%,-1.4%,0)}
-  66% {transform:translate3d(2.6%,1.1%,0)}
-  83% {transform:translate3d(-1.9%,2.4%,0)}
+  0%      {transform:translate3d(0,0,0)}
+  8.333%  {transform:translate3d(-2.4%,1.6%,0)}
+  16.667% {transform:translate3d(1.8%,-2.2%,0)}
+  25%     {transform:translate3d(-1.2%,-1.4%,0)}
+  33.333% {transform:translate3d(2.6%,1.1%,0)}
+  41.667% {transform:translate3d(-1.9%,2.4%,0)}
+  50%     {transform:translate3d(0.7%,-2.9%,0)}
+  58.333% {transform:translate3d(-2.8%,-0.6%,0)}
+  66.667% {transform:translate3d(2.1%,2.7%,0)}
+  75%     {transform:translate3d(-0.5%,1.9%,0)}
+  83.333% {transform:translate3d(1.4%,-1.7%,0)}
+  91.667% {transform:translate3d(-2.2%,-2.5%,0)}
 }
 
-/* A field of noise flickering at 11 Hz is precisely what this setting is for.
+/* A field of noise reshuffling two dozen times a second is precisely what this
+   setting is for.
    The grain stays — it is part of the picture — only the shimmer stops. */
 @media (prefers-reduced-motion: reduce){
   .l-grain[data-weave-one],
