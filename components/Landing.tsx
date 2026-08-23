@@ -222,7 +222,7 @@ const FILM = {
    * background that is itself still moving.
    */
   grain: 0.42,
-  grainTwo: 0.27,
+  grainTwo: 0.2,
   /**
    * Whether the strip moves, per screen. A single frame of film has static
    * grain, so screen one is off: it is a photograph, and it should sit as still
