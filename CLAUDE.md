@@ -468,12 +468,22 @@ still catching clicks over the poem. It fades out by s = .294 and
 that takes it out of the paint, the tab order and the a11y tree together. Those
 two numbers are paired — move one and move the other.
 
-**The outline** is 120 points, ~1 kB, traced off `hero.webp` itself by
+**The outline** is 108 points, ~1 kB, traced off `hero.webp` itself by
 [scripts/trace-figure.py](scripts/trace-figure.py) — colour segmentation the
 painting happens to make easy (sky is the only thing here with more blue than
 red; sand the only thing both warm and not skin, *and only below the horizon* —
 applied to the whole frame that rule also ate the shadow under his brow), then a
-Moore-neighbour boundary walk and Douglas-Peucker. A cut-out PNG would have cost
+Moore-neighbour boundary walk and Douglas-Peucker.
+
+Both of that rule's thresholds were wrong once, and in opposite directions, which
+is worth knowing before touching either. The horizon guard is what keeps his brow
+shadow. The `R-B > 30` is what keeps the **contact shadow under his heel** on the
+sand's side of the line: it started at 45 on the reasoning that plain sand is
+50–75 and his clothes are 17–22, but the shadow he casts is sand at 43 with a
+floor of 32, and being neither warm enough for sand nor blue enough for sky it
+came out as *him* — a tab of shadow growing off the back of his foot, invisible
+until the glow traced it. **The gap that decides this rule is clothes-to-shaded-
+sand, 22 to 32, not clothes-to-sand.** A cut-out PNG would have cost
 ~25× that and bought a mask with no hit area. **Replacing the painting makes the
 path silently wrong** — it will still draw and still take clicks, just not on
 anybody. Re-run the script.

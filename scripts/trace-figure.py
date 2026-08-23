@@ -37,7 +37,14 @@ def mask(a):
     sky = RB < -35
     below = np.zeros(RB.shape, bool)
     below[HORIZON:, :] = True
-    sand = below & (RB > 45) & (RG < 28)
+    # 30, not 45. Plain sand sits at R-B 50..75 and his clothes at 17..22, so
+    # anything in between looked like slack -- but the contact shadow under his
+    # heel is sand at R-B 43 with a floor of 32, and at 45 it fell on the wrong
+    # side of the line. It is warm, so it is not sky; it is not skin, so it is
+    # not him; and being neither it came out as figure and grew a tab of shadow
+    # off the back of his foot. The gap that actually matters is clothes-to-
+    # shaded-sand, 22 to 32, and the line belongs in the middle of it.
+    sand = below & (RB > 30) & (RG < 28)
     fig = ~(sky | sand)
     keep = np.zeros(fig.shape, bool)
     keep[BOX] = True
