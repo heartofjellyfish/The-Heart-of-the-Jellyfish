@@ -1138,7 +1138,10 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    * listened (as opposed to how many times they pressed play), how long they
    * stood in the poem, and how much of the page they touched before leaving.
    */
-  const openedAtRef = useRef(0);
+  /** Milliseconds the page has actually been looked at, summed over every stay. */
+  const visibleMsRef = useRef(0);
+  /** When the current stay began, or null while the tab is in the background. */
+  const visibleEnterRef = useRef<number | null>(null);
   /** Seconds of audio that actually sounded — summed from the clock, so a seek adds nothing. */
   const listenedRef = useRef(0);
   const lastCtRef = useRef(0);
@@ -1149,8 +1152,12 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const poemEnterRef = useRef<number | null>(null);
   const openedSubRef = useRef(false);
   const subscribedRef = useRef(false);
-  /** The summary is sent once. See the pagehide effect for why that is the honest choice. */
-  const summarySentRef = useRef(false);
+  /** Whether this page was ever actually looked at. See the pagehide effect. */
+  const everSeenRef = useRef(false);
+  /** The last summary sent, so an identical one is not sent twice. */
+  const lastSummaryRef = useRef('');
+  /** atTwo, readable from an event listener without re-subscribing on every change. */
+  const atTwoRef = useRef(false);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -1217,6 +1224,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       // single stretch — the way down and back up is one visit's reading, and
       // someone who surfaces to press play and returns has not stopped reading.
       // Only the crossings are timed; the scroll in between costs nothing.
+      atTwoRef.current = s > 0.3;
       if (s > 0.3 && poemEnterRef.current === null) poemEnterRef.current = Date.now();
       else if (s <= 0.3 && poemEnterRef.current !== null) {
         poemMsRef.current += Date.now() - poemEnterRef.current;
@@ -1751,34 +1759,93 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    * worse than one that is slightly short.
    */
   useEffect(() => {
-    openedAtRef.current = Date.now();
-    const send = () => {
-      if (summarySentRef.current) return;
-      summarySentRef.current = true;
-      // Close the two things still running: the stay in the poem, and the play.
-      if (poemEnterRef.current !== null) {
-        poemMsRef.current += Date.now() - poemEnterRef.current;
-        poemEnterRef.current = null;
-      }
-      endPlayRef.current('left');
-      track('visit_summary', {
-        seconds_on_page: Math.round((Date.now() - openedAtRef.current) / 1000),
+    /** A running total that is not disturbed by reading it. */
+    const accrued = (base: number, since: number | null) =>
+      base + (since === null ? 0 : Date.now() - since);
+
+    const open = () => {
+      everSeenRef.current = true;
+      if (visibleEnterRef.current === null) visibleEnterRef.current = Date.now();
+      // Reading stops when the tab does. If they were in the poem when they
+      // left, the clock starts again where it stopped, not from zero.
+      if (atTwoRef.current && poemEnterRef.current === null) poemEnterRef.current = Date.now();
+    };
+    const close = () => {
+      visibleMsRef.current = accrued(visibleMsRef.current, visibleEnterRef.current);
+      visibleEnterRef.current = null;
+      poemMsRef.current = accrued(poemMsRef.current, poemEnterRef.current);
+      poemEnterRef.current = null;
+    };
+
+    /**
+     * The visit so far. Sent whenever the page goes away, which may be more
+     * than once — and every send carries the running totals, never a delta.
+     *
+     * The first cut sent this exactly once, on the first hide, and that was
+     * wrong in a way only real traffic showed: a visit that was backgrounded
+     * one second in filed `seconds_on_page: 1, reached_tracklist: false` and
+     * then went on for minutes, reaching the tracklist, with the record already
+     * closed and lying. There is no event for "the visitor is finished", so
+     * pretending the first hide is one produces a number that is not merely
+     * approximate, it is wrong in the visits that went best.
+     *
+     * So: snapshot on every hide, cumulative, and the last one per session is
+     * the true one. `final` marks the send from pagehide, which is the real
+     * navigation away. Deduplicated on content, so a tab flicked back and forth
+     * with nothing happening in between does not file the same row five times.
+     */
+    const send = (final: boolean) => {
+      // A page opened into a background tab and closed without ever being
+      // looked at is not a visit — a link cmd-clicked out of a chat, three tabs
+      // opened and two closed unread. Left in, each files a row of zeroes and
+      // drags down every average on the dashboard. It is also the line PostHog
+      // itself draws: no $pageview until the tab is visible.
+      if (!everSeenRef.current) return;
+      const props = {
+        seconds_on_page: Math.round(accrued(visibleMsRef.current, visibleEnterRef.current) / 1000),
         seconds_listened: Math.round(listenedRef.current),
         tracks_played: tracksPlayedRef.current.size,
-        poem_seconds: Math.round(poemMsRef.current / 1000),
+        poem_seconds: Math.round(accrued(poemMsRef.current, poemEnterRef.current) / 1000),
         reached_tracklist: reachedTwoRef.current,
         opened_subscribe: openedSubRef.current,
         subscribed: subscribedRef.current,
-      });
+      };
+      const sig = JSON.stringify(props);
+      if (sig === lastSummaryRef.current) return;
+      lastSummaryRef.current = sig;
+      track('visit_summary', { ...props, final });
     };
+
+    if (document.visibilityState === 'visible') open();
+
     const onVisibility = () => {
-      if (document.visibilityState === 'hidden') send();
+      if (document.visibilityState === 'visible') {
+        open();
+        return;
+      }
+      close();
+      /*
+       * Deliberately no endPlay here. Audio keeps sounding in a hidden tab, and
+       * on a page whose whole offer is "hear the demos" the listener who
+       * switches away and leaves it playing is the best one there is — ending
+       * their play as `left` at 12% would file the most engaged visit on the
+       * site as the least.
+       */
+      send(false);
     };
+
+    const onPageHide = () => {
+      close();
+      // The page is actually going now. Whatever was sounding stops with it.
+      endPlayRef.current('left');
+      send(true);
+    };
+
     document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('pagehide', send);
+    window.addEventListener('pagehide', onPageHide);
     return () => {
       document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('pagehide', send);
+      window.removeEventListener('pagehide', onPageHide);
     };
   }, []);
 

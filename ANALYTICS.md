@@ -47,7 +47,7 @@ sorts; the title makes the table readable.
 |---|---|---|
 | `demo_started` | `from: hero \| poem \| keyboard \| auto`, `ms_to_sound` | Sound actually began — fired when `play()` resolves, not when the button was pressed, so it carries how long the wait was. A press that never becomes sound is `demo_blocked` instead |
 | `demo_progress` | `milestone: 25 \| 50 \| 75 \| 100` | The clock **plays** past a quarter. Once per mark per load. 100 comes from the `ended` handler, not the clock — the last `timeupdate` lands at 99-point-something as often as not, so a milestone waiting at 100 would under-report every completed listen |
-| `demo_ended` | `percent`, `reason: finished \| switched \| closed \| left` | **Every** play ends exactly once, whatever the cause: ran out, switched away from, player closed, page left. This is the only event that says where a listen stopped |
+| `demo_ended` | `percent`, `reason: finished \| switched \| closed \| left` | **Every** play ends exactly once, whatever the cause: ran out, switched away from, player closed, page left. This is the only event that says where a listen stopped. `left` fires on `pagehide` only — **never** when the tab is merely hidden, because audio keeps sounding in a background tab and someone who switches away and leaves it playing is the best listener the site has, not an abandonment at 12% |
 | `demo_paused` | `percent` | Pause. *Where* they stopped is the signal — 8% and 90% are opposite verdicts |
 | `demo_resumed` | `percent` | Play, on the track already loaded |
 | `demo_seeked` | `from_percent`, `percent`, `direction: back \| forward`, `control: bar \| poem_line` | A scrub gesture ends. Once per gesture, not per pointermove. `direction = back` is the "play that part again" signal |
@@ -68,18 +68,31 @@ sorts; the title makes the table readable.
 
 | Event | Properties | Fired when |
 |---|---|---|
-| `visit_summary` | `seconds_on_page`, `seconds_listened`, `tracks_played`, `poem_seconds`, `reached_tracklist`, `opened_subscribe`, `subscribed` | Once, the first time the page is hidden. One row for the whole visit |
+| `visit_summary` | `seconds_on_page`, `seconds_listened`, `tracks_played`, `poem_seconds`, `reached_tracklist`, `opened_subscribe`, `subscribed`, `final` | Every time the page is hidden, and again on `pagehide` (`final: true`). Values are **cumulative, not deltas** — see below |
 
 `seconds_listened` is the most important number on this page: minutes of
 attention rather than presses of a button, summed from the audio clock's own
-forward steps so a seek adds nothing to it.
+forward steps so a seek adds nothing to it. `seconds_on_page` counts **visible**
+time only — a tab left open in the background for three hours is not three hours
+of attention.
 
-It is sent on the first `visibilitychange` to hidden, not on unload, because
-`beforeunload` does not fire reliably on a phone — a tab swiped away and the
-page is gone with nothing sent. The cost: someone who switches tabs and comes
-back is measured up to the switch and no further. That undercount is the right
-trade against a second row per visit that has to be de-duplicated before the
-number can be read at all.
+**There may be more than one per visit, and the last one wins.** The first
+version sent exactly one, on the first hide, and real traffic showed within the
+hour why that is wrong: a visit backgrounded one second in filed
+`seconds_on_page: 1, reached_tracklist: false` and then carried on for minutes
+and *did* reach the tracklist, with the record already closed and lying. The web
+has no "the visitor is finished" event, so treating the first hide as one
+produces numbers that are wrong precisely in the visits that went best.
+
+So every hide sends a cumulative snapshot, identical ones are suppressed, and
+`final: true` marks the send from `pagehide`. **Any query over this event must
+take the last row per `$session_id`** — the two dashboard tiles that read it are
+SQL for exactly this reason. Typical visit: one or two rows.
+
+A visit that was never visible sends nothing at all — a link cmd-clicked into a
+background tab and closed unread is not a visit, and left in, each one files a
+row of zeroes that drags down every average. It is the same line PostHog draws
+by withholding `$pageview` until the tab is looked at.
 
 ### Not written by us
 
