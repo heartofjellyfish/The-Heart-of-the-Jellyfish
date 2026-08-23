@@ -141,6 +141,41 @@ deliberately not wired to PostHog. Calling `identify` with a hash of the email
 on `subscribe_completed` would tie a signup to the visit that produced it — it
 is a real option, and it is Qi's call, not a default.
 
+## Where visitors are, and who counts as one
+
+City, region and country come free on every event as `$geoip_city_name`,
+`$geoip_subdivision_1_name` and `$geoip_country_name` — PostHog resolves them
+from the IP at ingest. Nothing in this repo collects them and no location is
+ever asked for in the browser. The **Where they are** tile on the dashboard is
+the read.
+
+**Why the numbers are already close to bot-free**, without a rule anyone
+maintains — three independent layers, none of which we wrote:
+
+1. A crawler that does not run JavaScript never loads the SDK. That is most of
+   them, including every link-unfurl fetcher (Slack, iMessage, WhatsApp,
+   Twitter) that hits the page when a link is pasted.
+2. `posthog-js` ships a blocklist of ~70 known agent strings — `googlebot`,
+   `gptbot`, `bytespider`, `perplexitybot`, `ahrefsbot`, `screaming frog`,
+   `headlesschrome`, `cypress`, `vercel-screenshot` among them — and captures
+   nothing at all for a match.
+3. The tile counts `$pageview`, and PostHog withholds the initial `$pageview`
+   until the tab is actually **visible**. Automation and headless runs sit in a
+   background tab and never clear that bar. (This is also why the whole first
+   day of testing produced zero pageviews — every automated tab is a background
+   tab. It looked like a bug for an hour and was not.)
+
+What is left through all three is a headless browser with a spoofed agent
+string and a real viewport. Rare, and not worth building a fourth layer for.
+
+**What the city actually means.** It is IP-derived, so read it as the metro and
+never as the person: our own events came back with `$geoip_accuracy_radius`
+between 5 and 100 km. A VPN reads as wherever it exits, a phone on mobile data
+often resolves to the carrier's hub rather than the street the listener is
+standing on, and office traffic resolves to the office. Country is close to
+reliable; city is a strong hint. Fine for "the record is being heard in Warsaw",
+wrong for anything narrower.
+
 ## Rules
 
 - **No personal data leaves the page.** The subscriber's email is posted to
