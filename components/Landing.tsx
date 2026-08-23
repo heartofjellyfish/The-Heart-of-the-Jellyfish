@@ -226,6 +226,15 @@ const FILM = {
   grain: 0.42,
   grainTwo: 0.2,
   /**
+   * The floor. Higher than screen two's, and it is not a taste decision.
+   *
+   * soft-light over black is a no-op, so the same weight of grain does less and
+   * less as the picture darkens — and the floor is the darkest screen on the
+   * site AND the only one with no painting detail of its own underneath. Hold
+   * it at .2 down there and the film quietly stops at the bottom of the descent.
+   */
+  grainThree: 0.34,
+  /**
    * Whether the strip moves, per screen. A single frame of film has static
    * grain, so screen one is off: it is a photograph, and it should sit as still
    * as one. Screen two turns it on, which is the point — everything down there
@@ -1508,6 +1517,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           ['--amp' as string]: amp,
           ['--grain' as string]: film.grain,
           ['--grain-two' as string]: film.grainTwo,
+          ['--grain-three' as string]: film.grainThree,
           ['--weave-dur' as string]: (12 / Math.max(1, film.weaveHz)).toFixed(3) + 's',
           ['--grain-size' as string]: (GRAIN_TILE * film.grainPx) / dpr + 'px',
           ['--halo' as string]: film.halo,
@@ -1631,6 +1641,25 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           opacity. See Deepstars.
         */}
         <Deepstars active={atTwo} />
+
+        {/*
+          The floor. Screen three's darkness, and it lives HERE — on the stage,
+          driven by --s3 — for the same reason screen two's water does, which is
+          not tidiness.
+
+          It began as a ::before on the section itself, and the section is
+          inside .l-scroll at z-index 10, while the grain is a layer at z-index
+          2. So the floor was painted over the emulsion: the film simply stopped
+          at the bottom of the descent, and the one screen with the least going
+          on was the one screen with no texture on it. Anything that darkens the
+          picture belongs under the grain, because the grain is the film and the
+          picture is what was photographed.
+
+          It is also deliberately short of opaque, like every other veil here.
+          The house rule holds at this depth too: a flat colour is the one thing
+          this background must never be.
+        */}
+        <div className="l-floor" aria-hidden />
       </div>
 
       {/*
@@ -2176,7 +2205,15 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               type="button"
               className="l-tuner-btn"
               onClick={() =>
-                setFilm((f) => ({ ...f, grain: 0, grainTwo: 0, halo: 0, contrast: 1, saturate: 1 }))
+                setFilm((f) => ({
+                  ...f,
+                  grain: 0,
+                  grainTwo: 0,
+                  grainThree: 0,
+                  halo: 0,
+                  contrast: 1,
+                  saturate: 1,
+                }))
               }
             >
               BYPASS
@@ -2195,6 +2232,20 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               onChange={(e) => setFilm((f) => ({ ...f, grainTwo: Number(e.target.value) }))}
             />
             <span className="l-tuner-val">grain {film.grainTwo.toFixed(2)}</span>
+          </div>
+          {/* The floor gets its own, because soft-light over a darker ground is
+              a different amount of film for the same number. */}
+          <div className="l-tuner-row">
+            <input
+              type="range"
+              min={0}
+              max={0.9}
+              step={0.01}
+              value={film.grainThree}
+              aria-label="Grain amount on screen three"
+              onChange={(e) => setFilm((f) => ({ ...f, grainThree: Number(e.target.value) }))}
+            />
+            <span className="l-tuner-val">floor grain {film.grainThree.toFixed(2)}</span>
           </div>
           <div className="l-tuner-row">
             <button
@@ -2582,14 +2633,32 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    emulsion when it is finer than the strokes it sits on.
 
    Inset past the viewport so the weave below never drags an edge into frame. */
+/* The floor. Under the grain and under the vignette, because it is part of the
+   picture rather than part of the lens or the film. Opacity only — a gradient
+   this size cannot be re-rastered per frame, and it does not have to be. */
+.l-floor{position:absolute;inset:0;z-index:0;pointer-events:none;
+  opacity:var(--s3,0);
+  background:
+    radial-gradient(120% 74% at 50% 108%,rgba(2,10,22,.8),rgba(2,10,22,0) 62%),
+    linear-gradient(180deg,rgba(2,12,26,.24),rgba(1,8,18,.62))}
+
 .l-grain{position:absolute;inset:-8%;z-index:2;pointer-events:none;
   background-repeat:repeat;background-size:var(--grain-size,256px);
   image-rendering:pixelated;
   mix-blend-mode:soft-light;
-  /* Lerped on --s: screen one's weight at the surface, screen two's once down.
-     Opacity is the one property that can ride the scroll continuously without
-     re-rasterising anything, so this costs the descent nothing. */
-  opacity:calc(var(--grain,0) * (1 - var(--s)) + var(--grain-two,0) * var(--s))}
+  /* Lerped on --s, then again on --s3: screen one's weight at the surface,
+     screen two's once down, screen three's at the floor. Opacity is the one
+     property that can ride the scroll continuously without re-rasterising
+     anything, so this costs the descent nothing.
+
+     The third stop is not a preference, it is physics. The blend is soft-light,
+     and soft-light over black is a no-op — the darker the ground, the less any
+     given weight of grain does to it. The floor is the darkest thing on the
+     site, so holding the film at screen two's number there would mean losing it
+     exactly where it is most needed: this is also the only screen with no
+     painting detail of its own for the eye to hold on to. */
+  opacity:calc(var(--grain,0) * (1 - var(--s)) + var(--grain-two,0) * var(--s)
+    + (var(--grain-three,0) - var(--grain-two,0)) * var(--s3,0))}
 
 /* Over the type as well, so the screen is one photographed object rather than
    titles laid on a photograph. Above the poem panel, below the tuner — a tuner

@@ -278,8 +278,37 @@ function look(m: DriftMessage, isFresh: boolean) {
 
 /* ---- the screen ------------------------------------------------------- */
 
+/**
+ * Which composer is on screen.
+ *
+ * Three, because the box was the last thing here still shaped like a website: a
+ * blurred pill with a border, floating on an oil painting. Nothing else on this
+ * site is a pill — the nav's ask is a rectangle with a hairline, the poem is
+ * hairlines, and the mailing list is a *sentence* with the answer underlined
+ * inside it. Try them at /?say=1 | 2 | 3. Once one is settled the other two go,
+ * the same way the poem's candidate faces did.
+ *
+ *   1 'rule'      a single hairline, and nothing else. The down-mark's lesson —
+ *                 no rail, no ring, no container — applied to a form.
+ *   2 'sentence'  the mailing-list panel's own device: the copy IS the form, and
+ *                 the submit is the last word of it.
+ *   3 'riser'     no form at all. It looks exactly like a message already in the
+ *                 water, held still, and sending lets go of it.
+ */
+type Say = 'rule' | 'sentence' | 'riser';
+const SAY_DEFAULT: Say = 'rule';
+const SAY_BY_PARAM: Record<string, Say> = { '1': 'rule', '2': 'sentence', '3': 'riser' };
+
 export function Drift({ active }: { active: boolean }) {
   const { messages, loaded, persistent, say, fresh } = useDrift(active);
+
+  /* Read after mount, not during render: the page is statically prerendered and
+     the query string does not exist on the server. Same reason the tuner does. */
+  const [design, setDesign] = useState<Say>(SAY_DEFAULT);
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('say');
+    if (q && SAY_BY_PARAM[q]) setDesign(SAY_BY_PARAM[q]);
+  }, []);
 
   const [name, setName] = useState('');
   const [text, setText] = useState('');
@@ -362,6 +391,7 @@ export function Drift({ active }: { active: boolean }) {
   return (
     <section
       className={'l-screen l-three' + (active ? ' is-in' : '')}
+      data-say={design}
       aria-label="Messages in the deep"
     >
       {/*
@@ -428,27 +458,34 @@ export function Drift({ active }: { active: boolean }) {
       </ul>
 
       {/* onKeyDown on the form, not the field: Enter from the name box should
-          send too — it is one line of input wearing two boxes. `isComposing`
+          send too — it is one line of input wearing two boxes. isComposing
           is the part that matters for half this album's audience: an IME's
-          Enter commits the candidate, and swallowing it would send 拼音. */}
+          Enter commits the candidate, and swallowing it would send 拼音.
+
+          One form, three designs. The fields, the handlers and the honeypot are
+          identical in all three — only the furniture around them and the order
+          of the two inputs change, which is the whole reason this is a data
+          attribute and not three components. */}
       <form className="l-say" onSubmit={onSubmit} onKeyDown={onKeyDown}>
-        <input
-          className="l-say-name"
-          type="text"
-          value={name}
-          maxLength={MAX_NAME}
-          placeholder="name"
-          aria-label="Your name, optional"
-          autoComplete="nickname"
-          onChange={(e) => setName(e.target.value)}
-        />
-        <span className="l-say-rule" aria-hidden />
+        {design === 'sentence' && <span className="l-say-word">say</span>}
+
         <input
           className="l-say-text"
           type="text"
           value={text}
           maxLength={MAX_TEXT}
-          placeholder="say something to the water…"
+          /* Each design's prompt is a different part of speech, because in
+             the sentence the field is INSIDE the copy: "say ___ , from ___"
+             already contains the verb, so a placeholder that repeats it reads
+             "say say something to the water". The riser has none at all — see
+             the ghost below. */
+          placeholder={
+            design === 'sentence'
+              ? 'something to the water'
+              : design === 'riser'
+                ? ''
+                : 'say something to the water…'
+          }
           aria-label="Your message"
           autoComplete="off"
           enterKeyHint="send"
@@ -457,6 +494,38 @@ export function Drift({ active }: { active: boolean }) {
             if (state !== 'sending') setState('idle');
           }}
         />
+
+        {/* The riser has no placeholder of its own — it IS a message, and a
+            message with grey instructions in it is not one. The prompt sits
+            beside the caret instead and goes the moment anything is typed. */}
+        {/* The caret is the whole affordance in this design. Everything else
+            about a riser-shaped input says "message"; one blinking bar is what
+            says "yours". It is drawn rather than relying on the real text
+            caret, which is invisible until the field has focus — and the field
+            not looking focusable is the exact problem here. */}
+        {design === 'riser' && !text && (
+          <span className="l-say-ghost" aria-hidden>
+            <span className="l-say-caret" />
+            say something to the water
+          </span>
+        )}
+
+        {design === 'sentence' && (
+          <span className="l-say-word l-say-word-tight">, from</span>
+        )}
+        {design === 'rule' && <span className="l-say-rule" aria-hidden />}
+
+        <input
+          className="l-say-name"
+          type="text"
+          value={name}
+          maxLength={MAX_NAME}
+          placeholder={design === 'riser' ? 'sign it' : 'name'}
+          aria-label="Your name, optional"
+          autoComplete="nickname"
+          onChange={(e) => setName(e.target.value)}
+        />
+
         {/*
           The honeypot. Off-screen rather than display:none — a bot that reads
           the computed style skips hidden fields, and one that fills every input
@@ -473,8 +542,23 @@ export function Drift({ active }: { active: boolean }) {
           aria-hidden
           onChange={() => {}}
         />
+
+        {/* The submit, in each design's own voice. The sentence's is the last
+            word of the sentence with the full stop OUTSIDE the rule — the same
+            construction as `yes.` in the mailing-list panel, so the underline
+            stays on the word and not on the punctuation. */}
         <button className="l-say-go" type="submit" disabled={!text.trim() || state === 'sending'}>
-          {state === 'sending' ? '…' : 'SEND'}
+          {state === 'sending' ? (
+            <span className="l-say-go-ink">…</span>
+          ) : design === 'sentence' ? (
+            <>
+              <span className="l-say-go-ink">send it up</span>.
+            </>
+          ) : design === 'riser' ? (
+            <span className="l-say-go-ink">let go</span>
+          ) : (
+            <span className="l-say-go-ink">SEND</span>
+          )}
         </button>
       </form>
 
@@ -509,13 +593,9 @@ export const DRIFT_CSS = `
      the title it was clearing is gone. */
   --water-top:13dvh;--water-h:62dvh}
 
-/* The floor gets darker than the poem. Screen two is water with light still
-   reaching it; this is under that, and the type has to be the brightest thing
-   on it or the drift disappears into the painting. */
-.l-three::before{content:'';position:absolute;inset:0;z-index:0;pointer-events:none;
-  background:
-    radial-gradient(120% 70% at 50% 108%,rgba(2,10,22,.88),rgba(2,10,22,0) 62%),
-    linear-gradient(180deg,rgba(2,12,26,.66),rgba(1,8,18,.9))}
+/* The stage owns the dark down here — see .l-floor in Landing. This screen
+   paints nothing of its own over the picture, which is what keeps the grain
+   (a layer under the scroller) from being buried by it. */
 .l-three>*{position:relative;z-index:1}
 
 /* The empty state, and the only thing the site itself says on this screen.
@@ -595,38 +675,117 @@ export const DRIFT_CSS = `
 .l-three:not(.is-in) .l-drift-msg,
 .l-three:not(.is-in) .l-drift-in{animation-play-state:paused}
 
-/* ---- the composer ---- */
+/* ---- the composer ------------------------------------------------------
+   Three designs behind /?say=1|2|3. What they share is below; what makes each
+   one itself is in its own block. The shared part is deliberately almost
+   nothing: no box, no blur, no radius, no fill. That was the first version —
+   a pill with a border and a backdrop-blur, which is the shape a chat input has
+   on every product on the internet and the shape nothing else on this site has.
+   Furniture is the thing being chosen between here, so none of it is shared. */
 .l-say{position:absolute;left:0;right:0;margin-inline:auto;
-  bottom:calc(clamp(26px,5vh,58px) + var(--bar));
-  z-index:2;display:flex;align-items:center;gap:.85em;
-  width:min(680px,calc(100vw - 44px));
-  padding:.72em 1.05em;border-radius:999px;
-  background:rgba(6,20,38,.42);border:1px solid rgba(150,196,226,.16);
-  backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);
-  transition:border-color .4s ease,background .4s ease}
-.l-say:focus-within{border-color:rgba(168,214,242,.38);background:rgba(8,26,46,.56)}
+  bottom:calc(clamp(30px,6vh,64px) + var(--bar));
+  z-index:2;display:flex;align-items:baseline;
+  width:min(660px,calc(100vw - 48px))}
 
-.l-say input{background:none;border:0;outline:none;color:rgba(232,244,252,.95);
-  font-family:'Cormorant Garamond',Georgia,serif;font-size:clamp(15px,1.95vh,19px)}
-.l-say input::placeholder{color:rgba(178,206,226,.38)}
-.l-say-name{inline-size:clamp(62px,9vw,104px);flex:0 0 auto;
-  font-style:italic;opacity:.8}
-.l-say-rule{inline-size:1px;block-size:1.3em;flex:0 0 auto;
-  background:rgba(150,196,226,.22)}
+.l-say input{background:none;border:0;outline:none;color:rgba(234,245,253,.96);
+  font-family:'Cormorant Garamond',Georgia,serif;
+  font-size:clamp(16px,2.05vh,21px);line-height:1.5;padding:0}
+.l-say input::placeholder{color:rgba(178,206,226,.34)}
 .l-say-text{flex:1 1 auto;min-inline-size:0}
+.l-say-name{flex:0 0 auto;font-style:italic;opacity:.82;
+  inline-size:clamp(58px,8vw,96px)}
 
 /* Off-canvas, not hidden. See the note in the markup. */
 .l-say-hp{position:absolute!important;left:-9999px;inline-size:1px;block-size:1px;
   opacity:0;pointer-events:none}
 
 /* .landing-qualified because .landing button{font:inherit} is (0,1,1) and would
-   otherwise beat a bare class on the one rule here that sets a font. */
-.landing .l-say-go{flex:0 0 auto;background:none;border:0;cursor:pointer;padding:.2em .1em;
-  font-family:'Jost',system-ui,sans-serif;font-weight:300;
-  font-size:clamp(9.5px,1.3vh,11.5px);letter-spacing:.3em;
-  color:rgba(214,236,250,.9);transition:opacity .3s ease,color .3s ease}
-.landing .l-say-go:disabled{opacity:.3;cursor:default}
+   otherwise beat a bare class on the rules here that set a font. */
+.landing .l-say-go{flex:0 0 auto;background:none;border:0;cursor:pointer;
+  padding:0 0 0 .9em;color:rgba(214,236,250,.9);
+  transition:opacity .35s ease,color .35s ease}
+.landing .l-say-go:disabled{opacity:.28;cursor:default}
 .landing .l-say-go:not(:disabled):hover{color:#fff}
+
+/* ---- 1 · the rule ----
+   A single hairline and the type sitting on it. The argument is the down-mark's:
+   of eight candidates the one with the least furniture won, because on a
+   painting every box you draw is an object competing with the picture. The line
+   is not decoration — it is the only thing telling you this is a field, so it
+   lights up when you are in it and is otherwise almost not there. */
+.l-three[data-say=rule] .l-say{
+  gap:.9em;padding-block-end:.5em;
+  border-block-end:1px solid rgba(150,196,226,.2);
+  transition:border-color .45s ease}
+.l-three[data-say=rule] .l-say:focus-within{border-block-end-color:rgba(178,220,248,.5)}
+.l-three[data-say=rule] .l-say-rule{align-self:center;flex:0 0 auto;
+  inline-size:1px;block-size:1.15em;background:rgba(150,196,226,.22)}
+.landing .l-three[data-say=rule] .l-say-go{
+  font-family:'Jost',system-ui,sans-serif;font-weight:300;
+  font-size:clamp(9.5px,1.3vh,11.5px);letter-spacing:.3em}
+
+/* ---- 2 · the sentence ----
+   The mailing-list panel's device, and the reason to reuse it is that it is
+   already the answer to this exact problem: a form that must not look like one.
+   The copy IS the label, so there is nothing to read twice, and the submit is
+   the sentence's last word rather than a button parked at the end of it.
+
+   The full stop sits OUTSIDE the underlined span — punctuation is the
+   sentence's, not the control's — which is the same detail as 'yes.' upstairs. */
+.l-three[data-say=sentence] .l-say{
+  flex-wrap:wrap;gap:.1em .42em;justify-content:center;text-align:center;
+  font-family:'Cormorant Garamond',Georgia,serif;
+  font-size:clamp(16px,2.05vh,21px);color:rgba(206,229,246,.62)}
+.l-three[data-say=sentence] .l-say-word{flex:0 0 auto}
+/* A comma sits on the word before it. The flex gap puts a space there, so this
+   takes it back — otherwise the sentence reads "the water , from". */
+.l-three[data-say=sentence] .l-say-word-tight{margin-inline-start:-.36em}
+.l-three[data-say=sentence] input{
+  border-block-end:1px solid rgba(150,196,226,.26);padding-block-end:.12em;
+  transition:border-color .45s ease}
+.l-three[data-say=sentence] input:focus{border-block-end-color:rgba(178,220,248,.55)}
+.l-three[data-say=sentence] .l-say-text{min-inline-size:clamp(180px,34vw,320px)}
+.landing .l-three[data-say=sentence] .l-say-go{
+  font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;
+  font-size:clamp(16px,2.05vh,21px);letter-spacing:0;padding-inline-start:.35em}
+.l-three[data-say=sentence] .l-say-go-ink{
+  border-block-end:1px solid currentColor;padding-block-end:.06em}
+
+/* ---- 3 · the riser ----
+   No form at all. It is set exactly like a message already in the water — same
+   face, same size, same glow — held still at the bottom, and sending lets go of
+   it. The risk is real and is the whole point of trying it: an input with no
+   furniture may not read as an input. Two things carry it — a caret that is
+   always there, and a prompt beside the caret rather than inside the field,
+   because grey instructions sitting IN a message stop it being a message. */
+.l-three[data-say=riser] .l-say{
+  flex-wrap:wrap;gap:.3em .6em;justify-content:center;text-align:center;
+  inline-size:min(32ch,calc(100vw - 48px));
+  bottom:calc(clamp(56px,11vh,120px) + var(--bar))}
+.l-three[data-say=riser] input{
+  text-align:center;color:rgba(228,242,252,.94);
+  text-shadow:0 0 18px rgba(96,172,220,.4)}
+.l-three[data-say=riser] .l-say-text{flex:1 0 100%;caret-color:rgba(196,228,250,.9)}
+.l-three[data-say=riser] .l-say-name{flex:0 0 auto;inline-size:7em;
+  font-size:.74em;opacity:.6}
+.l-three[data-say=riser] .l-say-ghost{position:absolute;left:0;right:0;top:0;
+  pointer-events:none;color:rgba(178,206,226,.3);
+  font-family:'Cormorant Garamond',Georgia,serif;
+  font-size:clamp(16px,2.05vh,21px);line-height:1.5}
+.l-three[data-say=riser] .l-say:focus-within .l-say-ghost{color:rgba(190,218,238,.42)}
+.l-say-caret{display:inline-block;inline-size:1px;block-size:1.05em;
+  vertical-align:-.16em;margin-inline-end:.34em;
+  background:rgba(206,234,252,.85);
+  animation:l-say-blink 1.15s steps(1,end) infinite}
+@keyframes l-say-blink{0%,52%{opacity:1}53%,100%{opacity:0}}
+/* Nothing to let go of yet, so the words for it are not there either. Hidden
+   rather than dimmed: in a design with no furniture, a greyed-out control is
+   just another piece of furniture. */
+.landing .l-three[data-say=riser] .l-say-go:disabled{opacity:0}
+.landing .l-three[data-say=riser] .l-say-go{
+  font-family:'Jost',system-ui,sans-serif;font-weight:300;
+  font-size:clamp(9px,1.2vh,10.5px);letter-spacing:.28em;text-transform:uppercase;
+  padding:0;opacity:.7}
 
 .l-say-note{position:absolute;left:0;right:0;
   bottom:calc(clamp(8px,1.6vh,20px) + var(--bar));z-index:2;
@@ -690,8 +849,10 @@ export const DRIFT_CSS = `
   /* Half the sway: the same swing that reads as drift on a desktop is a third
      of a phone's width, and a block sliding that far is being blown, not adrift. */
   .l-drift-in{animation-name:l-drift-sway-narrow}
-  .l-say{gap:.6em;padding:.62em .85em}
-  .l-say-name{inline-size:58px}
+  .l-say{width:calc(100vw - 34px)}
+  .l-say-name{inline-size:54px}
+  .l-three[data-say=rule] .l-say{gap:.6em}
+  .l-three[data-say=sentence] .l-say-text{min-inline-size:100%}
   /* nowrap keeps the counter and the two short errors on one line, which is
      what it is for — but the dev-only store warning is a sentence and would
      run off both edges of a phone. */
