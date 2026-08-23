@@ -21,7 +21,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 /* TEMPORARY — five candidate down-marks behind /?down=1, for Qi to choose from.
    The whole import and everything it touches goes once one wins. */
-import { DOWN_CSS, DOWN_VARIANTS, DownMark, type DownVariant } from './DownMarks';
+import {
+  DOWN_CSS,
+  DOWN_TONES,
+  DOWN_VARIANTS,
+  DownMark,
+  type DownTone,
+  type DownVariant,
+} from './DownMarks';
 
 /**
  * The album *is* the poem — ten titles that read straight through. Punctuation
@@ -595,6 +602,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [tuner, setTuner] = useState(false);
   /** `/?down=1` opens the down-mark bake-off. TEMPORARY; see DownMarks.tsx. */
   const [downV, setDownV] = useState<DownVariant | null>(null);
+  const [downTone, setDownTone] = useState<DownTone>('white');
   const [font, setFont] = useState<PoemFontKey>(POEM_FONT);
   const [fontScale, setFontScale] = useState(1);
   const [vig, setVig] = useState(VIGNETTE);
@@ -1370,6 +1378,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             type="button"
             className="l-down"
             data-v={downV ?? undefined}
+            data-tone={downV ? downTone : undefined}
             aria-label="Down to the tracklist"
             onClick={() => goTo(1)}
           >
@@ -1603,6 +1612,19 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       {/* ---- the down-mark bake-off, /?down=1. TEMPORARY ---- */}
       {downV && (
         <div className="dm-pick">
+          <div className="dm-pick-head">TONE</div>
+          <div className="dm-pick-row">
+            {DOWN_TONES.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                className={t.key === downTone ? 'dm-on' : undefined}
+                onClick={() => setDownTone(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
           <div className="dm-pick-head">DOWN MARK</div>
           {DOWN_VARIANTS.map((v) => (
             <button
