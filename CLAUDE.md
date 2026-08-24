@@ -781,9 +781,20 @@ stranger's sentence running through it. Glitch, not ceremony.
 **The consequence worth keeping: the site says nothing here in Chinese, and the
 screen is bilingual anyway, because the people in the water are.** That is a
 better version of the album's voice than a caption — it is not performed, it is
-just what is there. The one exception is the empty state, `还没有人说话`, which
-exists because an empty sea with an input in it reads as broken or as still
-loading. It goes the moment there is anything to see.
+just what is there.
+
+There is one line the screen does say — `no one has spoken yet`, because an
+empty sea with an input in it reads as broken or as still loading — and it went
+out in Chinese first, which was wrong for a reason worth writing down:
+
+> **On this site, Chinese is ceremonial and never functional.** `QI · 琦` is a
+> name; 水母之心 is the album's second name. Both are titles. Every piece of
+> *working* copy is English — HEAR THE DEMOS, TRACKLIST, FOLLOW, *follow thy
+> heart*, *receive a heartbeat at…*. A status line reporting an empty wall is
+> working copy, and 还没有人说话 used the one register this site has never used
+> Chinese in.
+
+The line goes the moment there is anything to see.
 
 **On a phone the riser gets most of the width, and its starting offset is
 scaled to match.** 30vw of a phone is 112px, and a 140-character message in that

@@ -770,8 +770,17 @@ export function Drift({ active }: { active: boolean }) {
       */}
       {loaded && messages.length === 0 && (
         /* An empty sea with an input in it reads as broken, or as still
-           loading. One line, and it is the only place the site speaks here. */
-        <p className="l-risers-none">还没有人说话</p>
+           loading, so the screen says one line — and it says it in English.
+           This was 还没有人说话 for a day, and it was wrong for a reason worth
+           keeping: **on this site Chinese is ceremonial, never functional.**
+           `QI · 琦` is a name and 水母之心 is the album's second name; both are
+           titles. Every piece of working copy — HEAR THE DEMOS, TRACKLIST,
+           FOLLOW, "follow thy heart", "receive a heartbeat at" — is English. A
+           status line reporting that the wall is empty is working copy, and
+           putting it in Chinese used the one register the site had never used
+           Chinese for. The screen is still bilingual whenever the people in the
+           water are; that is theirs to do, not the site's. */
+        <p className="l-risers-none">no one has spoken yet</p>
       )}
 
       <ul className="l-risers" aria-live="off">
@@ -928,11 +937,16 @@ export const DRIFT_CSS = `
 /* The empty state, and the only thing the site itself says on this screen.
    Sits where the risers will be, so the screen does not change shape when the
    first one arrives. */
+/* Tracking came down from .3em when this line stopped being Chinese. Wide
+   tracking is what makes 还没有人说话 read as considered rather than cramped;
+   on a Latin sentence the same value pulls the words apart into a label, and
+   this is a sentence. Italic Cormorant, so it is in the same voice as the
+   prompt in the composer — the two are the only things the screen says. */
 .l-risers-none{position:absolute;left:0;right:0;top:42%;z-index:2;
   margin:0;text-align:center;pointer-events:none;
-  font-family:'Cormorant Garamond',Georgia,serif;
-  font-size:clamp(13px,1.8vh,16px);letter-spacing:.3em;
-  color:rgba(196,222,240,.34)}
+  font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;
+  font-size:clamp(14px,2vh,18px);letter-spacing:.03em;
+  color:rgba(196,222,240,.36)}
 
 /* ---- the water ---- */
 .l-risers{position:absolute;left:0;right:0;top:0;bottom:0;margin:0;padding:0;
