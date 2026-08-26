@@ -831,6 +831,21 @@ had to turn, which depends on the width, the height, which font finished loading
 whether the player is up; no media query knows all four. (The effect re-runs on
 `barOn` for exactly this reason — the player changes screen two's padding.)
 
+**Snapping decides where a scroll ends; it does not decide what the scroll may
+cross** *(2026-08-26)*. A hard trackpad flick on the shore carries its own
+momentum, and mandatory snap happily accepts the floor as the nearest rest
+position two screens down — so the poem was skipped entirely. Every `.l-screen`
+therefore carries **`scroll-snap-stop: always`**, which forbids passing a
+screen's start without stopping at it: one gesture moves one screen, however
+hard it is thrown. It is deliberately not a wheel handler — intercepting the
+wheel means re-implementing momentum, and a page that fights the trackpad feels
+worse than one that skips.
+
+It matters most exactly where `data-tall` has taken mandatory away: snap-stop is
+independent of snap *strictness*, so an overflowing poem still cannot be flung
+past. Note that a two-screen `goTo(0)` (the wordmark, pressed from the floor)
+may therefore surface one screen at a time; that is the same rule, not a bug.
+
 ### The hero's primary action
 
 *(Superseded 2026-08-26 — LISTEN NOW is back, qualified. See the end of this section.)*

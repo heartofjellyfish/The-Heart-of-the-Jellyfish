@@ -5327,7 +5327,17 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-scroll{position:fixed;inset:0;z-index:10;overflow-y:auto;overflow-x:hidden;
   scroll-snap-type:y mandatory;scrollbar-width:none;overscroll-behavior-y:none}
 .l-scroll::-webkit-scrollbar{display:none}
-.l-screen{position:relative;width:100%;min-height:100%;scroll-snap-align:start}
+/* snap-stop:always is what makes this three pages instead of one scroller with
+   three rest positions. Without it a hard trackpad flick on the shore carries
+   its own momentum straight through the poem and settles on the floor — the
+   snap only decides where the fling *ends*, never what it is allowed to cross.
+   With it the scroller may not pass a screen's start without stopping there, so
+   one gesture moves one screen however hard it is thrown. The descent is
+   supposed to be walked; a page nobody can be flung past is the whole point of
+   the snap. It holds under data-tall too — snap-stop applies to a proximity
+   scroller as well, so an overflowing poem still cannot be skipped. */
+.l-screen{position:relative;width:100%;min-height:100%;
+  scroll-snap-align:start;scroll-snap-stop:always}
 .l-one{height:100%;
   /* The shore does not merely leave, it dissolves. Multiplied so it is gone at
      ~87% of the way down, which is where the water has taken over anyway. */
