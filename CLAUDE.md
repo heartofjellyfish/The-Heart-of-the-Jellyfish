@@ -1472,12 +1472,17 @@ The bar, the progress, the seeking and the poem fill are written once against `w
   bar fetches when pressed.
 
 Everything is released in full four months before the record, which only works if nobody
-mistakes a rough bounce for the finished thing — hence `DEMO_NOTE`. It is a **footnote**,
-and the distinction is the whole of it: the first version was a boxed tag set in Jost
-between the poem's head and its first line, and it cut the poem's breath in half. Saying
-what these are is housekeeping, not part of the work, so it waits until the poem has
-finished speaking, then says it once, in the poem's own italic, smaller and dimmer than
-the verse, and does not repeat the release date the hero already gives twice.
+mistakes a rough bounce for the finished thing — hence `DEMO_NOTE`, which is a **dateline**
+and not a disclaimer: `demos · august 2026`.
+
+Two revisions got it there and both are worth keeping. It began as a boxed tag set in Jost
+between the poem's head and its first line, which cut the poem's breath in half — saying
+what these are is housekeeping, not part of the work, so it moved to the foot and into the
+poem's own italic, smaller and dimmer than the verse. Then the sentence itself went:
+"unmixed, unmastered, and still changing" is three adjectives doing one job, and a sentence
+that long reads as getting your excuses in first. A date on a draft does the same work and
+defends nothing — nobody reads a dateline as an apology. Bump the month when the bounces
+change; that is the whole maintenance.
 
 `public/audio/NN-<slug>.mp3` — **all ten**, from the 2026-08-21 bounces. Transcoded to
 128 kbps CBR 44.1 kHz stereo with metadata stripped (`ffmpeg -b:a 128k -map_metadata -1`),

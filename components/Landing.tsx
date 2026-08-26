@@ -96,20 +96,22 @@ const TITLES = [
 const MEDLEY = '/audio/medley.mp3';
 
 /**
- * What these recordings actually are — a footnote under the poem, and nothing
- * more than that.
+ * A dateline, not a disclaimer.
  *
- * Every song is here in full, four months before the record, which only works
- * if nobody mistakes a rough bounce for the finished thing. But saying so is
- * housekeeping, not part of the work, so it is one sentence at the foot of the
- * page in the poem's own type and it does not mention December 20 — the hero
- * says that already, twice, and a footnote that repeats what is on screen is
- * just volume.
+ * Every song is here in full four months before the record, which only works if
+ * nobody mistakes a rough bounce for the finished thing. The first version said
+ * so in a sentence — "unmixed, unmastered, and still changing" — and the trouble
+ * with a sentence is that it argues. Three adjectives doing one job read as
+ * getting your excuses in first.
  *
- * Put a version in it if you keep them ("These are demos (v12) — ..."); it
- * costs nothing and tells anyone who comes back that these move.
+ * A date on a draft does the same work and defends nothing. "demos" is the fact;
+ * "august 2026" is what makes it provisional, because a dated thing is a
+ * snapshot of something still being made. Nobody reads a dateline as an apology.
+ *
+ * Bump the month when the bounces change — that is the whole maintenance, and it
+ * quietly tells anyone who comes back that these move.
  */
-const DEMO_NOTE = 'These are demos — unmixed, unmastered, and still changing.';
+const DEMO_NOTE = 'demos · august 2026';
 
 const chapterOf = (n: number) => MEDLEY_CHAPTERS[n - 1];
 
@@ -4781,16 +4783,30 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    to happen fast enough to feel like a response rather than an animation. */
 .l-bar-track.is-outside .l-wave-dim rect{fill:rgba(242,246,248,.42)}
 
-/* The same invitation, for every device that has no hover — and the song's real
-   length, which is the other thing a 29-second excerpt fails to tell you. */
-.l-bar-whole{flex:0 0 auto;background:transparent;cursor:pointer;
-  border:1px solid rgba(242,246,248,.28);border-radius:999px;padding:5px 12px;
-  font-family:'Jost',sans-serif;font-weight:300;font-size:10px;letter-spacing:.16em;
-  text-transform:uppercase;color:inherit;opacity:.72;white-space:nowrap;
-  transition:opacity .25s,border-color .25s,background .25s}
-.l-bar-whole:hover,.l-bar-whole:focus-visible{opacity:1;border-color:rgba(242,246,248,.6);
-  background:rgba(242,246,248,.1)}
-.l-bar-whole-len{font-variant-numeric:tabular-nums;opacity:.7;margin-left:.15em}
+/* The invitation to the whole song, for every device that has no hover — and
+   the song's real length, which is the other thing an excerpt fails to tell you.
+
+   No box. The bar has a circle and a waveform in it already, and a stadium chip
+   was a third shape language borrowed from product UI: it sat on this page like
+   a sticker. The page has its own way of saying "pressable" and has taught it
+   twice already, in TRACKLIST and PAUSE — small caps, wide tracking, no
+   container — so this says it the same way, at one size and one opacity across
+   the whole label.
+
+   .landing-qualified for the same reason .l-bar-close is: the button font reset
+   at the top of this sheet sits at (0,1,1) and beats a bare class, so an
+   unqualified font-size here is silently dropped and the label renders at the
+   page's 16px. Which is exactly what it did — it looked wrong because it was
+   half again too big, before its shape had anything to do with it. */
+.landing .l-bar-whole{flex:0 0 auto;background:transparent;border:0;padding:0;
+  cursor:pointer;font-family:'Jost',sans-serif;font-weight:300;font-size:11px;
+  letter-spacing:.2em;text-transform:uppercase;color:inherit;opacity:.72;
+  white-space:nowrap;transition:opacity .25s}
+.landing .l-bar-whole:hover{opacity:1}
+/* Keyboard focus needs to be seen, and opacity alone is not a focus ring. */
+.landing .l-bar-whole:focus-visible{opacity:1;outline:none;
+  box-shadow:0 2px 0 -1px rgba(242,246,248,.7)}
+.l-bar-whole-len{font-variant-numeric:tabular-nums}
 /* A bare duration in a pill reads as a readout — the very thing this is not.
    So on a phone the label shortens rather than disappears: "ALL 2:16" is still
    an instruction, where "2:16" would look like a clock. */
@@ -4801,9 +4817,9 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    waveform's floor and the button's padding. Four small concessions buy the
    title back. */
 @media (max-width:560px){
-  .l-bar{gap:9px;padding:0 14px}
-  .l-bar-track{min-width:104px}
-  .l-bar-whole{padding:4px 7px;font-size:9px;letter-spacing:.06em}
+  .l-bar{gap:10px;padding:0 16px}
+  .l-bar-track{min-width:110px}
+  .landing .l-bar-whole{font-size:10px;letter-spacing:.12em}
   .l-bar-whole-word{display:none}
   .l-bar-whole-short{display:inline}
 }
@@ -4812,7 +4828,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    it is a caveat, not a banner, and a banner would read as an apology. */
 .l-poem-note{margin:2.6em 0 0;font-family:'Cormorant Garamond',Georgia,serif;
   font-style:italic;font-weight:400;font-size:.92rem;line-height:1.65;
-  letter-spacing:.01em;opacity:.34;max-width:34em}
+  letter-spacing:.02em;opacity:.3;max-width:34em}
 
 .l-bar-knob{position:absolute;right:0;top:50%;width:9px;height:9px;border-radius:50%;
   background:var(--lit);transform:translate(50%,-50%) scale(0);
