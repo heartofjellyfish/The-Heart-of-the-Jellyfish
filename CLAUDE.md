@@ -1178,14 +1178,25 @@ does not merely read badly, it invents a line of verse the album does not have.
 parentheses what is behind it:
 
 ```
-LISTEN NOW (teasers)        TRACKLIST (full demos)
+LISTEN (excerpts)        TRACKLIST (full-length demos)
 ```
 
-`LISTEN NOW` was dropped once for claiming a release this album has not had. It is
-back because the claim now arrives qualified in the same breath, and the parenthesis
-is what makes it honest. Describing both doors identically is the point: the choice
-between them is legible at a glance instead of inferred from two differently-shaped
-phrases.
+`LISTEN NOW` was dropped once for claiming a release this album has not had, and the
+fix was one word: *listen* is an invitation, *listen now* is a release announcement.
+The verb on its own claims nothing. Describing both doors identically is the point —
+the choice between them is legible at a glance instead of inferred from two
+differently-shaped phrases.
+
+The nouns were argued over and the reasoning is worth keeping. **Excerpt** is the
+exact word for a chosen passage of a longer work, which is what these are.
+**Teaser** has an agenda: it frames the listener as someone being worked on, and it
+would call a seven-minute piece a trailer. **Snippet** is honest but suggests
+fragments grabbed at random rather than passages someone sat and chose.
+**Full-length** is the direct antonym of excerpt, so the two glosses teach each
+other, where "full" alone leaves you asking full of what. And the second gloss
+deliberately does NOT say the demos are unfinished — that is said by the word *demos*
+and again by the dateline under the poem, and a parenthesis carrying three ideas is a
+sentence.
 
 Each gloss is its own span, outside the per-letter sweep. That lets it be set below
 the label it qualifies (9.9px against 13.8px, .62 opacity) — a parenthesis at the

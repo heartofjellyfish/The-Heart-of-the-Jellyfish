@@ -249,16 +249,29 @@ const FEATURED_DEMO = 1;
  * saying so is not a disclaimer, it is the offer: you are hearing it before it
  * exists.
  *
- * LISTEN NOW is back, and the objection is answered rather than ignored: the
- * claim now arrives qualified, in the same breath, by a gloss that names what
- * the press actually gives. The pair below the title reads as one grammar —
+ * It is LISTEN now, not LISTEN NOW, and that one word was the whole objection:
+ * "listen" is an invitation, "listen now" is a release announcement. The verb
+ * on its own claims nothing.
  *
- *     LISTEN NOW (teasers)      TRACKLIST (full demos)
+ * The pair below the title reads as one grammar —
+ *
+ *     LISTEN (excerpts)      TRACKLIST (full-length demos)
  *
  * — an invitation and, in parentheses, what is behind it. Two doors described
  * the same way, so the choice between them is legible at a glance instead of
- * being inferred from two differently-shaped phrases. The offer survives; it is
- * the parenthesis that makes it honest.
+ * being inferred from two differently-shaped phrases.
+ *
+ * On the nouns, since they were argued over: "excerpt" is the exact word for a
+ * chosen passage of a longer work, which is what these are. "Teaser" has an
+ * agenda — it frames the listener as someone being worked on, and it would call
+ * a seven-minute piece a trailer. "Snippet" is honest but suggests fragments
+ * grabbed at random rather than passages someone sat and chose. And
+ * "full-length" is the direct antonym of "excerpt", so the two glosses teach
+ * each other; "full" alone leaves you wondering full of what.
+ *
+ * What is deliberately NOT in the second gloss: that the demos are unfinished.
+ * It is said twice already — by the word "demos", and by the dateline under the
+ * poem — and a parenthesis carrying three ideas is a sentence.
  *
  * The other two labels are the transport it becomes.
  *
@@ -266,9 +279,16 @@ const FEATURED_DEMO = 1;
  * the transport for whatever is sounding — a play button that restarts a
  * different track while music is already playing is a bug the size of the hero.
  */
+/**
+ * The two parentheses. Named here rather than inline so the pair can be read —
+ * and changed — as a pair; they only work against each other.
+ */
+const GLOSS_TEASE = '(excerpts)';
+const GLOSS_FULL = '(full-length demos)';
+
 const PLAY_LABELS = {
   /** Qualified by the gloss beside it, which only shows while this is the label. */
-  idle: 'LISTEN NOW',
+  idle: 'LISTEN',
   playing: 'PAUSE',
   paused: 'RESUME',
 } as const;
@@ -2847,7 +2867,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       ? PLAY_LABELS.playing
       : PLAY_LABELS.paused;
   const heroAria = !barOn
-    ? 'Listen now — teasers from all ten songs, starting with ' + TITLES[FEATURED_DEMO - 1]
+    ? 'Listen — excerpts from all ten songs, starting with ' + TITLES[FEATURED_DEMO - 1]
     : (playing ? 'Pause — ' : 'Resume — ') + TITLES[cur - 1];
 
   const litVals = LITS.find((l) => l.key === lit) ?? LITS[0];
@@ -3328,7 +3348,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                   {/* Only while the button is still an invitation. Once the bar
                       is up the label is PAUSE or RESUME, and a parenthesis
                       explaining what PAUSE gives you would be nonsense. */}
-                  {!barOn && <span className="l-act-gloss">(teasers)</span>}
+                  {!barOn && <span className="l-act-gloss">{GLOSS_TEASE}</span>}
                 </button>
               </span>
               {/*
@@ -3376,7 +3396,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                     parenthesis — and it can step aside on a phone, where this
                     button shares 375px with a twenty-character play label.
                   */}
-                  <span className="l-act-gloss">(full demos)</span>
+                  <span className="l-act-gloss">{GLOSS_FULL}</span>
                   <span className="l-caret" aria-hidden />
                 </span>
               </button>
