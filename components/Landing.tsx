@@ -1801,12 +1801,12 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
      "actually down here" is a request every four seconds. */
   const [atThree, setAtThree] = useState(false);
   /**
-   * True when the two screens do not add up to exactly two screens — i.e. the
-   * tracklist is taller than the window it is in. Measured rather than guessed
-   * at a breakpoint, because what makes it overflow is how many of the ten
-   * lines had to turn, which depends on the width, the height, the font that
-   * finished loading and whether the player is up. No media query knows all
-   * four. See the snap rule in the CSS for what it is for.
+   * True when the poem hangs below the rest position of its own screen — i.e.
+   * a line of it is unreadable from where the snap puts you. Measured rather
+   * than guessed at a breakpoint, because what makes it overflow is how many
+   * of the ten lines had to turn, which depends on the width, the height, the
+   * font that finished loading and whether the player is up. No media query
+   * knows all four. See the snap rule in the CSS for what it is for.
    */
   const [tall, setTall] = useState(false);
   /** Named because the layout depends on it, not only the markup. */
@@ -1814,6 +1814,9 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  /** Screen two and the block of text on it — the pair the tall test measures. */
+  const twoRef = useRef<HTMLElement>(null);
+  const poemRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -1956,10 +1959,20 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       const s3 = Math.min(1, Math.max(0, sc.scrollTop / h - 1));
       root.style.setProperty('--s3', s3.toFixed(4));
       setAtThree(s3 > 0.3);
-      // Three screens should measure three screens now the floor is one of
-      // them. Anything over is the tracklist spilling, and the snap has to give
-      // way — see .landing[data-tall].
-      setTall(sc.scrollHeight > h * 3 + 2);
+      // Does the poem itself fall below the rest position of its own screen?
+      // Measured on the text, not on the scroller: screen two carries up to
+      // ~90px of bottom padding plus the player's height, and losing breathing
+      // room at a snap stop costs nothing, while losing a line costs the last
+      // track on the record. The old test compared scrollHeight to three
+      // screens, which fired on a single pixel of padding — and on a phone the
+      // padding always spills, so the page silently ran a different snap model
+      // there than on a laptop. See .landing[data-tall].
+      const poem = poemRef.current;
+      const two = twoRef.current;
+      if (poem && two)
+        setTall(
+          poem.getBoundingClientRect().bottom - two.getBoundingClientRect().top > h + 4,
+        );
     };
     read();
     sc.addEventListener('scroll', read, { passive: true });
@@ -3468,10 +3481,11 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           was ever about being in a dialog.
         */}
         <section
+          ref={twoRef}
           className={'l-screen l-two' + (atTwo ? ' is-in' : '')}
           aria-label="The tracklist, as a poem"
         >
-          <div className="l-poem">
+          <div className="l-poem" ref={poemRef}>
             {/*
               The album, in the poem's own hand. Qi's call, twice now.
 
@@ -3601,6 +3615,17 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             <span className="l-two-cn-rule" />
           </div>
 
+          {/*
+            Nothing to look at: the poem's second snap position, flush with the
+            bottom of its own screen, live only while data-tall says a line is
+            hanging below the first one. See the snap rule in the CSS for why
+            the strictness no longer moves — this is what replaced it.
+
+            An element rather than an ::after because a snap area is the one
+            thing here that has to be right in a browser nobody can open on
+            this machine. Out of flow, so the flex centring above never sees it.
+          */}
+          <div className="l-two-tail" aria-hidden />
         </section>
 
         {/*
@@ -5334,8 +5359,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    With it the scroller may not pass a screen's start without stopping there, so
    one gesture moves one screen however hard it is thrown. The descent is
    supposed to be walked; a page nobody can be flung past is the whole point of
-   the snap. It holds under data-tall too — snap-stop applies to a proximity
-   scroller as well, so an overflowing poem still cannot be skipped. */
+   the snap. */
 .l-screen{position:relative;width:100%;min-height:100%;
   scroll-snap-align:start;scroll-snap-stop:always}
 .l-one{height:100%;
@@ -5343,16 +5367,27 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
      ~87% of the way down, which is where the water has taken over anyway. */
   opacity:clamp(0,calc(1 - var(--s) * 1.15),1)}
 
-/* Mandatory snap is the whole feeling of "two pages", and it is also the one
+/* Mandatory snap is the whole feeling of "three pages", and it is also the one
    thing here that can trap a reader: a screen taller than the window has no
-   snap position at its own bottom, so the tail of the poem becomes unreachable
-   — the scroller keeps pulling back to the top of the section.
+   snap position at its own bottom, so the tail of the poem would be
+   unreachable — the scroller keeps pulling back to the top of the section.
 
-   So it gives way, and it gives way on a measurement rather than on a
-   breakpoint. data-tall means the two screens measured more than two screens;
-   see the scroll effect. Proximity still settles onto a screen when you let go
-   near one, so the two-page feel survives everywhere it can afford to. */
-.landing[data-tall] .l-scroll{scroll-snap-type:y proximity}
+   The old answer was to drop the whole scroller to proximity whenever that
+   happened. It worked, and it quietly gave the page two different scroll
+   models: a laptop kept mandatory, and a phone — where the poem's bottom
+   padding spills as a matter of course, before a single line has turned —
+   scrolled loose. Same site, different hand feel, and nothing on screen said
+   why. *(2026-08-26)*
+
+   So the strictness never moves. What moves is the number of snap positions:
+   when the poem really is cut (measured on the text — see the scroll effect),
+   screen two grows a second one flush with its own bottom, and the tail is one
+   short drag away. Deliberately not an .l-screen, so it inherits no
+   scroll-snap-stop: it is somewhere you may land, never somewhere you must
+   stop, and a fling from the poem still reaches the floor in one go. */
+.l-two-tail{position:absolute;inset-inline:0;bottom:0;block-size:1px;
+  pointer-events:none}
+.landing[data-tall] .l-two-tail{scroll-snap-align:end}
 
 /* With scripting off, --s never moves and screen two would be white
    handwriting over a bright sky. Everything else on this page is gone in that

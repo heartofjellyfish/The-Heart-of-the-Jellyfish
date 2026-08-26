@@ -819,17 +819,38 @@ each other, which is exactly what it looks like when that rule does not land.)
 
 ### Snap, and the one thing that can trap a reader
 
-`scroll-snap-type: y mandatory` is the whole feeling of "two pages". It is also the
+`scroll-snap-type: y mandatory` is the whole feeling of "three pages". It is also the
 one thing here that can strand someone: a section taller than the window has no snap
 position at its own bottom, so the scroller keeps pulling back and the tail of the
 poem becomes unreachable.
 
-So it gives way — **on a measurement, not on a breakpoint.** The scroll effect sets
-`data-tall` when the three screens measure more than three screens, and that switches
-the snap to `proximity`. What makes screen two overflow is how many of the ten lines
-had to turn, which depends on the width, the height, which font finished loading and
-whether the player is up; no media query knows all four. (The effect re-runs on
-`barOn` for exactly this reason — the player changes screen two's padding.)
+**The strictness never moves; the number of snap positions does** *(2026-08-26)*.
+It used to be the other way round: `data-tall` dropped the whole scroller to
+`proximity`, and that shipped the site with two different scroll models by accident.
+The old test compared `scrollHeight` to three screens, so a *single pixel* of spill
+fired it — and screen two spills as a matter of course on a phone, before a line of
+the poem has turned, because its bottom padding is up to 90px plus the player's
+height. Measured: a 1512×860 laptop sat in mandatory, a 393×715 phone in proximity.
+Qi felt it as 手感不一样 on the phone and was right; nothing on screen said why.
+
+So `data-tall` now measures **the poem, not the scroller** — does `.l-poem`'s bottom
+fall below the rest position of its own screen — and losing breathing room at a snap
+stop costs nothing while losing a line costs the last track on the record. When it
+genuinely is cut, screen two grows a **second snap position** (`.l-two-tail`, a 1px
+out-of-flow element pinned to its bottom, given `scroll-snap-align: end`) and the
+tail is one short drag away with mandatory still on everywhere.
+
+`.l-two-tail` is deliberately **not** an `.l-screen`, so it inherits no
+`scroll-snap-stop` — somewhere you may land, never somewhere you must stop, and a
+fling from the poem still reaches the floor in one gesture. It is a real element
+rather than an `::after` because a snap area is the one thing here that has to be
+right in Safari, which is the browser this whole section exists for and the one that
+cannot be opened on the dev machine.
+
+What makes screen two overflow is how many of the ten lines had to turn, which
+depends on the width, the height, which font finished loading and whether the player
+is up; no media query knows all four. (The effect re-runs on `barOn` for exactly this
+reason — the player changes screen two's padding.)
 
 **Snapping decides where a scroll ends; it does not decide what the scroll may
 cross** *(2026-08-26)*. A hard trackpad flick on the shore carries its own
@@ -841,10 +862,8 @@ hard it is thrown. It is deliberately not a wheel handler — intercepting the
 wheel means re-implementing momentum, and a page that fights the trackpad feels
 worse than one that skips.
 
-It matters most exactly where `data-tall` has taken mandatory away: snap-stop is
-independent of snap *strictness*, so an overflowing poem still cannot be flung
-past. Note that a two-screen `goTo(0)` (the wordmark, pressed from the floor)
-may therefore surface one screen at a time; that is the same rule, not a bug.
+Note that a two-screen `goTo(0)` (the wordmark, pressed from the floor) may
+therefore surface one screen at a time; that is the same rule, not a bug.
 
 ### The hero's primary action
 
@@ -955,10 +974,10 @@ Two mechanics on it that are easy to break:
 were cut. The screen keeps arriving back at the same shape, which is probably the
 answer: it ends on `sea risen.` and nothing follows that.
 
-**Everything on this screen has to clear one window** — a screen that overflows
-trips the `data-tall` fallback out of mandatory snap. With the title and the poem
-the only things on it that is not tight, but every size is in `vh` for it, and it
-was tight the moment a footer went back on. If you add anything here, take the
+**Everything on this screen has to clear one window** — a poem that overflows trips
+`data-tall`, which adds a second snap position at the screen's foot. With the title
+and the poem the only things on it that is not tight, but every size is in `vh` for
+it, and it was tight the moment a footer went back on. If you add anything here, take the
 height out of something else: the poem's size, then the title's margin, then the
 section's padding, in that order of how little they hurt.
 
