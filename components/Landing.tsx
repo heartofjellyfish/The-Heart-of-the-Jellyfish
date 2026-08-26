@@ -3360,6 +3360,15 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                       {ch}
                     </span>
                   ))}
+                  {/*
+                    The word still says what the screen is; the gloss says what
+                    you get there. Its own span rather than more letters in the
+                    sweep, for two reasons: it can be set lighter than the label
+                    it qualifies — a parenthesis that shouts is not a
+                    parenthesis — and it can step aside on a phone, where this
+                    button shares 375px with a twenty-character play label.
+                  */}
+                  <span className="l-act-gloss">(full demos)</span>
                   <span className="l-caret" aria-hidden />
                 </span>
               </button>
@@ -4673,6 +4682,20 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 
 .l-act-primary{display:flex;align-items:center;gap:clamp(14px,1.4vw,20px)}
 .l-play-row{display:flex;align-items:center;gap:clamp(14px,1.4vw,20px);margin-top:clamp(26px,4.2vh,52px)}
+/* Every letter of the label is its own inline-block, which means the line can
+   break BETWEEN any two of them — "ALL TEN I / N 7 MINUT / ES". Nothing said it
+   could not, until a label long enough to need a second line arrived. */
+.landing .l-play-label,.landing .l-act-second{white-space:nowrap}
+
+/* On a phone the two actions cannot share a line: the play label alone is most
+   of 375px once its tracking is counted. So they stack, each intact, and the
+   rule between them goes — a vertical divider between two things that are no
+   longer side by side is just a mark. */
+@media (max-width:560px){
+  .l-play-row{flex-wrap:wrap;row-gap:clamp(14px,2.4vh,22px)}
+  .l-act-rule{display:none}
+  .l-act-gloss{display:none}
+}
 /* The primary action. On hover the ring fills and the glyph inverts — the button
    stops being an outline and becomes a thing you have already half-pressed. The
    ::after is a second ring that expands and fades, so the state change reads as
@@ -4731,6 +4754,12 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    26ms: a ripple is a wave and wants to be continuous, typing is discrete and
    wants you to hear each key. */
 .l-type{display:inline-block;white-space:nowrap}
+/* Set below the label, not beside it: smaller, lighter, tighter tracking, and
+   no part of the letter sweep. It is an aside about the destination, and an
+   aside at the same weight as its label is just a longer label. */
+.l-act-gloss{margin-left:.85em;font-size:.72em;letter-spacing:.14em;opacity:.62;
+  text-transform:none;white-space:nowrap}
+.l-act-second:hover .l-act-gloss{opacity:.85}
 .l-tl{display:inline-block}
 .landing .l-act-second:hover .l-tl{
   animation:l-strike .32s cubic-bezier(.22,.9,.3,1) both;
