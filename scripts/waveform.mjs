@@ -1,27 +1,33 @@
 /**
- * Precompute waveform peaks for every demo in public/audio.
+ * Precompute waveform peaks for every chapter of the medley.
  *
  * Decoding audio in the browser to draw a waveform means downloading and
- * decoding the whole file before the bar can render — for a 4 MB mp3 that is
+ * decoding the whole file before the bar can render — for an 8 MB mp3 that is
  * absurd for a 2px-tall graphic. So the peaks are computed once, here, and
  * shipped as a small JSON the page fetches on first play.
  *
- * Run after adding or replacing a track:   npm run waveform
+ * Keyed by track number, because that is what the bar and the poem line ask
+ * for. The site plays one continuous file now (see components/medley.ts), so a
+ * "track" is a time window inside it rather than a file of its own — and each
+ * window gets its own envelope, normalised to itself, exactly as before.
+ *
+ * Run after re-making the medley:   npm run waveform
  */
 import { execFileSync } from 'node:child_process';
-import { readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { writeFileSync } from 'node:fs';
+import { MEDLEY_CHAPTERS } from '../components/medley.ts';
 
-const AUDIO_DIR = 'public/audio';
+const AUDIO = 'public/audio/medley.mp3';
 const OUT = 'public/waveforms.json';
-/** Buckets per track. 400 is more than any bar is wide, so it downsamples cleanly. */
+/** Buckets per chapter. 400 is more than any bar is wide, so it downsamples cleanly. */
 const BUCKETS = 400;
 
-/** Decode to raw mono 8 kHz PCM on stdout — enough resolution for an envelope. */
-function pcm(file) {
+/** Decode one window to raw mono 8 kHz PCM — enough resolution for an envelope. */
+function pcm(file, start, end) {
   return execFileSync(
     'ffmpeg',
-    ['-v', 'error', '-i', file, '-ac', '1', '-ar', '8000', '-f', 's16le', '-'],
+    ['-v', 'error', '-ss', String(start), '-to', String(end), '-i', file,
+     '-ac', '1', '-ar', '8000', '-f', 's16le', '-'],
     { maxBuffer: 1024 * 1024 * 512 },
   );
 }
@@ -42,19 +48,17 @@ function peaks(buf) {
     out[b] = peak;
     if (peak > max) max = peak;
   }
-  // Normalise per track, then quantise to a byte. Per-track rather than across
-  // the album: this is a seek affordance, not a mastering reference, and a quiet
-  // song should still show a shape.
+  // Normalise per chapter, then quantise to a byte. Per chapter rather than
+  // across the medley: this is a seek affordance, not a mastering reference,
+  // and a quiet song should still show a shape.
   return out.map((v) => Math.round((v / max) * 255));
 }
 
-const files = readdirSync(AUDIO_DIR).filter((f) => f.endsWith('.mp3')).sort();
 const data = {};
-for (const f of files) {
-  const key = f.slice(0, 2); // "01".."10"
-  process.stdout.write(`  ${f} … `);
-  data[key] = peaks(pcm(join(AUDIO_DIR, f)));
+for (const c of MEDLEY_CHAPTERS) {
+  process.stdout.write(`  ${c.num} ${c.title} … `);
+  data[c.num] = peaks(pcm(AUDIO, c.start, c.end));
   process.stdout.write('ok\n');
 }
 writeFileSync(OUT, JSON.stringify(data));
-console.log(`\n${files.length} tracks -> ${OUT}`);
+console.log(`\n${MEDLEY_CHAPTERS.length} chapters -> ${OUT}`);

@@ -22,6 +22,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { JellyMark, JELLY_MARK_CSS } from './JellyMark';
 import { Drift, DRIFT_CSS } from './Drift';
 import { track } from '@/lib/analytics';
+import { MEDLEY_CHAPTERS } from './medley';
 
 /**
  * The album *is* the poem — ten titles that read straight through. Punctuation
@@ -74,18 +75,42 @@ const TITLES = [
   'Sea Risen',
 ];
 
-const FILES = [
-  '/audio/01-sea-rising.mp3',
-  '/audio/02-in-memory-of-those-who-chose-the-sea.mp3',
-  '/audio/03-a-dream-so-real.mp3',
-  '/audio/04-wait-why-is-the-dream-so-real.mp3',
-  '/audio/05-wake-up.mp3',
-  '/audio/06-the-heart-of-the-jellyfish.mp3',
-  '/audio/07-you-shall-see.mp3',
-  '/audio/08-what-belongs-to-the-sea.mp3',
-  '/audio/09-the-day-after-without-us.mp3',
-  '/audio/10-sea-risen.mp3',
-];
+/**
+ * The album is one file.
+ *
+ * Ten excerpts, in sleeve order, with a measured silence between each — cut in
+ * `audio-clipper/` and bounced as a single mp3 so the transitions are authored
+ * rather than left to whenever the next download happens to arrive. Before
+ * this the page swapped `src` per track and the gap between two songs was
+ * network weather; on a phone it could be four seconds of nothing, and on a
+ * fast connection none at all.
+ *
+ * So a "track" here is a time window inside one continuous piece. Everything
+ * downstream — the poem line that lights up, the waveform, the progress fill,
+ * the scrub bar — reads its chapter out of MEDLEY_CHAPTERS instead of out of a
+ * file, and otherwise works exactly as it did.
+ *
+ * Re-make it with `curl -X POST localhost:4611/api/medley`, copy `medley.mp3`
+ * and `medley.ts` across, then `npm run waveform`.
+ */
+const MEDLEY = '/audio/medley.mp3';
+
+const chapterOf = (n: number) => MEDLEY_CHAPTERS[n - 1];
+
+/**
+ * Which chapter a given moment belongs to.
+ *
+ * The silence between two chapters counts as part of the one that just ended,
+ * so the poem holds its line through the pause and turns over exactly when the
+ * next song speaks. Handing the gap to the next chapter instead would light its
+ * line above a second of nothing, which reads as the page having lost its place.
+ */
+function chapterAt(t: number): number {
+  for (let i = MEDLEY_CHAPTERS.length - 1; i >= 0; i--) {
+    if (t >= MEDLEY_CHAPTERS[i].start) return i + 1;
+  }
+  return 1;
+}
 
 /**
  * Every demo event carries the number AND the title. The number is what sorts
@@ -111,18 +136,26 @@ function demoProps(n: number) {
 const DEMO_MILESTONES = [25, 50, 75] as const;
 
 /**
- * Which tracks have a demo in `public/audio/`. All ten, as of the 2026-08-21
- * bounces. Kept as a list rather than assumed, so pulling a track back to
- * unreleased is one edit: drop its number and the poem panel dims that line,
- * the bar labels it "DEMO PENDING", and LISTEN NOW skips past it.
+ * Which tracks have a demo. All ten — each is a chapter of `medley.mp3`.
+ *
+ * Kept as a list rather than assumed, so pulling a track back to unreleased is
+ * one edit here: drop its number and the poem panel dims that line and the bar
+ * labels it "DEMO PENDING". Note that this no longer removes the audio — the
+ * song is still inside the medley — so a track genuinely being withheld has to
+ * be dropped from clips.json and the medley re-bounced.
  */
 const AVAILABLE_DEMOS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 /**
- * What the hero's play button starts on. Not track 01 — this is the one to meet
- * the album with, and it is a separate decision from the running order.
+ * What the hero's play button starts on.
+ *
+ * Track 01, now that the demos are one continuous piece: the point of pressing
+ * it is to be walked through the whole descent in order, and starting in the
+ * middle of that would be starting a film on reel three. When each song was its
+ * own file this was 3 — one song had to carry the first impression alone, and
+ * that was the one to meet the album with.
  */
-const FEATURED_DEMO = 3;
+const FEATURED_DEMO = 1;
 
 /**
  * The hero's primary action, in its three states.
@@ -1617,6 +1650,10 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const pctRef = useRef(0);
   /** Lets the `ended` listener advance a track without capturing a stale closure. */
   const playTrackRef = useRef<(n: number, from?: PlaySource) => void>(() => {});
+  /** Same, for the clock handing over from one chapter to the next. */
+  const beginChapterRef = useRef<(n: number, from: PlaySource) => void>(() => {});
+  /** A seek asked for before the file knew its own length. See `loadedmetadata`. */
+  const pendingSeekRef = useRef<number | null>(null);
   /** Highest quarter already reported for the track now loaded. Reset per track. */
   const milestoneRef = useRef(0);
   /** Whether the play now loaded has already been ended. See endPlay. */
@@ -1850,16 +1887,45 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const ensureAudio = useCallback(() => {
     if (audioRef.current) return audioRef.current;
     const au = new Audio();
+    au.src = MEDLEY;
+    // A seek asked for before the metadata lands is silently dropped, so the
+    // first press on a cold page would start the medley at 0 whatever line was
+    // clicked. Hold it and apply it the moment the duration is known.
+    au.addEventListener('loadedmetadata', () => {
+      const t = pendingSeekRef.current;
+      if (t !== null) {
+        pendingSeekRef.current = null;
+        au.currentTime = t;
+      }
+    });
     au.addEventListener('timeupdate', () => {
-      const p = au.duration ? (au.currentTime / au.duration) * 100 : 0;
+      const ct = au.currentTime;
+      /*
+       * Crossing into the next song without anyone pressing anything. This is
+       * what used to be the `ended` handler advancing to the next file, and it
+       * is reported the same way — the play that finished is closed, the next
+       * one opened — so the funnel still sees ten songs and not one long play.
+       */
+      const at = chapterAt(ct);
+      if (at !== curRef.current && pendingSeekRef.current === null) {
+        if (milestoneRef.current < 100) {
+          milestoneRef.current = 100;
+          track('demo_progress', { ...demoProps(curRef.current), milestone: 100 });
+        }
+        endPlayRef.current('finished');
+        beginChapterRef.current(at, 'auto');
+      }
+      const ch = chapterOf(curRef.current);
+      const span = ch ? ch.end - ch.start : 0;
+      const p = span > 0 ? Math.min(100, Math.max(0, ((ct - ch.start) / span) * 100)) : 0;
       // Seconds that actually sounded, summed from the clock's own forward
       // steps. A seek moves currentTime by more than a tick's worth and a
       // rewind moves it backwards, so both fall outside the window and add
       // nothing — which is the point: this is time listened, not time elapsed
       // and not track length.
-      const d = au.currentTime - lastCtRef.current;
+      const d = ct - lastCtRef.current;
       if (d > 0 && d < 1.5) listenedRef.current += d;
-      lastCtRef.current = au.currentTime;
+      lastCtRef.current = ct;
       if (Math.abs(p - pctRef.current) > 0.7) {
         pctRef.current = p;
         setPct(p);
@@ -1882,8 +1948,9 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         track('demo_progress', { ...demoProps(curRef.current), milestone: 100 });
       }
       endPlayRef.current('finished');
-      if (curRef.current < FILES.length) playTrackRef.current(curRef.current + 1, 'auto');
-      else setPlaying(false);
+      // Nothing to advance to: the next song was always already in this file,
+      // and reaching the end of it means reaching the end of the album.
+      setPlaying(false);
     });
     au.addEventListener('error', () => {
       // The file itself: not up yet, a 404, or a body that will not decode.
@@ -1901,9 +1968,40 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     return au;
   }, []);
 
+  /**
+   * Become chapter `n`: everything the page has to reset when a different song
+   * starts sounding, whether someone asked for it or the clock simply arrived.
+   *
+   * `msToSound` is how long the listener waited for sound, and `null` means
+   * "not yet" — a press reports it once play() actually resolves, because that
+   * wait is the number worth having. The clock crossing a boundary passes 0:
+   * the sound never stopped.
+   */
+  const beginChapter = useCallback(
+    (n: number, from: PlaySource, msToSound: number | null = 0) => {
+      const ch = chapterOf(n);
+      curRef.current = n;
+      pctRef.current = 0;
+      milestoneRef.current = 0;
+      endedRef.current = false;
+      // Where this chapter starts, not zero — otherwise the first tick of a new
+      // song looks like a two-minute forward jump and is discarded as a seek.
+      lastCtRef.current = ch ? ch.start : 0;
+      tracksPlayedRef.current.add(n);
+      setCur(n);
+      setMissing(false);
+      setPct(0);
+      if (msToSound !== null) {
+        track('demo_started', { ...demoProps(n), from, ms_to_sound: msToSound });
+      }
+    },
+    [],
+  );
+  beginChapterRef.current = beginChapter;
+
   const playTrack = useCallback(
     (n: number, from: PlaySource = 'hero') => {
-      if (n < 1 || n > FILES.length) return;
+      if (n < 1 || n > MEDLEY_CHAPTERS.length) return;
       loadPeaks();
       const au = ensureAudio();
       if (curRef.current === n) {
@@ -1924,16 +2022,12 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       // a listener who tries five songs leaves five endings behind rather than
       // four silences and one.
       endPlay('switched');
-      au.src = FILES[n - 1];
-      curRef.current = n;
-      pctRef.current = 0;
-      milestoneRef.current = 0;
-      endedRef.current = false;
-      lastCtRef.current = 0;
-      tracksPlayedRef.current.add(n);
-      setCur(n);
-      setMissing(false);
-      setPct(0);
+      // The song is already in the file — this is a jump, not a load. Which is
+      // also why nothing here can fail the way a missing file could.
+      const ch = chapterOf(n);
+      if (au.readyState >= 1) au.currentTime = ch.start;
+      else pendingSeekRef.current = ch.start;
+      beginChapter(n, from, null);
       const askedAt = Date.now();
       au
         .play()
@@ -1977,7 +2071,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           setPlaying(false);
         });
     },
-    [ensureAudio, loadPeaks],
+    [ensureAudio, loadPeaks, beginChapter],
   );
   playTrackRef.current = playTrack;
 
@@ -1994,8 +2088,12 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const seekToFraction = useCallback((f: number) => {
     const au = audioRef.current;
     if (!au || !au.duration || !isFinite(au.duration)) return;
+    const ch = chapterOf(curRef.current);
+    if (!ch) return;
     const c = Math.min(1, Math.max(0, f));
-    au.currentTime = c * au.duration;
+    // The bar is this song's length, so its right edge is the end of this song
+    // — not the end of the album. The fraction is mapped into the chapter.
+    au.currentTime = ch.start + c * (ch.end - ch.start);
     pctRef.current = c * 100;
     setPct(c * 100);
     // Quarters that were jumped over are marked as spent WITHOUT reporting them.

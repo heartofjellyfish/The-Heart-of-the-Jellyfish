@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "waveform": "node scripts/waveform.mjs"
+    "waveform": "node --experimental-strip-types scripts/waveform.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
