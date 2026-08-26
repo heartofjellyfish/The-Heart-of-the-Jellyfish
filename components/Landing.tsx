@@ -1739,6 +1739,19 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   /** What is loaded, for rendering. The ref is the same thing, for listeners. */
   const [nowSrc, setNowSrc] = useState<Playing | null>(null);
   const [pct, setPct] = useState(0);
+  /**
+   * Position in the whole SONG, where `pct` is position in what is loaded.
+   *
+   * They are the same number when a full song is playing and very different
+   * during an excerpt: 30 seconds taken from the middle of a 2:16 song runs
+   * 0→100 of what is loaded while running 38→60 of the song.
+   *
+   * The poem line speaks this one. `pct` stays what it was — the bar's fill and
+   * every listened/progress number are about what was actually offered, and a
+   * milestone that could never reach 100 because the excerpt ends at 60% of the
+   * song would quietly break the funnel.
+   */
+  const [songPct, setSongPct] = useState(0);
   const [missing, setMissing] = useState(false);
   const [subState, setSubState] = useState<SubState>('idle');
   const [subErr, setSubErr] = useState<'email' | 'server'>('server');
@@ -2085,6 +2098,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       const now = srcRef.current!;
       const span = heardLength(now);
       const p = span > 0 ? Math.min(100, Math.max(0, ((ct - now.base) / span) * 100)) : 0;
+      const songT = songTimeAt(now, ct - now.base);
+      setSongPct(now.full > 0 ? Math.min(100, Math.max(0, (songT / now.full) * 100)) : 0);
       // Seconds that actually sounded, summed from the clock's own forward
       // steps. A seek moves currentTime by more than a tick's worth and a
       // rewind moves it backwards, so both fall outside the window and add
@@ -2345,6 +2360,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     const c = len > 0 ? o / len : 0;
     pctRef.current = c * 100;
     setPct(c * 100);
+    setSongPct(src.full > 0 ? (songTimeAt(src, o) / src.full) * 100 : 0);
     // Quarters that were jumped over are marked as spent WITHOUT reporting them.
     // Dragging to the end is not listening to the end, and if the marks were
     // left for the clock to hit on the way past, one scrub would file 25, 50 and
@@ -2548,8 +2564,11 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
     ink.style.setProperty('--h', (f * 100).toFixed(2) + '%');
     ink.dataset.scrub = '';
     const t = poemTimeRef.current;
-    const au = audioRef.current;
-    if (t) t.textContent = au?.duration ? clock(f * au.duration) : '';
+    // The song's own clock. This used to read off au.duration, which in medley
+    // mode is the whole 7:16 file — so hovering a line quoted a time from a
+    // piece the visitor is not listening to and cannot see.
+    const src = srcRef.current;
+    if (t) t.textContent = src ? clock(f * src.full) : '';
   }, []);
 
   /**
@@ -2583,9 +2602,13 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         e.currentTarget.setPointerCapture(e.pointerId);
       } catch {}
       paintScrub(f);
-      seekToFraction(f);
+      // Same call the waveform bar makes, which is the whole point: the line and
+      // the bar are two drawings of one song, so a press at the same place in
+      // either has to mean the same thing. Inside the part that is loaded it
+      // seeks; outside it, it fetches the whole song and carries on from there.
+      seekToSongFraction(f);
     },
-    [paintScrub, seekToFraction],
+    [paintScrub, seekToSongFraction],
   );
 
   const onLineMove = useCallback(
@@ -2596,9 +2619,9 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         return;
       }
       paintScrub(f);
-      if (scrubbingRef.current) seekToFraction(f);
+      if (scrubbingRef.current) seekToSongFraction(f);
     },
-    [paintScrub, seekToFraction],
+    [paintScrub, seekToSongFraction],
   );
 
   const onLineUp = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
@@ -3506,11 +3529,11 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                             role={on ? 'slider' : undefined}
                             aria-valuemin={on ? 0 : undefined}
                             aria-valuemax={on ? 100 : undefined}
-                            aria-valuenow={on ? Math.round(pct) : undefined}
+                            aria-valuenow={on ? Math.round(songPct) : undefined}
                             data-paused={on && !playing ? '' : undefined}
                             style={
                               on
-                                ? ({ ['--p' as string]: pct.toFixed(1) + '%' } as React.CSSProperties)
+                                ? ({ ['--p' as string]: songPct.toFixed(1) + '%' } as React.CSSProperties)
                                 : undefined
                             }
                             aria-label={
