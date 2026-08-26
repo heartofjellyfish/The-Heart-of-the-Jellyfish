@@ -3616,22 +3616,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               </div>
             )}
           </div>
-          {/* The dim half of the bar is pressable, and a stretch of grey does
-              not say so on its own — least of all on a phone, where there is no
-              hover to discover it with. So the invitation is also a button, and
-              it carries the song's real length while it is at it. */}
-          {nowCh && nowCh.mode === 'medley' && (
-            <button
-              type="button"
-              className="l-bar-whole"
-              onClick={() => playFull(nowCh.n, 0, 'bar')}
-              title={`Play ${TITLES[nowCh.n - 1]} in full`}
-            >
-              <span className="l-bar-whole-word">whole song </span>
-              <span className="l-bar-whole-short">all </span>
-              <span className="l-bar-whole-len">{mmss(nowCh.full)}</span>
-            </button>
-          )}
           <button type="button" className="l-bar-close" aria-label="Close player" onClick={stop}>
             ✕
           </button>
@@ -4779,56 +4763,35 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-wave-held rect{fill:rgba(242,246,248,.46)}
 .l-wave-lit rect{fill:var(--lit)}
 /* Pointer over the part the medley does not hold: the grey comes up to meet it.
-   This is the only hint that the rest of the song is one press away, and it has
-   to happen fast enough to feel like a response rather than an animation. */
+   Now that the whole-song button is gone this is the ONLY thing that says the
+   rest of the song is one press away — and it says nothing at all on a touch
+   screen, where there is no pointer to ask with. The press still works there;
+   it is simply undiscoverable, and the poem's lines are the path that isn't. */
 .l-bar-track.is-outside .l-wave-dim rect{fill:rgba(242,246,248,.42)}
 
-/* The invitation to the whole song, for every device that has no hover — and
-   the song's real length, which is the other thing an excerpt fails to tell you.
-
-   No box. The bar has a circle and a waveform in it already, and a stadium chip
-   was a third shape language borrowed from product UI: it sat on this page like
-   a sticker. The page has its own way of saying "pressable" and has taught it
-   twice already, in TRACKLIST and PAUSE — small caps, wide tracking, no
-   container — so this says it the same way, at one size and one opacity across
-   the whole label.
-
-   .landing-qualified for the same reason .l-bar-close is: the button font reset
-   at the top of this sheet sits at (0,1,1) and beats a bare class, so an
-   unqualified font-size here is silently dropped and the label renders at the
-   page's 16px. Which is exactly what it did — it looked wrong because it was
-   half again too big, before its shape had anything to do with it. */
-.landing .l-bar-whole{flex:0 0 auto;background:transparent;border:0;padding:0;
-  cursor:pointer;font-family:'Jost',sans-serif;font-weight:300;font-size:11px;
-  letter-spacing:.2em;text-transform:uppercase;color:inherit;opacity:.72;
-  white-space:nowrap;transition:opacity .25s}
-.landing .l-bar-whole:hover{opacity:1}
-/* Keyboard focus needs to be seen, and opacity alone is not a focus ring. */
-.landing .l-bar-whole:focus-visible{opacity:1;outline:none;
-  box-shadow:0 2px 0 -1px rgba(242,246,248,.7)}
-.l-bar-whole-len{font-variant-numeric:tabular-nums}
-/* A bare duration in a pill reads as a readout — the very thing this is not.
-   So on a phone the label shortens rather than disappears: "ALL 2:16" is still
-   an instruction, where "2:16" would look like a clock. */
-.l-bar-whole-short{display:none}
-/* The phone row has one more thing in it than it used to, and the song name was
-   being squeezed to a 14px sliver — worse than absent. Rather than drop the
-   name, everything else gives up a little: the bar's own gutters, the gaps, the
-   waveform's floor and the button's padding. Four small concessions buy the
-   title back. */
+/* The bar row on a phone. Nothing here is optional any more — the whole-song
+   button that used to compete for this space is gone. */
 @media (max-width:560px){
   .l-bar{gap:10px;padding:0 16px}
   .l-bar-track{min-width:110px}
-  .landing .l-bar-whole{font-size:10px;letter-spacing:.12em}
-  .l-bar-whole-word{display:none}
-  .l-bar-whole-short{display:inline}
 }
 
-/* Under the tracklist head, where someone is choosing what to play. Set quiet:
-   it is a caveat, not a banner, and a banner would read as an apology. */
+/* The dateline is true, and it is nobody's reason for being here. So by default
+   the page is a poem and nothing else; the note is laid out but invisible, and
+   comes up only when a cursor is somewhere in the poem at all.
+   Held in the layout rather than display:none, so nothing shifts when it
+   arrives — the poem does not move to make room for a footnote. */
 .l-poem-note{margin:2.6em 0 0;font-family:'Cormorant Garamond',Georgia,serif;
   font-style:italic;font-weight:400;font-size:.92rem;line-height:1.65;
-  letter-spacing:.02em;opacity:.3;max-width:34em}
+  letter-spacing:.02em;opacity:0;max-width:34em;
+  transition:opacity .7s ease}
+.l-poem:hover .l-poem-note{opacity:.3}
+/* A touch screen has no cursor to ask with, and this is the one place the page
+   says these recordings are unfinished — so where there is no hover, it simply
+   stays. Dimmer than the hover state, because there it is permanent. */
+@media (hover:none){
+  .l-poem-note{opacity:.22;transition:none}
+}
 
 .l-bar-knob{position:absolute;right:0;top:50%;width:9px;height:9px;border-radius:50%;
   background:var(--lit);transform:translate(50%,-50%) scale(0);

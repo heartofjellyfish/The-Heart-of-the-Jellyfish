@@ -1471,6 +1471,11 @@ The bar, the progress, the seeking and the poem fill are written once against `w
 - `NN-<slug>.mp3` — the whole song. What a poem line plays, and what the dim half of the
   bar fetches when pressed.
 
+There is no button for that second thing any more. The dim stretch brightens under the
+pointer and that is the whole of the invitation — which means on a touch screen the press
+works but is undiscoverable, and the poem's lines are the path that isn't. A deliberate
+trade: the bar is four items wide on a phone and the button was the fifth.
+
 Everything is released in full four months before the record, which only works if nobody
 mistakes a rough bounce for the finished thing — hence `DEMO_NOTE`, which is a **dateline**
 and not a disclaimer: `demos · august 2026`.
@@ -1483,6 +1488,12 @@ poem's own italic, smaller and dimmer than the verse. Then the sentence itself w
 that long reads as getting your excuses in first. A date on a draft does the same work and
 defends nothing — nobody reads a dateline as an apology. Bump the month when the bounces
 change; that is the whole maintenance.
+
+It is also **hidden until hovered**. At rest the panel is a poem and nothing else; the note
+holds its place in the layout at `opacity:0` (not `display:none`, so the poem does not move
+to make room for it) and comes up over 0.7s whenever a cursor is anywhere in `.l-poem`.
+Under `@media (hover:none)` it simply stays, dimmer — a touch screen has no cursor to ask
+with, and this is the only place the page says these recordings are unfinished.
 
 `public/audio/NN-<slug>.mp3` — **all ten**, from the 2026-08-21 bounces. Transcoded to
 128 kbps CBR 44.1 kHz stereo with metadata stripped (`ffmpeg -b:a 128k -map_metadata -1`),
