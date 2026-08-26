@@ -96,17 +96,20 @@ const TITLES = [
 const MEDLEY = '/audio/medley.mp3';
 
 /**
- * What these recordings actually are, said plainly and in one place.
+ * What these recordings actually are — a footnote under the poem, and nothing
+ * more than that.
  *
- * Every song is here in full, four months before the record. That only works
- * if nobody mistakes a rough bounce for the finished thing — so the page says
- * what they are rather than letting a listener find out by being disappointed.
- * Put a version in it if you keep them ("ROUGH DEMO v12"); it costs nothing and
- * it tells anyone who comes back that these move.
+ * Every song is here in full, four months before the record, which only works
+ * if nobody mistakes a rough bounce for the finished thing. But saying so is
+ * housekeeping, not part of the work, so it is one sentence at the foot of the
+ * page in the poem's own type and it does not mention December 20 — the hero
+ * says that already, twice, and a footnote that repeats what is on screen is
+ * just volume.
+ *
+ * Put a version in it if you keep them ("These are demos (v12) — ..."); it
+ * costs nothing and tells anyone who comes back that these move.
  */
-const DEMO_STATE = 'ROUGH DEMO';
-const DEMO_NOTE =
-  'Unmixed, unmastered, and still moving. The finished record arrives December 20.';
+const DEMO_NOTE = 'These are demos — unmixed, unmastered, and still changing.';
 
 const chapterOf = (n: number) => MEDLEY_CHAPTERS[n - 1];
 
@@ -3409,14 +3412,6 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               poem's first line, that ratio is the knob — not the font.
             */}
             <div className="l-poem-head">The Heart of the Jellyfish</div>
-            {/* Said here, where someone is choosing what to play, rather than in
-                the bar where it would be one more thing competing with the song
-                name. Every line below plays a whole song; this is what those
-                whole songs are. */}
-            <p className="l-poem-note">
-              <span className="l-poem-note-tag">{DEMO_STATE}</span>
-              {DEMO_NOTE}
-            </p>
             <div
               className={'l-poem-body l-poem-f-' + font}
               style={{ ['--poem-scale' as string]: fontScale } as React.CSSProperties}
@@ -3505,6 +3500,17 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                 </div>
               ))}
             </div>
+            {/*
+              A footnote, and built to behave like one.
+              
+              It sat between the head and the first line once, boxed and set in
+              Jost, and it cut the poem's breath in half — a product disclaimer
+              wedged into a piece of verse. What it has to say is true and worth
+              saying, but nothing about it is worth looking at, so it waits
+              until the poem has finished speaking and then says it once, in the
+              poem's own type, at the size a footnote is.
+            */}
+            <p className="l-poem-note">{DEMO_NOTE}</p>
           </div>
           {/*
             The Chinese title, hanging in the right margin. It was built out
@@ -4804,11 +4810,9 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 
 /* Under the tracklist head, where someone is choosing what to play. Set quiet:
    it is a caveat, not a banner, and a banner would read as an apology. */
-.l-poem-note{margin:.4em 0 1.4em;font-family:'Jost',sans-serif;font-weight:300;
-  font-size:11.5px;line-height:1.7;letter-spacing:.04em;opacity:.62;max-width:38em}
-.l-poem-note-tag{display:inline-block;margin-right:.7em;padding:2px 7px;
-  border:1px solid currentColor;border-radius:3px;font-size:9.5px;letter-spacing:.16em;
-  opacity:.85;vertical-align:1px;white-space:nowrap}
+.l-poem-note{margin:2.6em 0 0;font-family:'Cormorant Garamond',Georgia,serif;
+  font-style:italic;font-weight:400;font-size:.92rem;line-height:1.65;
+  letter-spacing:.01em;opacity:.34;max-width:34em}
 
 .l-bar-knob{position:absolute;right:0;top:50%;width:9px;height:9px;border-radius:50%;
   background:var(--lit);transform:translate(50%,-50%) scale(0);
