@@ -254,7 +254,17 @@ const FEATURED_DEMO = 1;
  * different track while music is already playing is a bug the size of the hero.
  */
 const PLAY_LABELS = {
-  idle: 'HEAR THE DEMOS',
+  /*
+   * Not "HEAR THE DEMOS" any more, which promised the wrong object twice over:
+   * this press gives excerpts, not demos, and it hid the fact that the demos
+   * themselves are here in full one screen down.
+   *
+   * "ALL TEN IN 7 MINUTES" needs no word like "excerpt" to explain itself —
+   * ten songs cannot fit in seven minutes and everyone knows it. And it is a
+   * better offer than the old label made: not "listen to some music", but a
+   * bounded, cheap, complete pass through the whole record.
+   */
+  idle: 'ALL TEN IN 7 MINUTES',
   playing: 'PAUSE',
   paused: 'RESUME',
 } as const;
@@ -2833,7 +2843,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       ? PLAY_LABELS.playing
       : PLAY_LABELS.paused;
   const heroAria = !barOn
-    ? 'Hear the demos — ' + TITLES[FEATURED_DEMO - 1]
+    ? 'Play all ten in seven minutes, starting with ' + TITLES[FEATURED_DEMO - 1]
     : (playing ? 'Pause — ' : 'Resume — ') + TITLES[cur - 1];
 
   const litVals = LITS.find((l) => l.key === lit) ?? LITS[0];
@@ -3616,6 +3626,32 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               </div>
             )}
           </div>
+          {/*
+            The way out of an excerpt.
+            
+            The bar is pinned wherever you have scrolled to, and once it is
+            playing it is the only thing on screen you are still holding. What
+            an excerpt makes you want is the whole song, and until now the bar
+            offered no route to one: you had to already know to scroll down, or
+            that the grey half of the waveform is pressable — which on a touch
+            screen nothing says at all.
+            
+            Same glyph and same destination as the hero's TRACKLIST, because it
+            is the same door; a second icon for one place would be a second
+            thing to learn. It lands on the poem with the sounding line already
+            lit, so the song you wanted is the one under your thumb.
+          */}
+          <button
+            type="button"
+            className="l-bar-list"
+            aria-label="Go to the tracklist — every song in full"
+            title="Tracklist — every song in full"
+            onClick={() => goTo(1, 'button')}
+          >
+            <svg width="12" height="10" viewBox="0 0 12 10" aria-hidden>
+              <path d="M0 .5h12M0 5h12M0 9.5h8" stroke="currentColor" strokeWidth="1" fill="none" />
+            </svg>
+          </button>
           <button type="button" className="l-bar-close" aria-label="Close player" onClick={stop}>
             ✕
           </button>
@@ -4768,6 +4804,17 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    screen, where there is no pointer to ask with. The press still works there;
    it is simply undiscoverable, and the poem's lines are the path that isn't. */
 .l-bar-track.is-outside .l-wave-dim rect{fill:rgba(242,246,248,.42)}
+
+/* Sits with the close button, not with the transport: both are ways of leaving
+   what you are doing, and grouping them keeps the left of the bar purely about
+   the sound. Quiet at rest for the same reason the close is — the bar's job is
+   the waveform, and two icons at full strength would crowd it. */
+.landing .l-bar-list{border:none;background:transparent;color:inherit;cursor:pointer;
+  padding:0;flex:0 0 auto;display:flex;align-items:center;opacity:.45;
+  transition:opacity .25s}
+.landing .l-bar-list:hover{opacity:.9}
+.landing .l-bar-list:focus-visible{opacity:.9;outline:none;
+  box-shadow:0 0 0 1px rgba(242,246,248,.55)}
 
 /* The bar row on a phone. Nothing here is optional any more — the whole-song
    button that used to compete for this space is gone. */
