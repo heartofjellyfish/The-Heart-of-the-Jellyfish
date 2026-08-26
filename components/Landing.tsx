@@ -22,7 +22,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { JellyMark, JELLY_MARK_CSS } from './JellyMark';
 import { Drift, DRIFT_CSS } from './Drift';
 import { track } from '@/lib/analytics';
-import { MEDLEY_CHAPTERS } from './medley';
+import { MEDLEY_CHAPTERS, type Chapter } from './medley';
 
 /**
  * The album *is* the poem — ten titles that read straight through. Punctuation
@@ -111,6 +111,44 @@ function chapterAt(t: number): number {
   }
   return 1;
 }
+
+/** How much of a song the excerpt actually contains. */
+const excerptLength = (ch: Chapter) => ch.windows.reduce((a, w) => a + (w.to - w.from), 0);
+
+/**
+ * A moment in the original song -> the nearest moment the excerpt contains.
+ *
+ * Everything between the windows collapses to the edge of the nearest one, so
+ * dragging across the dim part of the bar lands on the first thing there is to
+ * hear rather than doing nothing. Silence when you drag reads as broken; moving
+ * to the edge reads as "that part isn't here".
+ */
+function excerptOffsetAt(ch: Chapter, songT: number): number {
+  let acc = 0;
+  for (const w of ch.windows) {
+    if (songT < w.from) return acc;
+    if (songT <= w.to) return acc + (songT - w.from);
+    acc += w.to - w.from;
+  }
+  return acc;
+}
+
+/** The inverse: how far into the excerpt maps back to where in the song. */
+function songTimeAt(ch: Chapter, off: number): number {
+  let acc = 0;
+  for (const w of ch.windows) {
+    const len = w.to - w.from;
+    if (off <= acc + len) return w.from + (off - acc);
+    acc += len;
+  }
+  return ch.windows.length ? ch.windows[ch.windows.length - 1].to : 0;
+}
+
+/** Floored, the way every player shows a duration: 2:16.8 is a 2:16 song. */
+const mmss = (t: number) => {
+  const s = Math.max(0, Math.floor(t));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
 
 /**
  * Every demo event carries the number AND the title. The number is what sorts
@@ -659,16 +697,23 @@ function Countdown({ secs, releaseDate }: { secs: number | null; releaseDate: st
 }
 
 /**
- * The seek bar's waveform./**
- * The seek bar's waveform. Peaks come precomputed from `public/waveforms.json`
- * (see scripts/waveform.mjs) — decoding a 4 MB mp3 in the browser to draw a
- * 26px graphic would be absurd.
+ * The seek bar's waveform — the WHOLE song, with the excerpt lit inside it.
  *
- * Two identical sets of bars: one dim, one lit and clipped to the play head.
- * Only the clip rect's width changes as playback advances, so the 160 bars are
- * memoised and never re-created.
- */
-function Waveform({ data, pct }: { data: number[]; pct: number }) {
+ * The bar used to be the thing you were listening to, end to end. Now the thing
+ * you are listening to is thirty seconds of a four-minute song, and a bar that
+ * filled left to right over those thirty seconds said, plainly and wrongly,
+ * "this song is thirty seconds long".
+ *
+ * So the bar is the song. Three passes over the same 160 bars:
+ *
+ *   dim  — the whole song, all of it, including what is not here
+ *   held — the passage the excerpt is made of, brighter, and clearly a PART
+ *   lit  — how far through that passage the playhead has got
+ *
+ * Peaks come precomputed from `public/waveforms.json` (see scripts/waveform.mjs),
+ * which reads the full-length demos from outside the repo — the browser has
+ * only the excerpts and could not draw this if it wanted to.
+ */function Waveform({ data, pct, ch }: { data: number[]; pct: number; ch: Chapter }) {
   const bars = React.useMemo(() => {
     const step = data.length / WAVE_BARS;
     return Array.from({ length: WAVE_BARS }, (_, i) => {
@@ -682,6 +727,30 @@ function Waveform({ data, pct }: { data: number[]; pct: number }) {
     });
   }, [data]);
 
+  const x = (songT: number) => (songT / ch.full) * WAVE_BARS;
+
+  /* The passage(s) the excerpt is made of, in the song's own clock. */
+  const held = ch.windows.map((w, i) => (
+    <rect key={i} x={x(w.from)} y="0" width={Math.max(0, x(w.to) - x(w.from))} height="100" />
+  ));
+
+  /* How far the playhead has got, spilled across the windows in order — so a
+     track cut from three passages lights the first two whole and the third
+     part-way, which is what has actually been heard. */
+  const played = (pct / 100) * excerptLength(ch);
+  const lit: React.ReactElement[] = [];
+  let acc = 0;
+  for (let i = 0; i < ch.windows.length; i++) {
+    const w = ch.windows[i];
+    const len = w.to - w.from;
+    const take = Math.min(len, played - acc);
+    if (take > 0) {
+      lit.push(<rect key={i} x={x(w.from)} y="0" width={x(w.from + take) - x(w.from)} height="100" />);
+    }
+    acc += len;
+    if (acc >= played) break;
+  }
+
   return (
     <svg
       className="l-wave"
@@ -690,11 +759,13 @@ function Waveform({ data, pct }: { data: number[]; pct: number }) {
       aria-hidden
     >
       <defs>
-        <clipPath id="l-wave-clip">
-          <rect x="0" y="0" width={(pct / 100) * WAVE_BARS} height="100" />
-        </clipPath>
+        <clipPath id="l-wave-held">{held}</clipPath>
+        <clipPath id="l-wave-clip">{lit}</clipPath>
       </defs>
       <g className="l-wave-dim">{bars}</g>
+      <g className="l-wave-held" clipPath="url(#l-wave-held)">
+        {bars}
+      </g>
       <g className="l-wave-lit" clipPath="url(#l-wave-clip)">
         {bars}
       </g>
@@ -2085,15 +2156,15 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    * number from the same fraction, so the geometry stays with each surface and
    * only the fraction comes here.
    */
-  const seekToFraction = useCallback((f: number) => {
+  const seekToOffset = useCallback((off: number) => {
     const au = audioRef.current;
     if (!au || !au.duration || !isFinite(au.duration)) return;
     const ch = chapterOf(curRef.current);
     if (!ch) return;
-    const c = Math.min(1, Math.max(0, f));
-    // The bar is this song's length, so its right edge is the end of this song
-    // — not the end of the album. The fraction is mapped into the chapter.
-    au.currentTime = ch.start + c * (ch.end - ch.start);
+    const len = excerptLength(ch);
+    const o = Math.min(len, Math.max(0, off));
+    au.currentTime = ch.start + o;
+    const c = len > 0 ? o / len : 0;
     pctRef.current = c * 100;
     setPct(c * 100);
     // Quarters that were jumped over are marked as spent WITHOUT reporting them.
@@ -2106,6 +2177,39 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       if (pctRef.current >= m && milestoneRef.current < m) milestoneRef.current = m;
     }
   }, []);
+
+  /**
+   * The two surfaces no longer speak the same fraction, and that is the point.
+   *
+   * The poem line IS the excerpt — its ink fills as the excerpt plays — so a
+   * press halfway along it means halfway through what you can hear. The bar is
+   * the whole SONG, most of which is not here, so halfway along it means the
+   * middle of the song, which usually lands outside the excerpt and clamps to
+   * the nearest edge of it. Same seek underneath, two different clocks on top.
+   */
+  const seekToFraction = useCallback(
+    (f: number) => {
+      const ch = chapterOf(curRef.current);
+      if (ch) seekToOffset(Math.min(1, Math.max(0, f)) * excerptLength(ch));
+    },
+    [seekToOffset],
+  );
+  const seekToSongFraction = useCallback(
+    (f: number) => {
+      const ch = chapterOf(curRef.current);
+      if (ch) seekToOffset(excerptOffsetAt(ch, Math.min(1, Math.max(0, f)) * ch.full));
+    },
+    [seekToOffset],
+  );
+  /** Step by seconds of the excerpt — what the arrow keys mean. */
+  const nudge = useCallback(
+    (d: number) => {
+      const au = audioRef.current;
+      const ch = chapterOf(curRef.current);
+      if (au && ch) seekToOffset(au.currentTime - ch.start + d);
+    },
+    [seekToOffset],
+  );
 
   /** Where the pointer went down, so a gesture can be reported as a move and not a place. */
   const seekFromRef = useRef(0);
@@ -2137,9 +2241,9 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       const el = seekRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      seekToFraction((clientX - r.left) / r.width);
+      seekToSongFraction((clientX - r.left) / r.width);
     },
-    [seekToFraction],
+    [seekToSongFraction],
   );
 
   const onSeekDown = useCallback(
@@ -2172,16 +2276,19 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {}
   }, []);
-  const onSeekKey = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    const au = audioRef.current;
-    if (!au || !au.duration) return;
-    const step = e.shiftKey ? 30 : 5;
-    if (e.key === 'ArrowRight') au.currentTime = Math.min(au.duration, au.currentTime + step);
-    else if (e.key === 'ArrowLeft') au.currentTime = Math.max(0, au.currentTime - step);
-    else if (e.key === 'Home') au.currentTime = 0;
-    else return;
-    e.preventDefault();
-  }, []);
+  const onSeekKey = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      // Seconds of the excerpt, and Home is the top of this song's passage —
+      // never `au.currentTime = 0`, which is now the top of the whole album.
+      const step = e.shiftKey ? 30 : 5;
+      if (e.key === 'ArrowRight') nudge(step);
+      else if (e.key === 'ArrowLeft') nudge(-step);
+      else if (e.key === 'Home') seekToFraction(0);
+      else return;
+      e.preventDefault();
+    },
+    [nudge, seekToFraction],
+  );
 
   /* --- scrubbing the poem line ------------------------------------ */
   /*
@@ -2318,14 +2425,16 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         return;
       }
       if (!au.duration || !isFinite(au.duration)) return;
+      // Seconds, not a fraction of the file: dividing the step by the medley's
+      // 7:16 would move the playhead by almost nothing.
       const step = e.shiftKey ? 30 : 5;
-      if (e.key === 'ArrowRight') seekToFraction((au.currentTime + step) / au.duration);
-      else if (e.key === 'ArrowLeft') seekToFraction((au.currentTime - step) / au.duration);
+      if (e.key === 'ArrowRight') nudge(step);
+      else if (e.key === 'ArrowLeft') nudge(-step);
       else if (e.key === 'Home') seekToFraction(0);
       else return;
       e.preventDefault();
     },
-    [seekToFraction],
+    [seekToFraction, nudge],
   );
 
   const stop = useCallback(() => {
@@ -2550,6 +2659,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const litVals = LITS.find((l) => l.key === lit) ?? LITS[0];
 
   const waveData = cur > 0 ? peaks?.[String(cur).padStart(2, '0')] ?? null : null;
+  /** The song sounding, and where its excerpt sits inside it. */
+  const nowCh = cur > 0 ? chapterOf(cur) ?? null : null;
 
   const nowTitle = cur
     ? (missing ? 'DEMO PENDING · ' : '') +
@@ -3286,7 +3397,13 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             className="l-bar-track"
             role="slider"
             tabIndex={0}
-            aria-label="Seek"
+            aria-label={
+              nowCh
+                ? `Seek within the excerpt — ${mmss(nowCh.windows[0].from)} to ` +
+                  `${mmss(nowCh.windows[nowCh.windows.length - 1].to)} of a ` +
+                  `${mmss(nowCh.full)} song`
+                : 'Seek'
+            }
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={Math.round(pct)}
@@ -3295,8 +3412,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             onPointerUp={onSeekUp}
             onKeyDown={onSeekKey}
           >
-            {waveData ? (
-              <Waveform data={waveData} pct={pct} />
+            {waveData && nowCh ? (
+              <Waveform data={waveData} pct={pct} ch={nowCh} />
             ) : (
               <div className="l-bar-line">
                 <div className="l-bar-fill" style={{ width: pct.toFixed(1) + '%' }}>
@@ -3305,6 +3422,19 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               </div>
             )}
           </div>
+          {/* The number that stops a 29-second excerpt from reading as a
+              29-second song. The waveform already says it in shape — this says
+              it in words, for anyone who does not read the shape. */}
+          {nowCh && (
+            <div className="l-bar-of" aria-hidden>
+              <span className="l-bar-win">
+                {nowCh.windows.length === 1
+                  ? `${mmss(nowCh.windows[0].from)}–${mmss(nowCh.windows[0].to)}`
+                  : `${nowCh.windows.length} passages`}
+              </span>
+              <span className="l-bar-full">of {mmss(nowCh.full)}</span>
+            </div>
+          )}
           <button type="button" className="l-bar-close" aria-label="Close player" onClick={stop}>
             ✕
           </button>
@@ -4444,8 +4574,31 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 /* The waveform fills the same hit area the hairline did, so seeking is
    identical either way. */
 .l-wave{position:absolute;inset:0;width:100%;height:100%;display:block}
-.l-wave-dim rect{fill:rgba(242,246,248,.30)}
+/* Three states, and the middle one is the whole point: dim is the song, held is
+   the part of it that is actually here, lit is how far through that part we are.
+   Held has to sit clearly above dim and clearly below lit, or the bar reads as
+   two states and the excerpt stops looking like an excerpt. */
+.l-wave-dim rect{fill:rgba(242,246,248,.18)}
+.l-wave-held rect{fill:rgba(242,246,248,.46)}
 .l-wave-lit rect{fill:var(--lit)}
+
+/* Set in the same face and tracking as the title, a step smaller and dimmer:
+   it is a caption on the bar, not a second label competing with the song name.
+   Never wraps and never shrinks — it is the one thing here that must stay
+   legible, so the title yields to it as well as to the waveform. */
+.l-bar-of{flex:0 0 auto;display:flex;align-items:baseline;gap:.5em;
+  font-family:'Jost',sans-serif;font-weight:300;font-size:11px;letter-spacing:.14em;
+  white-space:nowrap;font-variant-numeric:tabular-nums}
+.l-bar-win{color:var(--lit);opacity:.92}
+.l-bar-full{opacity:.62}
+/* On a phone the bar cannot hold the song name, the waveform, the passage
+   times AND the length. The passage times go: the waveform is already showing
+   where the passage sits, in the one way that needs no reading. The length
+   stays — it is the whole reason this label exists — and the title comes back. */
+@media (max-width:560px){
+  .l-bar-win{display:none}
+  .l-bar-of{font-size:10px;letter-spacing:.1em}
+}
 .l-bar-knob{position:absolute;right:0;top:50%;width:9px;height:9px;border-radius:50%;
   background:var(--lit);transform:translate(50%,-50%) scale(0);
   transition:transform .2s}

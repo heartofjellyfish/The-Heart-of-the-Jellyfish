@@ -3,19 +3,30 @@
  * Re-make with:  curl -X POST localhost:4611/api/medley
  * then copy out/medley.mp3 + out/medley.ts into the site.
  */
-export type Chapter = { num: string; title: string; start: number; end: number };
+export type Window = { from: number; to: number };
+export type Chapter = {
+  num: string;
+  title: string;
+  /** Where this chapter sits in medley.mp3. */
+  start: number;
+  end: number;
+  /** How long the whole song is, unabridged. */
+  full: number;
+  /** Which parts of that song the excerpt is made of, in the song's own clock. */
+  windows: Window[];
+};
 
 /** One continuous piece, 10 chapters, 1.2s of silence between them. */
 export const MEDLEY_DURATION = 436.147;
 export const MEDLEY_CHAPTERS: Chapter[] = [
-  { num: '01', title: "Sea Rising", start: 0, end: 29.877 },
-  { num: '02', title: "In Memory of Those Who Chose the Sea", start: 31.077, end: 80.527 },
-  { num: '03', title: "A Dream So Real", start: 81.727, end: 136.628 },
-  { num: '04', title: "Wait, Why Is the Dream So Real?", start: 137.828, end: 171.063 },
-  { num: '05', title: "Wake Up", start: 172.263, end: 221.669 },
-  { num: '06', title: "The Heart of the Jellyfish", start: 222.869, end: 289.103 },
-  { num: '07', title: "You Shall See", start: 290.303, end: 312.748 },
-  { num: '08', title: "What Belongs to the Sea Will Always Return to the Sea", start: 313.948, end: 351.808 },
-  { num: '09', title: "The Day After — Without Us", start: 353.008, end: 388.07 },
-  { num: '10', title: "Sea Risen", start: 389.27, end: 436.147 },
+  { num: '01', title: "Sea Rising", start: 0, end: 29.877, full: 136.829, windows: [{"from":52.455,"to":82.331}] },
+  { num: '02', title: "In Memory of Those Who Chose the Sea", start: 31.077, end: 80.527, full: 207.543, windows: [{"from":90.634,"to":140.084}] },
+  { num: '03', title: "A Dream So Real", start: 81.727, end: 136.628, full: 267.096, windows: [{"from":159.764,"to":214.665}] },
+  { num: '04', title: "Wait, Why Is the Dream So Real?", start: 137.828, end: 171.063, full: 236.904, windows: [{"from":193.223,"to":226.458}] },
+  { num: '05', title: "Wake Up", start: 172.263, end: 221.669, full: 349.074, windows: [{"from":4.221,"to":53.627}] },
+  { num: '06', title: "The Heart of the Jellyfish", start: 222.869, end: 289.103, full: 317.832, windows: [{"from":64.651,"to":130.885}] },
+  { num: '07', title: "You Shall See", start: 290.303, end: 312.748, full: 219.664, windows: [{"from":124.518,"to":146.963}] },
+  { num: '08', title: "What Belongs to the Sea Will Always Return to the Sea", start: 313.948, end: 351.808, full: 278.7, windows: [{"from":187.32,"to":225.18}] },
+  { num: '09', title: "The Day After — Without Us", start: 353.008, end: 388.07, full: 270.864, windows: [{"from":208.06,"to":243.122}] },
+  { num: '10', title: "Sea Risen", start: 389.27, end: 436.147, full: 230.448, windows: [{"from":59.825,"to":106.701}] },
 ];
