@@ -76,9 +76,26 @@ ships.
 
 ### Demo audio
 
-`public/audio/NN-<slug>.mp3` — all ten tracks, 160 kbps, ~49 MB total. `AVAILABLE_DEMOS`
-in [components/Landing.tsx](components/Landing.tsx) says which are playable; drop a number
-to pull one back to "demo 待上传".
+Two ways to hear the same ten songs, and the page ships both. *(last updated 2026-08-26)*
+
+- `public/audio/medley.mp3` — **the front door.** One chosen passage from each song, in
+  sleeve order, with 1.2s of silence between them: 7:16, 8.3 MB. What HEAR THE DEMOS
+  plays. Cut in `../audio-clipper/`; the chapter table lives in
+  [components/medley.ts](components/medley.ts) and is generated, not hand-written.
+- `public/audio/NN-<slug>.mp3` — **all ten in full**, 160 kbps, ~49 MB. What a line of the
+  poem plays, and where the dim half of the seek bar leads.
+
+The bar always draws the *whole* song and lights only the part currently loaded, so an
+excerpt cannot pass itself off as a short song. Pressing the dim part fetches the full
+file and continues from that exact moment — see `seekToSongFraction`.
+
+To re-cut: `curl -X POST localhost:4611/api/medley`, copy `out/medley.mp3` and
+`out/medley.ts` across, then `npm run waveform`.
+
+`AVAILABLE_DEMOS` in [components/Landing.tsx](components/Landing.tsx) says which lines are
+offered; drop a number to pull one back to "demo 待上传". Note it no longer removes the
+audio — that song is still inside the medley, so genuinely withholding one means dropping
+it from `clips.json` and re-bouncing.
 
 **Loudness standard: -12 LUFS integrated, true peak <= -1 dBTP.** *(last updated 2026-08-22)*
 

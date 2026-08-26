@@ -22,7 +22,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { JellyMark, JELLY_MARK_CSS } from './JellyMark';
 import { Drift, DRIFT_CSS } from './Drift';
 import { track } from '@/lib/analytics';
-import { MEDLEY_CHAPTERS, type Chapter } from './medley';
+import { MEDLEY_CHAPTERS, type Chapter, type Window } from './medley';
 
 /**
  * The album *is* the poem — ten titles that read straight through. Punctuation
@@ -95,6 +95,19 @@ const TITLES = [
  */
 const MEDLEY = '/audio/medley.mp3';
 
+/**
+ * What these recordings actually are, said plainly and in one place.
+ *
+ * Every song is here in full, four months before the record. That only works
+ * if nobody mistakes a rough bounce for the finished thing — so the page says
+ * what they are rather than letting a listener find out by being disappointed.
+ * Put a version in it if you keep them ("ROUGH DEMO v12"); it costs nothing and
+ * it tells anyone who comes back that these move.
+ */
+const DEMO_STATE = 'ROUGH DEMO';
+const DEMO_NOTE =
+  'Unmixed, unmastered, and still moving. The finished record arrives December 20.';
+
 const chapterOf = (n: number) => MEDLEY_CHAPTERS[n - 1];
 
 /**
@@ -112,20 +125,48 @@ function chapterAt(t: number): number {
   return 1;
 }
 
-/** How much of a song the excerpt actually contains. */
-const excerptLength = (ch: Chapter) => ch.windows.reduce((a, w) => a + (w.to - w.from), 0);
+/**
+ * What is currently loaded, and how much of the song it holds.
+ *
+ * There are two ways to hear any song here and they are the same shape:
+ *
+ *   medley  a passage of it, inside medley.mp3, starting at `base`
+ *   full    all of it, in its own file, starting at 0
+ *
+ * A full song is just the degenerate case — one window covering everything, at
+ * offset zero — so nothing downstream branches on which is playing. The bar,
+ * the progress, the seeking and the poem fill are written once against
+ * `windows`, and a whole song simply lights the whole bar.
+ */
+type Heard = { windows: Window[]; full: number };
+type Playing = Heard & { mode: 'medley' | 'full'; n: number; url: string; base: number };
+
+const medleySource = (n: number): Playing => {
+  const ch = chapterOf(n);
+  return { mode: 'medley', n, url: MEDLEY, base: ch.start, windows: ch.windows, full: ch.full };
+};
+const fullSource = (n: number): Playing => {
+  const ch = chapterOf(n);
+  return { mode: 'full', n, url: ch.file, base: 0, windows: [{ from: 0, to: ch.full }], full: ch.full };
+};
+
+/** How much of a song this source actually contains. */
+const heardLength = (h: Heard) => h.windows.reduce((a, w) => a + (w.to - w.from), 0);
+
+/** Whether a moment of the song is in the part we are holding. */
+const isHeard = (h: Heard, songT: number) =>
+  h.windows.some((w) => songT >= w.from && songT <= w.to);
 
 /**
- * A moment in the original song -> the nearest moment the excerpt contains.
+ * A moment in the original song -> the nearest moment this source contains.
  *
- * Everything between the windows collapses to the edge of the nearest one, so
- * dragging across the dim part of the bar lands on the first thing there is to
- * hear rather than doing nothing. Silence when you drag reads as broken; moving
- * to the edge reads as "that part isn't here".
+ * Everything between the windows collapses to the edge of the nearest one. Used
+ * only once the caller has decided to stay inside what is loaded; when the
+ * moment is outside, the bar goes and fetches the whole song instead.
  */
-function excerptOffsetAt(ch: Chapter, songT: number): number {
+function excerptOffsetAt(h: Heard, songT: number): number {
   let acc = 0;
-  for (const w of ch.windows) {
+  for (const w of h.windows) {
     if (songT < w.from) return acc;
     if (songT <= w.to) return acc + (songT - w.from);
     acc += w.to - w.from;
@@ -133,15 +174,15 @@ function excerptOffsetAt(ch: Chapter, songT: number): number {
   return acc;
 }
 
-/** The inverse: how far into the excerpt maps back to where in the song. */
-function songTimeAt(ch: Chapter, off: number): number {
+/** The inverse: how far into what we hold maps back to where in the song. */
+function songTimeAt(h: Heard, off: number): number {
   let acc = 0;
-  for (const w of ch.windows) {
+  for (const w of h.windows) {
     const len = w.to - w.from;
     if (off <= acc + len) return w.from + (off - acc);
     acc += len;
   }
-  return ch.windows.length ? ch.windows[ch.windows.length - 1].to : 0;
+  return h.windows.length ? h.windows[h.windows.length - 1].to : 0;
 }
 
 /** Floored, the way every player shows a duration: 2:16.8 is a 2:16 song. */
@@ -564,7 +605,12 @@ type Panel = 'poem' | 'subscribe' | null;
  * 'auto' is the track after, started by the previous one ending: it is a play
  * nobody asked for, so it must never be counted as one of the ones they did.
  */
-type PlaySource = 'hero' | 'poem' | 'keyboard' | 'auto';
+/**
+ * How a play began. 'bar' is new and is the one worth watching: it means
+ * someone pressed the dim part of the waveform — the part that is not in the
+ * medley — and asked for the whole song.
+ */
+type PlaySource = 'hero' | 'poem' | 'keyboard' | 'auto' | 'bar';
 
 /* Mirrors the check in app/api/subscribe/route.ts. Duplicated on purpose: the
    server must not trust the client, and the client should not need a round trip
@@ -713,7 +759,7 @@ function Countdown({ secs, releaseDate }: { secs: number | null; releaseDate: st
  * Peaks come precomputed from `public/waveforms.json` (see scripts/waveform.mjs),
  * which reads the full-length demos from outside the repo — the browser has
  * only the excerpts and could not draw this if it wanted to.
- */function Waveform({ data, pct, ch }: { data: number[]; pct: number; ch: Chapter }) {
+ */function Waveform({ data, pct, ch }: { data: number[]; pct: number; ch: Heard }) {
   const bars = React.useMemo(() => {
     const step = data.length / WAVE_BARS;
     return Array.from({ length: WAVE_BARS }, (_, i) => {
@@ -737,7 +783,7 @@ function Countdown({ secs, releaseDate }: { secs: number | null; releaseDate: st
   /* How far the playhead has got, spilled across the windows in order — so a
      track cut from three passages lights the first two whole and the third
      part-way, which is what has actually been heard. */
-  const played = (pct / 100) * excerptLength(ch);
+  const played = (pct / 100) * heardLength(ch);
   const lit: React.ReactElement[] = [];
   let acc = 0;
   for (let i = 0; i < ch.windows.length; i++) {
@@ -1651,6 +1697,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const [panel, setPanel] = useState<Panel>(null);
   const [cur, setCur] = useState(0);
   const [playing, setPlaying] = useState(false);
+  /** What is loaded, for rendering. The ref is the same thing, for listeners. */
+  const [nowSrc, setNowSrc] = useState<Playing | null>(null);
   const [pct, setPct] = useState(0);
   const [missing, setMissing] = useState(false);
   const [subState, setSubState] = useState<SubState>('idle');
@@ -1723,6 +1771,10 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const playTrackRef = useRef<(n: number, from?: PlaySource) => void>(() => {});
   /** Same, for the clock handing over from one chapter to the next. */
   const beginChapterRef = useRef<(n: number, from: PlaySource) => void>(() => {});
+  /** Same, for `ended` walking on to the next whole song. */
+  const playFullRef = useRef<(n: number, songT?: number, from?: PlaySource) => void>(() => {});
+  /** What is loaded: a passage of the medley, or a whole song. */
+  const srcRef = useRef<Playing | null>(null);
   /** A seek asked for before the file knew its own length. See `loadedmetadata`. */
   const pendingSeekRef = useRef<number | null>(null);
   /** Highest quarter already reported for the track now loaded. Reset per track. */
@@ -1977,18 +2029,23 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
        * is reported the same way — the play that finished is closed, the next
        * one opened — so the funnel still sees ten songs and not one long play.
        */
-      const at = chapterAt(ct);
-      if (at !== curRef.current && pendingSeekRef.current === null) {
-        if (milestoneRef.current < 100) {
-          milestoneRef.current = 100;
-          track('demo_progress', { ...demoProps(curRef.current), milestone: 100 });
+      const src = srcRef.current;
+      if (!src) return;
+      if (src.mode === 'medley') {
+        const at = chapterAt(ct);
+        if (at !== curRef.current && pendingSeekRef.current === null) {
+          if (milestoneRef.current < 100) {
+            milestoneRef.current = 100;
+            track('demo_progress', { ...demoProps(curRef.current), milestone: 100 });
+          }
+          endPlayRef.current('finished');
+          beginChapterRef.current(at, 'auto');
         }
-        endPlayRef.current('finished');
-        beginChapterRef.current(at, 'auto');
       }
-      const ch = chapterOf(curRef.current);
-      const span = ch ? ch.end - ch.start : 0;
-      const p = span > 0 ? Math.min(100, Math.max(0, ((ct - ch.start) / span) * 100)) : 0;
+      // Re-read: handing over to the next chapter replaces the source.
+      const now = srcRef.current!;
+      const span = heardLength(now);
+      const p = span > 0 ? Math.min(100, Math.max(0, ((ct - now.base) / span) * 100)) : 0;
       // Seconds that actually sounded, summed from the clock's own forward
       // steps. A seek moves currentTime by more than a tick's worth and a
       // rewind moves it backwards, so both fall outside the window and add
@@ -2019,9 +2076,14 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
         track('demo_progress', { ...demoProps(curRef.current), milestone: 100 });
       }
       endPlayRef.current('finished');
-      // Nothing to advance to: the next song was always already in this file,
-      // and reaching the end of it means reaching the end of the album.
-      setPlaying(false);
+      const src = srcRef.current;
+      if (src && src.mode === 'full' && src.n < MEDLEY_CHAPTERS.length) {
+        // Listening to whole songs is listening to the album: walk on.
+        playFullRef.current(src.n + 1, 0, 'auto');
+      } else {
+        // The medley holds every song already, so its end is the album's end.
+        setPlaying(false);
+      }
     });
     au.addEventListener('error', () => {
       // The file itself: not up yet, a 404, or a body that will not decode.
@@ -2048,57 +2110,78 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    * wait is the number worth having. The clock crossing a boundary passes 0:
    * the sound never stopped.
    */
-  const beginChapter = useCallback(
-    (n: number, from: PlaySource, msToSound: number | null = 0) => {
-      const ch = chapterOf(n);
-      curRef.current = n;
+  const beginTrack = useCallback(
+    (src: Playing, from: PlaySource, msToSound: number | null = 0) => {
+      srcRef.current = src;
+      setNowSrc(src);
+      curRef.current = src.n;
       pctRef.current = 0;
       milestoneRef.current = 0;
       endedRef.current = false;
-      // Where this chapter starts, not zero — otherwise the first tick of a new
+      // Where this source starts, not zero — otherwise the first tick of a new
       // song looks like a two-minute forward jump and is discarded as a seek.
-      lastCtRef.current = ch ? ch.start : 0;
-      tracksPlayedRef.current.add(n);
-      setCur(n);
+      lastCtRef.current = src.base;
+      tracksPlayedRef.current.add(src.n);
+      setCur(src.n);
       setMissing(false);
       setPct(0);
       if (msToSound !== null) {
-        track('demo_started', { ...demoProps(n), from, ms_to_sound: msToSound });
+        track('demo_started', {
+          ...demoProps(src.n),
+          from,
+          ms_to_sound: msToSound,
+          // Which of the two ways of hearing this song was taken. The whole
+          // point of the dim half of the bar is to find out whether anyone
+          // reaches for the rest, so it has to be in the event.
+          source: src.mode,
+        });
       }
     },
     [],
   );
-  beginChapterRef.current = beginChapter;
+  beginChapterRef.current = (n, from) => beginTrack(medleySource(n), from);
 
-  const playTrack = useCallback(
-    (n: number, from: PlaySource = 'hero') => {
-      if (n < 1 || n > MEDLEY_CHAPTERS.length) return;
+  /** Play/pause whatever is loaded, without changing what that is. */
+  const togglePlay = useCallback(() => {
+    const au = audioRef.current;
+    const src = srcRef.current;
+    if (!au || !src) return;
+    if (au.paused) {
+      au.play().catch(() => {});
+      setPlaying(true);
+      track('demo_resumed', { ...demoProps(src.n), percent: Math.round(pctRef.current) });
+    } else {
+      au.pause();
+      setPlaying(false);
+      // Where they stopped, not that they stopped. A pause at 8% and a pause at
+      // 90% are opposite verdicts on the same track.
+      track('demo_paused', { ...demoProps(src.n), percent: Math.round(pctRef.current) });
+    }
+  }, []);
+
+  /**
+   * Load a source and sound it at a given moment of the SONG.
+   *
+   * The one place a file is chosen. Swapping `src` resets the clock, so the
+   * seek has to wait for the new file to know its own length — hence the
+   * pending seek, which `loadedmetadata` applies. Staying in the same file is
+   * just a jump.
+   */
+  const openSource = useCallback(
+    (next: Playing, songT: number, from: PlaySource) => {
       loadPeaks();
       const au = ensureAudio();
-      if (curRef.current === n) {
-        if (au.paused) {
-          au.play().catch(() => {});
-          setPlaying(true);
-          track('demo_resumed', { ...demoProps(n), percent: Math.round(pctRef.current) });
-        } else {
-          au.pause();
-          setPlaying(false);
-          // Where they stopped, not that they stopped. A pause at 8% and a pause
-          // at 90% are opposite verdicts on the same track.
-          track('demo_paused', { ...demoProps(n), percent: Math.round(pctRef.current) });
-        }
-        return;
+      const n = next.n;
+      const target = next.base + excerptOffsetAt(next, songT);
+      if (!au.src.endsWith(next.url)) {
+        au.src = next.url;
+        pendingSeekRef.current = target;
+      } else if (au.readyState >= 1) {
+        au.currentTime = target;
+      } else {
+        pendingSeekRef.current = target;
       }
-      // The play being walked away from is closed before the new one opens, so
-      // a listener who tries five songs leaves five endings behind rather than
-      // four silences and one.
-      endPlay('switched');
-      // The song is already in the file — this is a jump, not a load. Which is
-      // also why nothing here can fail the way a missing file could.
-      const ch = chapterOf(n);
-      if (au.readyState >= 1) au.currentTime = ch.start;
-      else pendingSeekRef.current = ch.start;
-      beginChapter(n, from, null);
+      beginTrack(next, from, null);
       const askedAt = Date.now();
       au
         .play()
@@ -2116,7 +2199,12 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
            * silence in the data either — see demo_blocked.
            */
           if (curRef.current !== n) return; // they moved on before it sounded
-          track('demo_started', { ...demoProps(n), from, ms_to_sound: Date.now() - askedAt });
+          track('demo_started', {
+            ...demoProps(n),
+            from,
+            ms_to_sound: Date.now() - askedAt,
+            source: next.mode,
+          });
         })
         .catch((err: unknown) => {
           /*
@@ -2142,7 +2230,59 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
           setPlaying(false);
         });
     },
-    [ensureAudio, loadPeaks, beginChapter],
+    [ensureAudio, loadPeaks, beginTrack],
+  );
+
+  /**
+   * The whole song, in its own file. What a line of the poem means, and where
+   * the dim half of the bar leads.
+   */
+  const playFull = useCallback(
+    (n: number, songT = 0, from: PlaySource = 'poem') => {
+      if (n < 1 || n > MEDLEY_CHAPTERS.length) return;
+      const cur = srcRef.current;
+      // Already listening to the whole of this one: the press means pause.
+      if (cur && cur.mode === 'full' && cur.n === n) {
+        togglePlay();
+        return;
+      }
+      endPlay('switched');
+      openSource(fullSource(n), songT, from);
+    },
+    [openSource, endPlay, togglePlay],
+  );
+  playFullRef.current = playFull;
+
+  /** The medley, from the top of chapter `n`. What HEAR THE DEMOS means. */
+  const playMedley = useCallback(
+    (n: number, from: PlaySource = 'hero') => {
+      const cur = srcRef.current;
+      if (cur && cur.mode === 'medley' && cur.n === n) {
+        togglePlay();
+        return;
+      }
+      endPlay('switched');
+      const ch = chapterOf(n);
+      openSource(medleySource(n), ch.windows[0].from, from);
+    },
+    [openSource, endPlay, togglePlay],
+  );
+
+  /**
+   * What a press on a track means when the caller has no opinion about which
+   * of the two ways to hear it: keep whatever is already sounding, otherwise
+   * give them the whole song.
+   */
+  const playTrack = useCallback(
+    (n: number, from: PlaySource = 'hero') => {
+      const cur = srcRef.current;
+      if (cur && cur.n === n) {
+        togglePlay();
+        return;
+      }
+      playFull(n, 0, from);
+    },
+    [playFull, togglePlay],
   );
   playTrackRef.current = playTrack;
 
@@ -2158,12 +2298,11 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    */
   const seekToOffset = useCallback((off: number) => {
     const au = audioRef.current;
-    if (!au || !au.duration || !isFinite(au.duration)) return;
-    const ch = chapterOf(curRef.current);
-    if (!ch) return;
-    const len = excerptLength(ch);
+    const src = srcRef.current;
+    if (!au || !au.duration || !isFinite(au.duration) || !src) return;
+    const len = heardLength(src);
     const o = Math.min(len, Math.max(0, off));
-    au.currentTime = ch.start + o;
+    au.currentTime = src.base + o;
     const c = len > 0 ? o / len : 0;
     pctRef.current = c * 100;
     setPct(c * 100);
@@ -2189,15 +2328,27 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    */
   const seekToFraction = useCallback(
     (f: number) => {
-      const ch = chapterOf(curRef.current);
-      if (ch) seekToOffset(Math.min(1, Math.max(0, f)) * excerptLength(ch));
+      const src = srcRef.current;
+      if (src) seekToOffset(Math.min(1, Math.max(0, f)) * heardLength(src));
     },
     [seekToOffset],
   );
+  /**
+   * A press on the bar, which draws the WHOLE song.
+   *
+   * Inside the lit part, it is an ordinary seek. Outside it — on the dim
+   * stretch the medley does not contain — it is a request for the rest of the
+   * song, so the whole file is fetched and playing continues from exactly the
+   * moment that was pressed. That is the point of drawing the whole song: the
+   * grey is not decoration, it is the other nine tenths, and it is reachable.
+   */
   const seekToSongFraction = useCallback(
     (f: number) => {
-      const ch = chapterOf(curRef.current);
-      if (ch) seekToOffset(excerptOffsetAt(ch, Math.min(1, Math.max(0, f)) * ch.full));
+      const src = srcRef.current;
+      if (!src) return;
+      const songT = Math.min(1, Math.max(0, f)) * src.full;
+      if (isHeard(src, songT)) seekToOffset(excerptOffsetAt(src, songT));
+      else playFullRef.current(src.n, songT, 'bar');
     },
     [seekToOffset],
   );
@@ -2205,8 +2356,8 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const nudge = useCallback(
     (d: number) => {
       const au = audioRef.current;
-      const ch = chapterOf(curRef.current);
-      if (au && ch) seekToOffset(au.currentTime - ch.start + d);
+      const src = srcRef.current;
+      if (au && src) seekToOffset(au.currentTime - src.base + d);
     },
     [seekToOffset],
   );
@@ -2262,9 +2413,28 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
   const onSeekMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (draggingRef.current) seekToClientX(e.clientX);
+      markOutside(e.clientX);
     },
     [seekToClientX],
   );
+
+  /**
+   * Light the grey under the pointer.
+   *
+   * A stretch of dim bars does not announce that it can be pressed. Brightening
+   * the whole dim layer the moment the pointer is over it turns the bar into
+   * two answers to the same gesture — the lit part seeks, the dim part opens
+   * the song — without a word of instruction. Toggled straight on the element:
+   * this fires on every pointermove and has no business re-rendering anything.
+   */
+  const markOutside = useCallback((clientX: number) => {
+    const el = seekRef.current;
+    const src = srcRef.current;
+    if (!el || !src) return;
+    const r = el.getBoundingClientRect();
+    const songT = ((clientX - r.left) / r.width) * src.full;
+    el.classList.toggle('is-outside', src.mode === 'medley' && !isHeard(src, songT));
+  }, []);
   const onSeekUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // Once, where the finger lifted -- not once per pointermove, which on a drag
     // across the bar is a hundred events describing one intention.
@@ -2642,11 +2812,16 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
    * Audio outlives the view it was started from either way: navigating never
    * silences a track as a side effect.
    */
-  const playFromPoem = (n: number) => playTrack(n, 'poem');
+  const playFromPoem = (n: number) => playFull(n, 0, 'poem');
 
   /* The hero's primary action. See PLAY_LABELS: it is "start the album" until
      something is loaded and the transport for that thing afterwards. */
-  const heroTrack = barOn ? cur : FEATURED_DEMO;
+  /**
+   * The hero press. Cold, it opens the medley at the top — the seven minutes
+   * that walk the whole record. Once the bar is up it is just play/pause,
+   * whichever of the two things is loaded.
+   */
+  const heroPress = () => (barOn ? togglePlay() : playMedley(FEATURED_DEMO, 'hero'));
   const heroLabel = !barOn
     ? PLAY_LABELS.idle
     : playing
@@ -2660,7 +2835,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
 
   const waveData = cur > 0 ? peaks?.[String(cur).padStart(2, '0')] ?? null : null;
   /** The song sounding, and where its excerpt sits inside it. */
-  const nowCh = cur > 0 ? chapterOf(cur) ?? null : null;
+  const nowCh = nowSrc;
 
   const nowTitle = cur
     ? (missing ? 'DEMO PENDING · ' : '') +
@@ -3100,7 +3275,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                      triangle's mass sits on its flat edge and does. */
                   data-glyph={barOn && playing ? 'pause' : 'play'}
                   aria-label={heroAria}
-                  onClick={() => playTrack(heroTrack)}
+                  onClick={heroPress}
                 >
                   {barOn && playing ? (
                     <svg width="12" height="15" viewBox="0 0 12 15" fill="currentColor" aria-hidden>
@@ -3112,7 +3287,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                     </svg>
                   )}
                 </button>
-                <button type="button" className="l-play-label" onClick={() => playTrack(heroTrack)}>
+                <button type="button" className="l-play-label" onClick={heroPress}>
                   {/*
                     Per letter, so the motion is a transform and never a reflow.
                     Opening the letter-spacing would have been the obvious move and
@@ -3234,6 +3409,14 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               poem's first line, that ratio is the knob — not the font.
             */}
             <div className="l-poem-head">The Heart of the Jellyfish</div>
+            {/* Said here, where someone is choosing what to play, rather than in
+                the bar where it would be one more thing competing with the song
+                name. Every line below plays a whole song; this is what those
+                whole songs are. */}
+            <p className="l-poem-note">
+              <span className="l-poem-note-tag">{DEMO_STATE}</span>
+              {DEMO_NOTE}
+            </p>
             <div
               className={'l-poem-body l-poem-f-' + font}
               style={{ ['--poem-scale' as string]: fontScale } as React.CSSProperties}
@@ -3399,9 +3582,11 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             tabIndex={0}
             aria-label={
               nowCh
-                ? `Seek within the excerpt — ${mmss(nowCh.windows[0].from)} to ` +
-                  `${mmss(nowCh.windows[nowCh.windows.length - 1].to)} of a ` +
-                  `${mmss(nowCh.full)} song`
+                ? nowCh.mode === 'full'
+                  ? `Seek — ${mmss(nowCh.full)}`
+                  : `Seek. Playing ${mmss(nowCh.windows[0].from)} to ` +
+                    `${mmss(nowCh.windows[nowCh.windows.length - 1].to)} of a ` +
+                    `${mmss(nowCh.full)} song — press the dim part for the whole song`
                 : 'Seek'
             }
             aria-valuemin={0}
@@ -3409,6 +3594,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
             aria-valuenow={Math.round(pct)}
             onPointerDown={onSeekDown}
             onPointerMove={onSeekMove}
+            onPointerLeave={() => seekRef.current?.classList.remove('is-outside')}
             onPointerUp={onSeekUp}
             onKeyDown={onSeekKey}
           >
@@ -3422,18 +3608,21 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
               </div>
             )}
           </div>
-          {/* The number that stops a 29-second excerpt from reading as a
-              29-second song. The waveform already says it in shape — this says
-              it in words, for anyone who does not read the shape. */}
-          {nowCh && (
-            <div className="l-bar-of" aria-hidden>
-              <span className="l-bar-win">
-                {nowCh.windows.length === 1
-                  ? `${mmss(nowCh.windows[0].from)}–${mmss(nowCh.windows[0].to)}`
-                  : `${nowCh.windows.length} passages`}
-              </span>
-              <span className="l-bar-full">of {mmss(nowCh.full)}</span>
-            </div>
+          {/* The dim half of the bar is pressable, and a stretch of grey does
+              not say so on its own — least of all on a phone, where there is no
+              hover to discover it with. So the invitation is also a button, and
+              it carries the song's real length while it is at it. */}
+          {nowCh && nowCh.mode === 'medley' && (
+            <button
+              type="button"
+              className="l-bar-whole"
+              onClick={() => playFull(nowCh.n, 0, 'bar')}
+              title={`Play ${TITLES[nowCh.n - 1]} in full`}
+            >
+              <span className="l-bar-whole-word">whole song </span>
+              <span className="l-bar-whole-short">all </span>
+              <span className="l-bar-whole-len">{mmss(nowCh.full)}</span>
+            </button>
           )}
           <button type="button" className="l-bar-close" aria-label="Close player" onClick={stop}>
             ✕
@@ -4578,27 +4767,49 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
    the part of it that is actually here, lit is how far through that part we are.
    Held has to sit clearly above dim and clearly below lit, or the bar reads as
    two states and the excerpt stops looking like an excerpt. */
-.l-wave-dim rect{fill:rgba(242,246,248,.18)}
+.l-wave-dim rect{fill:rgba(242,246,248,.18);transition:fill .18s}
 .l-wave-held rect{fill:rgba(242,246,248,.46)}
 .l-wave-lit rect{fill:var(--lit)}
+/* Pointer over the part the medley does not hold: the grey comes up to meet it.
+   This is the only hint that the rest of the song is one press away, and it has
+   to happen fast enough to feel like a response rather than an animation. */
+.l-bar-track.is-outside .l-wave-dim rect{fill:rgba(242,246,248,.42)}
 
-/* Set in the same face and tracking as the title, a step smaller and dimmer:
-   it is a caption on the bar, not a second label competing with the song name.
-   Never wraps and never shrinks — it is the one thing here that must stay
-   legible, so the title yields to it as well as to the waveform. */
-.l-bar-of{flex:0 0 auto;display:flex;align-items:baseline;gap:.5em;
-  font-family:'Jost',sans-serif;font-weight:300;font-size:11px;letter-spacing:.14em;
-  white-space:nowrap;font-variant-numeric:tabular-nums}
-.l-bar-win{color:var(--lit);opacity:.92}
-.l-bar-full{opacity:.62}
-/* On a phone the bar cannot hold the song name, the waveform, the passage
-   times AND the length. The passage times go: the waveform is already showing
-   where the passage sits, in the one way that needs no reading. The length
-   stays — it is the whole reason this label exists — and the title comes back. */
+/* The same invitation, for every device that has no hover — and the song's real
+   length, which is the other thing a 29-second excerpt fails to tell you. */
+.l-bar-whole{flex:0 0 auto;background:transparent;cursor:pointer;
+  border:1px solid rgba(242,246,248,.28);border-radius:999px;padding:5px 12px;
+  font-family:'Jost',sans-serif;font-weight:300;font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:inherit;opacity:.72;white-space:nowrap;
+  transition:opacity .25s,border-color .25s,background .25s}
+.l-bar-whole:hover,.l-bar-whole:focus-visible{opacity:1;border-color:rgba(242,246,248,.6);
+  background:rgba(242,246,248,.1)}
+.l-bar-whole-len{font-variant-numeric:tabular-nums;opacity:.7;margin-left:.15em}
+/* A bare duration in a pill reads as a readout — the very thing this is not.
+   So on a phone the label shortens rather than disappears: "ALL 2:16" is still
+   an instruction, where "2:16" would look like a clock. */
+.l-bar-whole-short{display:none}
+/* The phone row has one more thing in it than it used to, and the song name was
+   being squeezed to a 14px sliver — worse than absent. Rather than drop the
+   name, everything else gives up a little: the bar's own gutters, the gaps, the
+   waveform's floor and the button's padding. Four small concessions buy the
+   title back. */
 @media (max-width:560px){
-  .l-bar-win{display:none}
-  .l-bar-of{font-size:10px;letter-spacing:.1em}
+  .l-bar{gap:9px;padding:0 14px}
+  .l-bar-track{min-width:104px}
+  .l-bar-whole{padding:4px 7px;font-size:9px;letter-spacing:.06em}
+  .l-bar-whole-word{display:none}
+  .l-bar-whole-short{display:inline}
 }
+
+/* Under the tracklist head, where someone is choosing what to play. Set quiet:
+   it is a caveat, not a banner, and a banner would read as an apology. */
+.l-poem-note{margin:.4em 0 1.4em;font-family:'Jost',sans-serif;font-weight:300;
+  font-size:11.5px;line-height:1.7;letter-spacing:.04em;opacity:.62;max-width:38em}
+.l-poem-note-tag{display:inline-block;margin-right:.7em;padding:2px 7px;
+  border:1px solid currentColor;border-radius:3px;font-size:9.5px;letter-spacing:.16em;
+  opacity:.85;vertical-align:1px;white-space:nowrap}
+
 .l-bar-knob{position:absolute;right:0;top:50%;width:9px;height:9px;border-radius:50%;
   background:var(--lit);transform:translate(50%,-50%) scale(0);
   transition:transform .2s}
