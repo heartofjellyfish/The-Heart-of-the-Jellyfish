@@ -833,6 +833,8 @@ whether the player is up; no media query knows all four. (The effect re-runs on
 
 ### The hero's primary action
 
+*(Superseded 2026-08-26 — LISTEN NOW is back, qualified. See the end of this section.)*
+
 It said `LISTEN NOW`, which is what a released album says. This one is not released —
 these are demos, and saying so is not a disclaimer, it is the offer: you are hearing
 it before it exists. So the idle label is `HEAR THE DEMOS`.
@@ -1169,6 +1171,33 @@ not the work. `POEM_LINES` stores each line as its **sense units** — the caesu
 would read aloud — because a phone cannot fit the long ones and the browser's own
 break is nonsense: a turned line looks exactly like the next track, so a bad break
 does not merely read badly, it invents a line of verse the album does not have.
+
+### The two doors, described the same way
+
+*(2026-08-26)* The hero's two actions are one grammar — an invitation, and in
+parentheses what is behind it:
+
+```
+LISTEN NOW (teasers)        TRACKLIST (full demos)
+```
+
+`LISTEN NOW` was dropped once for claiming a release this album has not had. It is
+back because the claim now arrives qualified in the same breath, and the parenthesis
+is what makes it honest. Describing both doors identically is the point: the choice
+between them is legible at a glance instead of inferred from two differently-shaped
+phrases.
+
+Each gloss is its own span, outside the per-letter sweep. That lets it be set below
+the label it qualifies (9.9px against 13.8px, .62 opacity) — a parenthesis at the
+same weight as its label is just a longer label — and lets it be positioned
+independently. Both glosses survive on a phone, where the actions stack and each has
+its own line: neither LISTEN NOW nor TRACKLIST says which one is whole, so on a small
+screen the glosses are the entire distinction.
+
+Gotcha found here: every letter of the play label is an inline-block, so the line
+could break between any two of them. No label had been long enough to try it until a
+twenty-character one arrived and came out as `ALL TEN I / N 7 MINUT / ES`. Both labels
+are `nowrap`.
 
 ### The seek bar is a real waveform
 

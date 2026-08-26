@@ -244,27 +244,31 @@ const FEATURED_DEMO = 1;
 /**
  * The hero's primary action, in its three states.
  *
- * It said LISTEN NOW, which is what a released album says. This one is not
- * released — these are demos, and saying so is not a disclaimer, it is the
- * offer: you are hearing it before it exists. So the idle label names what it
- * actually is, and the other two are the transport it becomes.
+ * It said LISTEN NOW once and that was dropped, because LISTEN NOW is what a
+ * released album says and this one is not released — these are demos, and
+ * saying so is not a disclaimer, it is the offer: you are hearing it before it
+ * exists.
+ *
+ * LISTEN NOW is back, and the objection is answered rather than ignored: the
+ * claim now arrives qualified, in the same breath, by a gloss that names what
+ * the press actually gives. The pair below the title reads as one grammar —
+ *
+ *     LISTEN NOW (teasers)      TRACKLIST (full demos)
+ *
+ * — an invitation and, in parentheses, what is behind it. Two doors described
+ * the same way, so the choice between them is legible at a glance instead of
+ * being inferred from two differently-shaped phrases. The offer survives; it is
+ * the parenthesis that makes it honest.
+ *
+ * The other two labels are the transport it becomes.
  *
  * Once a track is loaded the button stops being "start the album" and becomes
  * the transport for whatever is sounding — a play button that restarts a
  * different track while music is already playing is a bug the size of the hero.
  */
 const PLAY_LABELS = {
-  /*
-   * Not "HEAR THE DEMOS" any more, which promised the wrong object twice over:
-   * this press gives excerpts, not demos, and it hid the fact that the demos
-   * themselves are here in full one screen down.
-   *
-   * "ALL TEN IN 7 MINUTES" needs no word like "excerpt" to explain itself —
-   * ten songs cannot fit in seven minutes and everyone knows it. And it is a
-   * better offer than the old label made: not "listen to some music", but a
-   * bounded, cheap, complete pass through the whole record.
-   */
-  idle: 'ALL TEN IN 7 MINUTES',
+  /** Qualified by the gloss beside it, which only shows while this is the label. */
+  idle: 'LISTEN NOW',
   playing: 'PAUSE',
   paused: 'RESUME',
 } as const;
@@ -2843,7 +2847,7 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
       ? PLAY_LABELS.playing
       : PLAY_LABELS.paused;
   const heroAria = !barOn
-    ? 'Play all ten in seven minutes, starting with ' + TITLES[FEATURED_DEMO - 1]
+    ? 'Listen now — teasers from all ten songs, starting with ' + TITLES[FEATURED_DEMO - 1]
     : (playing ? 'Pause — ' : 'Resume — ') + TITLES[cur - 1];
 
   const litVals = LITS.find((l) => l.key === lit) ?? LITS[0];
@@ -3321,6 +3325,10 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                       {ch === ' ' ? '\u00A0' : ch}
                     </span>
                   ))}
+                  {/* Only while the button is still an invitation. Once the bar
+                      is up the label is PAUSE or RESUME, and a parenthesis
+                      explaining what PAUSE gives you would be nonsense. */}
+                  {!barOn && <span className="l-act-gloss">(teasers)</span>}
                 </button>
               </span>
               {/*
@@ -4694,7 +4702,9 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 @media (max-width:560px){
   .l-play-row{flex-wrap:wrap;row-gap:clamp(14px,2.4vh,22px)}
   .l-act-rule{display:none}
-  .l-act-gloss{display:none}
+  /* The glosses stay. Stacked, each action has its own line and room to
+     spare — and on a phone they are the entire difference between the two
+     doors, since neither LISTEN NOW nor TRACKLIST says which one is whole. */
 }
 /* The primary action. On hover the ring fills and the glyph inverts — the button
    stops being an outline and becomes a thing you have already half-pressed. The
