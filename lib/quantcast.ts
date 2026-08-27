@@ -21,6 +21,18 @@
  * queue by design, quant.js drains whatever is in it whenever it arrives, and
  * nothing on this page needs to fire a second Quantcast event later.
  *
+ * ## Events beyond the pageview
+ *
+ * `quantcastEvent('Subscribe')` fires Quantcast's "partial tag": another push
+ * onto the same queue, carrying `event: 'refresh'` — which is what tells
+ * quant.js to send a second beacon rather than treat the entry as part of the
+ * page load it already reported. Labels have to start with `_fp.event.`; that
+ * prefix is the namespace Quantcast reads events out of, and a label without it
+ * is filed as a page category instead and never appears as an event.
+ *
+ * Partial rather than full tag because the base tag is already on every page —
+ * the full form re-declares the account and is for tag-manager deployments.
+ *
  * ## Why one PageView is all of it
  *
  * The site has no client-side navigation — no next/link, no router.push
@@ -37,7 +49,12 @@
  *  rather than an env var. */
 const QACCT = 'p-tfadYbvEcRkfz';
 
-type QEvent = { qacct: string; labels?: string };
+type QEvent = {
+  qacct: string;
+  labels?: string;
+  /** `'refresh'` marks a beacon of its own, i.e. anything after the pageview. */
+  event?: string;
+};
 
 declare global {
   interface Window {
@@ -88,4 +105,34 @@ export function startQuantcast(): void {
   const first = document.getElementsByTagName('script')[0];
   if (first?.parentNode) first.parentNode.insertBefore(el, first);
   else document.head.appendChild(el);
+}
+
+/**
+ * Record something that happened, as a Quantcast event.
+ *
+ * `name` is the human-readable half of the label — `'Subscribe'` becomes
+ * `_fp.event.Subscribe`. Keep it plain: a comma starts a second label in
+ * Quantcast's syntax and a dot opens a hierarchy level, so neither belongs in
+ * an event name.
+ *
+ * This is deliberately not the PostHog taxonomy in ANALYTICS.md and should
+ * never grow into a copy of it. PostHog has the funnel — opened, submitted,
+ * failed, completed, with the reason and the milliseconds. Quantcast only needs
+ * to know that a conversion happened, so that it can tell us what the people
+ * who convert have in common. One event per real outcome, no properties.
+ */
+export function quantcastEvent(name: string): void {
+  if (typeof window === 'undefined') return;
+
+  /*
+   * A partial tag needs the base tag on the page. Normally it has been there
+   * since the idle callback, seconds ago — but somebody can convert inside that
+   * window, and that is the single click we least want to lose. Starting it
+   * here is idempotent and puts the PageView into the queue ahead of this
+   * event, so the order Quantcast reads is the order things happened.
+   */
+  startQuantcast();
+  if (!started || !window._qevents) return; // dev host: the gate held
+
+  window._qevents.push({ qacct: QACCT, labels: '_fp.event.' + name, event: 'refresh' });
 }

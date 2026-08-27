@@ -312,7 +312,7 @@ is NaN, a track number that is 0.
 
 ## The second tag: Quantcast Measure
 
-*Added 2026-08-26.*
+*Added 2026-08-26. `Subscribe` event same day.*
 
 [lib/quantcast.ts](lib/quantcast.ts), started from the same idle callback as
 PostHog in [components/Analytics.tsx](components/Analytics.tsx).
@@ -325,9 +325,33 @@ a whole. That is the number a playlist pitch, a press kit or an ad buy asks for,
 and none of the events above can produce it. Neither tool substitutes for the
 other, and neither should grow toward the other's job.
 
-**What it sends.** One thing, once per document load: a `_fp.event.PageView`
-against account `p-tfadYbvEcRkfz`. There are no custom labels and no event
-taxonomy to maintain — everything in this file above this section is PostHog's.
+**What it sends.** Two things, and the list is meant to stay short:
+
+| Quantcast event | Fired when |
+|---|---|
+| `_fp.event.PageView` | Once per document load, from the idle callback |
+| `_fp.event.Subscribe` | MailerLite accepted a signup — the same moment as PostHog's `subscribe_completed` |
+
+Everything else in this file is PostHog's. **The two taxonomies are not
+parallel and must not be kept in sync.** PostHog owns the funnel — opened,
+submitted, failed, completed, with the reason and the milliseconds — because
+that is what tells us where the panel loses people. Quantcast is asked one
+question only: *what do the people who convert have in common?* It answers that
+from a segment, so it needs the outcome and nothing else. One Quantcast event
+per real outcome, no properties.
+
+That is also why `Subscribe` fires on completion rather than on submit:
+everyone who ever pressed **yes** would fold the typos and the 502s into the
+segment, and the segment is the entire product.
+
+**How a second event works.** `quantcastEvent(name)` in
+[lib/quantcast.ts](lib/quantcast.ts) pushes onto the same `_qevents` queue with
+`event: 'refresh'` — Quantcast's "partial tag". The `refresh` is what makes it a
+beacon of its own instead of part of the page load already reported, and the
+`_fp.event.` prefix is what files it as an event instead of a page category.
+Miss either and the call is silent, not an error. Partial rather than full tag
+because our base tag is already on the page; the full form re-declares the
+account and is for tag managers.
 
 **Why one push covers every page.** The site has no client-side navigation, so
 each route is a real document load. If a `<Link>` or `router.push` is ever
@@ -355,6 +379,27 @@ Open any page with `?qc=1`, then look in the Network panel for
 `secure.quantserve.com/quant.js` (200) followed by a `pixel.quantserve.com`
 request carrying `a=p-tfadYbvEcRkfz`. Reporting in the Quantcast dashboard lags
 by roughly a day, so the pixel request is the confirmation, not the dashboard.
+
+For `Subscribe` without putting a fake address on the real list, stub the route
+in the console before pressing **come along**, then read the beacons back:
+
+```js
+const of = window.fetch;
+window.fetch = (u, o) =>
+  String(u?.url ?? u).includes('/api/subscribe')
+    ? Promise.resolve(new Response('{"ok":true}', { status: 200 }))
+    : of(u, o);
+```
+
+```js
+performance.getEntriesByType('resource')
+  .map(e => e.name).filter(n => n.includes('quantserve.com/pixel'))
+  .map(n => n.match(/labels=([^;]*)/)[1]);
+// ["_fp.event.PageView", "_fp.event.Subscribe"]
+```
+
+Swap the stub to `status: 400` and the second beacon must **not** appear — the
+failure paths are where a conversion event goes wrong quietly.
 
 **Consent.** Quantcast is an advertising-measurement vendor and its pixel sets
 third-party cookies. There is no consent banner on this site, which is fine for

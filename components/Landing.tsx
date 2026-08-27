@@ -22,6 +22,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { JellyMark, JELLY_MARK_CSS } from './JellyMark';
 import { Drift, DRIFT_CSS } from './Drift';
 import { track } from '@/lib/analytics';
+import { quantcastEvent } from '@/lib/quantcast';
 import { MEDLEY_CHAPTERS, type Chapter, type Window } from './medley';
 
 /**
@@ -4149,6 +4150,12 @@ export function Landing({ releaseDate = '2026-12-20' }: { releaseDate?: string }
                       return;
                     }
                     track('subscribe_completed', { ms: Date.now() - askedAt });
+                    // The one outcome Quantcast is told about. Fired here and
+                    // not on submit: it is the panel's only real conversion,
+                    // and a Quantcast event is a segment of people, not a
+                    // funnel step -- "everyone who ever pressed yes" would mix
+                    // the signups in with the typos.
+                    quantcastEvent('Subscribe');
                     subscribedRef.current = true;
                     setSubState('done');
                   } catch {
