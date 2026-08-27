@@ -4593,7 +4593,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
      bordered button ~36px tall. At the old padding it stood 88px off the top
      and screen two's title had to start below that — which is 88px the poem
      could not have. */
-  padding:18px clamp(24px,3vw,52px);
+  padding:18px var(--l-gutter);
   font-family:'Jost',sans-serif;font-weight:300;font-size:11.5px;letter-spacing:.3em}
 .l-nav-left{display:flex;gap:clamp(20px,2.6vw,42px);align-items:baseline}
 .l-nav-item{color:inherit;text-decoration:none;white-space:nowrap;
@@ -4615,7 +4615,7 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 
 /* ---- hero ---- */
 .l-hero{position:absolute;z-index:10;
-  left:clamp(24px,3vw,52px);top:clamp(96px,17vh,190px);
+  left:var(--l-gutter);top:clamp(96px,17vh,190px);
   display:flex;flex-direction:column;align-items:flex-start;
   text-shadow:0 1px 3px rgba(12,52,84,.30),0 1px 26px rgba(12,52,84,.34);
   animation:l-rise 1.6s cubic-bezier(.2,.7,.2,1) both}
@@ -5360,7 +5360,19 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
   /* The bar's own height, named once. Two things have to get out of its way
      and neither should have to know the number. */
   --barh:clamp(76px,11vh,104px);
-  --bar:0px}
+  --bar:0px;
+  /* The page's left edge, named once because two things sit on it and must
+     never drift apart: the nav's padding and the hero's left offset. The cap
+     is the whole point of the number. It used to be 52px, which reads as a
+     deliberate inset on a laptop and as glued-to-the-bezel on a wide display:
+     52px of a 2000px window is 2.6% of it, and a 104px title with that little
+     edge beside it looks like it overflowed rather than like it was placed.
+     Display type needs more margin than 11.5px nav type to read as equally
+     inset, so the ceiling is now high enough that the gutter keeps growing
+     with the window instead of stopping while the canvas around it doesn't.
+     The 24px floor is untouched: 4vw is under it below ~600px, so phones are
+     exactly as they were. */
+  --l-gutter:clamp(24px,4vw,96px)}
 .landing[data-bar]{--bar:var(--barh)}
 
 /* The scroller. Fixed, with both screens inside it, rather than letting the
