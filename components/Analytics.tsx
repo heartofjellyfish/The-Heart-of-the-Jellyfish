@@ -3,6 +3,11 @@
 /**
  * The one place analytics is switched on. Renders nothing.
  *
+ * Two tags, one callback: PostHog (what people did — lib/analytics.ts) and
+ * Quantcast Measure (who they are — lib/quantcast.ts). Both are third-party
+ * script loads with no bearing on the first paint, so they share one deferral
+ * rather than each inventing their own.
+ *
  * It sits in the root layout so every route is counted, including /descent and
  * /preview-jelly, which have no instrumentation of their own — a pageview and
  * autocapture is the whole of what we want to know about them.
@@ -21,15 +26,20 @@
 
 import { useEffect } from 'react';
 import { startAnalytics } from '@/lib/analytics';
+import { startQuantcast } from '@/lib/quantcast';
 
 export function Analytics() {
   useEffect(() => {
+    const start = () => {
+      void startAnalytics();
+      startQuantcast();
+    };
     const idle = window.requestIdleCallback;
     if (idle) {
-      const id = idle(() => void startAnalytics(), { timeout: 3000 });
+      const id = idle(start, { timeout: 3000 });
       return () => window.cancelIdleCallback?.(id);
     }
-    const t = window.setTimeout(() => void startAnalytics(), 1200);
+    const t = window.setTimeout(start, 1200);
     return () => window.clearTimeout(t);
   }, []);
 

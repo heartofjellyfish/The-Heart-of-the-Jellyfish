@@ -1,14 +1,16 @@
 # Analytics
 
-*Last updated 2026-08-23.*
+*Last updated 2026-08-26.*
 
 PostHog. What it is for, what it records, and the rules that keep it from
-turning into a pile of events nobody reads.
+turning into a pile of events nobody reads. Quantcast Measure also runs, for a
+different question entirely — see *The second tag* at the bottom.
 
 Code: [lib/analytics.ts](lib/analytics.ts) (the wrapper),
 [components/Analytics.tsx](components/Analytics.tsx) (where it is switched on),
 [next.config.mjs](next.config.mjs) (the first-party proxy),
-[components/Landing.tsx](components/Landing.tsx) (every named event).
+[components/Landing.tsx](components/Landing.tsx) (every named event),
+[lib/quantcast.ts](lib/quantcast.ts) (the Quantcast tag).
 
 ## The questions
 
@@ -307,3 +309,55 @@ Then open the page with `?ph=debug`. Every event prints to the console **with
 its properties expanded** — PostHog's own debug mode collapses them, and the
 properties are the part worth checking: a milestone off by one, a percent that
 is NaN, a track number that is 0.
+
+## The second tag: Quantcast Measure
+
+*Added 2026-08-26.*
+
+[lib/quantcast.ts](lib/quantcast.ts), started from the same idle callback as
+PostHog in [components/Analytics.tsx](components/Analytics.tsx).
+
+**Why both.** PostHog answers *what happened on the page* — which demo, how far
+in, where the listen stopped. It cannot say who was listening, because nobody
+here logs in and no event carries a person. Quantcast is a panel-based audience
+measurement service: it reports age, gender, interests and reach for the site as
+a whole. That is the number a playlist pitch, a press kit or an ad buy asks for,
+and none of the events above can produce it. Neither tool substitutes for the
+other, and neither should grow toward the other's job.
+
+**What it sends.** One thing, once per document load: a `_fp.event.PageView`
+against account `p-tfadYbvEcRkfz`. There are no custom labels and no event
+taxonomy to maintain — everything in this file above this section is PostHog's.
+
+**Why one push covers every page.** The site has no client-side navigation, so
+each route is a real document load. If a `<Link>` or `router.push` is ever
+added, Quantcast will silently under-count from that day on and a route change
+will have to push its own PageView.
+
+**Why it is not in the layout `<head>`.** The vendor snippet is a synchronous
+inline script that injects `quant.js` ahead of the first script on the page —
+i.e. ahead of the hero painting. Its two effects are reproduced in
+`lib/quantcast.ts` and deferred to idle instead, on the same reasoning as *Why
+the SDK is loaded late* above. `_qevents` is a queue by design, so arriving late
+costs nothing.
+
+**Not on localhost.** `shouldLoad()` skips dev hosts. Several worktrees run here
+at once and reload all day; against a product whose entire output is an audience
+profile, that is not neutral noise. Append `?qc=1` to force it on and verify.
+
+### Checking Quantcast locally
+
+```bash
+npm run dev
+```
+
+Open any page with `?qc=1`, then look in the Network panel for
+`secure.quantserve.com/quant.js` (200) followed by a `pixel.quantserve.com`
+request carrying `a=p-tfadYbvEcRkfz`. Reporting in the Quantcast dashboard lags
+by roughly a day, so the pixel request is the confirmation, not the dashboard.
+
+**Consent.** Quantcast is an advertising-measurement vendor and its pixel sets
+third-party cookies. There is no consent banner on this site, which is fine for
+PostHog on `/ingest` (first-party, no ad use) but is the standard GDPR/ePrivacy
+exposure for a tag like this one on EU visitors. Noted here rather than acted
+on — it is Qi's call whether the site ever grows a CMP.
