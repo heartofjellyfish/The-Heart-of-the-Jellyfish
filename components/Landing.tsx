@@ -4841,10 +4841,23 @@ html,body{height:100%;overflow:hidden;background:#8cb9d4}
 .l-type{display:inline-block;white-space:nowrap}
 /* Set below the label, not beside it: smaller, lighter, tighter tracking, and
    no part of the letter sweep. It is an aside about the destination, and an
-   aside at the same weight as its label is just a longer label. */
-.l-act-gloss{margin-left:.85em;font-size:.72em;letter-spacing:.14em;opacity:.62;
-  text-transform:none;white-space:nowrap}
-.l-act-second:hover .l-act-gloss{opacity:.85}
+   aside at the same weight as its label is just a longer label.
+
+   Smaller, though, has a floor, which is what the max() is for. At .72em of a
+   13.8px label this landed at 9.9px, and at the 11.5px label a phone gets, at
+   8.3px — lowercase, at .62 opacity, over a painting. It read as texture rather
+   than as words, so the one line that says LISTEN is thirty-second excerpts and
+   TRACKLIST is the whole songs was the line nobody could read. The em keeps the
+   aside tracking its label wherever the label goes; the floor only catches it at
+   the small end, where a ratio alone would take it under legibility.
+
+   Size is not the whole fix. Tracking comes in (.14em -> .095em) because wide
+   letterspacing on 12px lowercase costs word shape — it spaces letters apart
+   faster than it makes any one of them clearer — and the opacity comes up,
+   because contrast this far under is its own way of being unreadable. */
+.l-act-gloss{margin-left:.85em;font-size:max(11px,.88em);letter-spacing:.095em;
+  opacity:.82;text-transform:none;white-space:nowrap}
+.l-act-second:hover .l-act-gloss{opacity:1}
 .l-tl{display:inline-block}
 .landing .l-act-second:hover .l-tl{
   animation:l-strike .32s cubic-bezier(.22,.9,.3,1) both;
